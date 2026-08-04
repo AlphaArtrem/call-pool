@@ -56,8 +56,10 @@ pub const CLAIM_DEADLINE_EPOCHS: u64 = 30;
 /// signer pays rent for, so it needs a ceiling that is not "whatever fits in a
 /// u32". The real ceiling is structural: every eligible wallet holds at least
 /// the floor, so at a 0.01% floor at most 10,000 wallets can qualify at once
-/// (Phase 05 §5.11). This is set to twice that, so the 0.005% reading of L12's
-/// open discrepancy still fits without touching the program.
+/// (Phase 05 §5.11). This is set to twice that. The headroom was originally
+/// there so L12's unsettled 0.005% reading would fit; L13 settled the floor at
+/// 0.01%, and the headroom stays because a slack ceiling on an unupgradeable
+/// program costs nothing and a tight one cannot be loosened.
 pub const MAX_LEAF_COUNT: u32 = 20_000;
 
 /// Guards against a `min_hold` written in whole tokens instead of raw units.

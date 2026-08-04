@@ -52,7 +52,7 @@ pass "rust: unit, merkle, program and invariant tests"
 
 npm test --silent 2>&1 | grep -E "^. (tests|pass|fail) " || true
 npm test --silent >/dev/null 2>&1 || fail "npm test"
-pass "js: timeline, merkle, program-client and crank tests"
+pass "js: timeline, merkle, program-client, crank and site tests"
 
 # ── structure ──────────────────────────────────────────────────────────────
 echo
@@ -128,11 +128,6 @@ if (MIN_HOLD_RAW !== expected) {
 }
 console.log('  ok  floor: ' + MIN_HOLD_TOKENS.toLocaleString('en-US') + ' tokens = ' + MIN_HOLD_RAW + ' raw units at ' + MINT_DECIMALS + ' decimals');
 " || fail "the floor is inconsistent between whole tokens and raw units"
-
-echo
-warn "The floor still carries L12's open discrepancy: 0.01% is \$1,000 at a \$10M"
-warn "  cap, and the instruction that set it also said \$500 (which is 0.005%)."
-warn "  Settle it before initialize — Phase 08 has the stop-line."
 
 echo
 printf '\033[32mverify passed\033[0m\n\n'
