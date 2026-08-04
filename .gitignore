@@ -1,0 +1,82 @@
+# ─────────────────────────────────────────────────────────────
+# Private working material — never in the public repo
+# ─────────────────────────────────────────────────────────────
+# Phase plans, launch runbook, opsec notes, tracker.
+# The public audit trail is the site and the published epoch snapshots.
+docs/
+HANDOFF.md
+x-post.md
+*-DRAFT.md
+*.private.md
+notes/
+private/
+
+# ─────────────────────────────────────────────────────────────
+# Secrets and keys — the ones that end projects
+# ─────────────────────────────────────────────────────────────
+# Solana keypairs are plain JSON byte arrays with no distinguishing
+# extension, so match on name as well as on location.
+*keypair*.json
+id.json
+wallet*.json
+**/deploy/*.json
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+site/config.local.js
+secrets/
+.secrets/
+*.secret
+
+# pump.fun session tokens used to read the callout feed.
+# These authenticate as a real account — treat them like a key.
+.callout-auth
+callout-token*
+
+# ─────────────────────────────────────────────────────────────
+# Epoch working files
+# ─────────────────────────────────────────────────────────────
+# Published snapshots live in snapshots/ and MUST be committed —
+# they are the audit trail. Scratch output does not.
+epochs/scratch/
+*.snapshot.tmp
+
+# ─────────────────────────────────────────────────────────────
+# Build output and dependencies
+# ─────────────────────────────────────────────────────────────
+target/
+.anchor/
+node_modules/
+dist/
+build/
+.bin/
+*.so
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ─────────────────────────────────────────────────────────────
+# Local validator and test state
+# ─────────────────────────────────────────────────────────────
+test-ledger/
+.ledger/
+*.log
+
+# ─────────────────────────────────────────────────────────────
+# Editor and OS noise
+# ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# ─────────────────────────────────────────────────────────────
+# History backups — must never be committed
+# ─────────────────────────────────────────────────────────────
+*.bundle
