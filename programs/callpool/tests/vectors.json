@@ -1,0 +1,608 @@
+{
+  "note": "Shared merkle vectors. Read by scripts/tests/merkle.test.mjs and by programs/callpool/src/merkle.rs. Regenerate only with scripts/tools/gen-merkle-vectors.mjs, and only if the leaf format is intended to change — which after epoch 1 is never.",
+  "format": {
+    "leaf": "sha256(0x00 || index_le(4) || owner(32) || epoch_le(8) || amount_le(8))",
+    "node": "sha256(0x01 || min(a,b) || max(a,b))",
+    "oddLevels": "promote the unpaired node unchanged (D6)",
+    "leafOrder": "sorted by owner pubkey bytes; index is the position in that order"
+  },
+  "cases": [
+    {
+      "name": "single leaf",
+      "epoch": 0,
+      "root": "f66a4f1eead22fcc99d0c5bfd0a2d00f5f172f67597ff5d59aa5bbbabd86f7cd",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": []
+        }
+      ]
+    },
+    {
+      "name": "one pair",
+      "epoch": 1,
+      "root": "961faef673ec979fbd492ea35260a1a13b82340177f33719b1bcf24b11849d42",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+          "amount": "1000137",
+          "proof": [
+            "dcedff85098a8c7dbf2a545b97a404f3c23b5cbb307595b4def0a768ae9e81f6"
+          ]
+        },
+        {
+          "index": 1,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": [
+            "a6ff1b1e708bda94f9e76b6c4f96998d26ee72718ec8959ecf34df0f8c6b09fb"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "odd — one promotion",
+      "epoch": 2,
+      "root": "ba73079ecb56a00123473028ab4f9e4ecc2d9e83fbf12e4ae46a947491ace1a2",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+          "amount": "1000137",
+          "proof": [
+            "11572636f503aafffd8fabb0d6d0ccf9e8b022cb1564ce83703caaf2d33fc367",
+            "7c225b9dba034a161af44a920e3b86bdeb9d51e172dd7596f9cbd3795aaf75f5"
+          ]
+        },
+        {
+          "index": 1,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": [
+            "c9ecb5c3bf11c50573d9a89d5a404ae1ca9945619d635d6e81fb094c9351b360",
+            "7c225b9dba034a161af44a920e3b86bdeb9d51e172dd7596f9cbd3795aaf75f5"
+          ]
+        },
+        {
+          "index": 2,
+          "owner": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse",
+          "amount": "1000274",
+          "proof": [
+            "453404658246b63d80a90a705fe9d0598c56cf01a04a73d20e8129c885631650"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "odd — promotion at two levels",
+      "epoch": 7,
+      "root": "17cb63e13c60f11347d1c6016131059e3d9cfc661889f1d56849b8272026cad1",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "8SFqwqnq4whPhs8icwHA2hQg3hUoN1qrCLK1SBx3WKwe",
+          "amount": "1000548",
+          "proof": [
+            "70a4ce08b5e9aae9e4ee6dc7831ebc66be4c9e215b1e49a3c338fbeeac30480d",
+            "de3959d50d12e270564198446d50cae98d33c9e0888e9af907901dfc8702cad0",
+            "7a9a9ed7a84715665ddadc89d445f18b3b6384d9e044b1dad0b6a9aaa5a85172"
+          ]
+        },
+        {
+          "index": 1,
+          "owner": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+          "amount": "1000137",
+          "proof": [
+            "0d48ebb249fd57b5139ea0058894d8ddc61d5e8077ad6b66c700bb9cccf40f0c",
+            "de3959d50d12e270564198446d50cae98d33c9e0888e9af907901dfc8702cad0",
+            "7a9a9ed7a84715665ddadc89d445f18b3b6384d9e044b1dad0b6a9aaa5a85172"
+          ]
+        },
+        {
+          "index": 2,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": [
+            "b5aa0c42a6aca7aa7703c15602219e81baf59161518a924a5cf64df14fe4ad96",
+            "9733ba7e8e926423d764a4fa0a1385a8baea9ed1f3c427c7906e05418b4f5ec0",
+            "7a9a9ed7a84715665ddadc89d445f18b3b6384d9e044b1dad0b6a9aaa5a85172"
+          ]
+        },
+        {
+          "index": 3,
+          "owner": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+          "amount": "1000411",
+          "proof": [
+            "e2b156ffdd7831f6cc3a96365e3979e771c360a1a2203631698bcd98a6d0123f",
+            "9733ba7e8e926423d764a4fa0a1385a8baea9ed1f3c427c7906e05418b4f5ec0",
+            "7a9a9ed7a84715665ddadc89d445f18b3b6384d9e044b1dad0b6a9aaa5a85172"
+          ]
+        },
+        {
+          "index": 4,
+          "owner": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse",
+          "amount": "1000274",
+          "proof": [
+            "d921a8f0ee1ed81b1ad8c40aabfd6745483fa0df3df14a6abe2d9a738e1b4a34"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "odd — seven",
+      "epoch": 12,
+      "root": "f322db0e34591ed07c523db809b5792c08eb3a288e2d450dc40bd4a4e52a7aa4",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "8SFqwqnq4whPhs8icwHA2hQg3hUoN1qrCLK1SBx3WKwe",
+          "amount": "1000548",
+          "proof": [
+            "d7c3bc25e6e9180c8fc5f6019881f69e9d0160a8cb1cd5bb323541bce1e0f570",
+            "5305cbb5e822cff954fe80d49bea02b2d8caecb75fba6c6acc98b78bfddfb08e",
+            "7de60bdc2eabc1d3801a0275e680c197dd24561045f00ef64e1b95c29696a696"
+          ]
+        },
+        {
+          "index": 1,
+          "owner": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+          "amount": "1000137",
+          "proof": [
+            "cb0177104680a72d1e44f3ac0e97b173fba6556dc66eb1abb278d19fd2157e6d",
+            "5305cbb5e822cff954fe80d49bea02b2d8caecb75fba6c6acc98b78bfddfb08e",
+            "7de60bdc2eabc1d3801a0275e680c197dd24561045f00ef64e1b95c29696a696"
+          ]
+        },
+        {
+          "index": 2,
+          "owner": "AKkzLhjhyFtM9j7WAhbaqYpFe49cXeJBg2kzLRC2PnNa",
+          "amount": "1000685",
+          "proof": [
+            "f1bd05e409cdec3cb23d43b8d3778b5c6af6fc47cae011ff65c05c86d677ac50",
+            "27c0f931a56b352c19be1184b25603a8cadb3ea2c923705e40d34e60d71fb757",
+            "7de60bdc2eabc1d3801a0275e680c197dd24561045f00ef64e1b95c29696a696"
+          ]
+        },
+        {
+          "index": 3,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": [
+            "5f6b7eb108e77504d1aaf123fec725bba51ac6209d1d24c708bfb5b24550802b",
+            "27c0f931a56b352c19be1184b25603a8cadb3ea2c923705e40d34e60d71fb757",
+            "7de60bdc2eabc1d3801a0275e680c197dd24561045f00ef64e1b95c29696a696"
+          ]
+        },
+        {
+          "index": 4,
+          "owner": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+          "amount": "1000411",
+          "proof": [
+            "e3f0b9bf8d1953eefe9452f18fe55a5bce76daee377e0adc1de1cd04d84d7800",
+            "36a5153e4bd934fd9ce73181139b360de71a055f4b5dd55e46fb53de90901aa3",
+            "63575eec33603d0d70e8c2c2a51748337f015a1e5ca242a596438ba753d27558"
+          ]
+        },
+        {
+          "index": 5,
+          "owner": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "amount": "1000822",
+          "proof": [
+            "e01dc1cec2910e13c7e0457ca4ed35496ffcbbcfd2beea2bb22722d78254212c",
+            "36a5153e4bd934fd9ce73181139b360de71a055f4b5dd55e46fb53de90901aa3",
+            "63575eec33603d0d70e8c2c2a51748337f015a1e5ca242a596438ba753d27558"
+          ]
+        },
+        {
+          "index": 6,
+          "owner": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse",
+          "amount": "1000274",
+          "proof": [
+            "2aaab5873351c5f52a84c2016d545eb7744523a4f38c0ce33413b5162f09a2fc",
+            "63575eec33603d0d70e8c2c2a51748337f015a1e5ca242a596438ba753d27558"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "power of two",
+      "epoch": 30,
+      "root": "7935302050cdc56adca7c4d09f29f1f09c844a0b12dcd057db11bbe4e14ce924",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "2KW2XRd9kwqet15Aha2oK3tYvd3nWbTFH1MBiRAv1BE1",
+          "amount": "1000959",
+          "proof": [
+            "f16928b977e312946763dd4b28d4786d9035a531da6b9e275616a8f54ab4e435",
+            "e36b86c2048690f27512aa16a87b831d2d1e8a3366ec5b610b902354f04dd4c0",
+            "25caa6b3020b22d85eb50636aaf9efbdbc3a21f0377a3f308c3970902079207c"
+          ]
+        },
+        {
+          "index": 1,
+          "owner": "8SFqwqnq4whPhs8icwHA2hQg3hUoN1qrCLK1SBx3WKwe",
+          "amount": "1000548",
+          "proof": [
+            "406789929966817edaf128ede1510f1fffecbe8b8aaef418be2da0db38053ed9",
+            "e36b86c2048690f27512aa16a87b831d2d1e8a3366ec5b610b902354f04dd4c0",
+            "25caa6b3020b22d85eb50636aaf9efbdbc3a21f0377a3f308c3970902079207c"
+          ]
+        },
+        {
+          "index": 2,
+          "owner": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+          "amount": "1000137",
+          "proof": [
+            "4845522f576bde430ff6af51964382737e43a6e3161c83a647a4fc0f84b380d5",
+            "3ca2a0f1983a2836012286abea110e99ca6bbd697051b0069cef8be8ea4d2e79",
+            "25caa6b3020b22d85eb50636aaf9efbdbc3a21f0377a3f308c3970902079207c"
+          ]
+        },
+        {
+          "index": 3,
+          "owner": "AKkzLhjhyFtM9j7WAhbaqYpFe49cXeJBg2kzLRC2PnNa",
+          "amount": "1000685",
+          "proof": [
+            "36148195532ea25207761c11635509f1f6b64ab00de0e6783a09a15418e5a667",
+            "3ca2a0f1983a2836012286abea110e99ca6bbd697051b0069cef8be8ea4d2e79",
+            "25caa6b3020b22d85eb50636aaf9efbdbc3a21f0377a3f308c3970902079207c"
+          ]
+        },
+        {
+          "index": 4,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": [
+            "8c47a42719866e1555dab86467adb6a30efb9675b2813a4e862aa30538aaa6df",
+            "c4a11a48325b8d9cfdb72a7acb527a9f25c847a6e48f62fc38cd1b3612e90c90",
+            "0b2e09d20125057174911c4687414b33543a317745436d7a3c1924b980d6a55d"
+          ]
+        },
+        {
+          "index": 5,
+          "owner": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+          "amount": "1000411",
+          "proof": [
+            "b01afbabd5f89807a443a739b8d8780f3b8b2f0c132b1c3b31685fc840888ec9",
+            "c4a11a48325b8d9cfdb72a7acb527a9f25c847a6e48f62fc38cd1b3612e90c90",
+            "0b2e09d20125057174911c4687414b33543a317745436d7a3c1924b980d6a55d"
+          ]
+        },
+        {
+          "index": 6,
+          "owner": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "amount": "1000822",
+          "proof": [
+            "3d8695a441e9d292fbd5c3a0c5d9e567022e490544f8c4fb37bf7d8bf01cb08f",
+            "8cbdaad0e7fa444d7ae0381eb8185210f860b29f4b07a020e10ba94a6c14c392",
+            "0b2e09d20125057174911c4687414b33543a317745436d7a3c1924b980d6a55d"
+          ]
+        },
+        {
+          "index": 7,
+          "owner": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse",
+          "amount": "1000274",
+          "proof": [
+            "f90a05763e4cc985b2d1d0d309c9133a131127129e31d629e94225219e3040a8",
+            "8cbdaad0e7fa444d7ae0381eb8185210f860b29f4b07a020e10ba94a6c14c392",
+            "0b2e09d20125057174911c4687414b33543a317745436d7a3c1924b980d6a55d"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "odd — nine, deepest promotion",
+      "epoch": 99,
+      "root": "e6e71c215b87eb0f16d39049d2a744e2d833a50aca414a76f1d079ba8b49bc4a",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "2KW2XRd9kwqet15Aha2oK3tYvd3nWbTFH1MBiRAv1BE1",
+          "amount": "1000959",
+          "proof": [
+            "4c7a23ecf4107bac25aca05625d3c9db421478afd0c00c595b81fdd98e3fc288",
+            "0491001f5e178052ea8e2449259471fb768a784fc3760bca4548f978a977efd4",
+            "2376da943bb1550ad4dea442dd8048aae6f5082d45afcd65c90a9d63ee86c0be",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 1,
+          "owner": "8SFqwqnq4whPhs8icwHA2hQg3hUoN1qrCLK1SBx3WKwe",
+          "amount": "1000548",
+          "proof": [
+            "c7956a10d2ad66f0eabb8304868864a9057ba4e9b4d44d512cfa2edbc9de6c62",
+            "0491001f5e178052ea8e2449259471fb768a784fc3760bca4548f978a977efd4",
+            "2376da943bb1550ad4dea442dd8048aae6f5082d45afcd65c90a9d63ee86c0be",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 2,
+          "owner": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+          "amount": "1000137",
+          "proof": [
+            "be6c777ce228f481348aeb3d67d5d06b38c29de5dca2eb065328e7fe612eb718",
+            "e95f427dbca443a611b884df55f9bccb228f69f7aaa722c2d7a7822d4fcbc6cb",
+            "2376da943bb1550ad4dea442dd8048aae6f5082d45afcd65c90a9d63ee86c0be",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 3,
+          "owner": "AKkzLhjhyFtM9j7WAhbaqYpFe49cXeJBg2kzLRC2PnNa",
+          "amount": "1000685",
+          "proof": [
+            "497b3e0b376d5588ff1ff9f7441c9c1ee43cf017d29768743a801af05bd6121d",
+            "e95f427dbca443a611b884df55f9bccb228f69f7aaa722c2d7a7822d4fcbc6cb",
+            "2376da943bb1550ad4dea442dd8048aae6f5082d45afcd65c90a9d63ee86c0be",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 4,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": [
+            "ccdae8cf88c253fab31bbbdb0af157b5c1d3d97761d205affb7f4fd86f0ff547",
+            "6b5274050c7c1300878a1b53999e7af44e95d7a266522a77a0241c9eea3d91f9",
+            "0320c5e33823dad795afb63f372646c7f38a319b96352d5acb6bea8cf7364efb",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 5,
+          "owner": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+          "amount": "1000411",
+          "proof": [
+            "36c86c69fede3dd7cece75ca30583874c777b08ab11ca02839e26723a2326e99",
+            "6b5274050c7c1300878a1b53999e7af44e95d7a266522a77a0241c9eea3d91f9",
+            "0320c5e33823dad795afb63f372646c7f38a319b96352d5acb6bea8cf7364efb",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 6,
+          "owner": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "amount": "1000822",
+          "proof": [
+            "2d21143c7a6f6182ccaaa6aede700a74571fba8a8ed9b0401adace844d6a80ab",
+            "90bcca9ad44b7c80f352cb1cfeeb810cf77ac75cec00ca13b670b93b5adc27c9",
+            "0320c5e33823dad795afb63f372646c7f38a319b96352d5acb6bea8cf7364efb",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 7,
+          "owner": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse",
+          "amount": "1000274",
+          "proof": [
+            "f31cc6c3ca995bf5f675f320633b3d0536f048b5eb14f61d24e733b2df86a8ed",
+            "90bcca9ad44b7c80f352cb1cfeeb810cf77ac75cec00ca13b670b93b5adc27c9",
+            "0320c5e33823dad795afb63f372646c7f38a319b96352d5acb6bea8cf7364efb",
+            "91702f065531bdd5b45b6ed64d6dd0aeb73a94c2436d664232c04feda4647473"
+          ]
+        },
+        {
+          "index": 8,
+          "owner": "J2xccRtuG43drESLYznHhLhQkLTdfepcKYbiQ9BsJVaf",
+          "amount": "1001096",
+          "proof": [
+            "1e0358089544203d2b9d3aa4f7fcd2d5803e4c8003bb669954232ec768668c12"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a realistic epoch",
+      "epoch": 365,
+      "root": "90abe054c764105d8537b33b1434df416d046a4a86389b0cbdba9e5fe188a58c",
+      "leaves": [
+        {
+          "index": 0,
+          "owner": "mBKqcnGotbsSb5vNrdyhzZ5EhqZdids9QYiTRckvi7v",
+          "amount": "1001507",
+          "proof": [
+            "e72e9b3624ece506a9c09905768e702b546b78672af31a142ca60c20a5661f74",
+            "feadfc78cd3b22c713c2b8e8364a7c6bde9c4eafea3c0fe6fcd8ad76591b984c",
+            "6423e419001008cd0d8cd16e6d34ed37dd9a991b81507dd0a1b2d02fd1122aa8",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 1,
+          "owner": "oapfTk8FG2np1vSoGANkbijWiQApHZMFAytSdCoass9",
+          "amount": "1001781",
+          "proof": [
+            "120e52ddb48ef8e9650ef9287d226b8c69cee0f9da2b9dc4ced2005a00a494d4",
+            "feadfc78cd3b22c713c2b8e8364a7c6bde9c4eafea3c0fe6fcd8ad76591b984c",
+            "6423e419001008cd0d8cd16e6d34ed37dd9a991b81507dd0a1b2d02fd1122aa8",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 2,
+          "owner": "2KW2XRd9kwqet15Aha2oK3tYvd3nWbTFH1MBiRAv1BE1",
+          "amount": "1000959",
+          "proof": [
+            "8a158cae81c939bec7a8455dd11093c0e8065d48d54029a3efb2f30fe7d63587",
+            "5e7c655a4951ea9a6c4b9ee0c760b5a203ca2209bda4012b810cfbc873959b7f",
+            "6423e419001008cd0d8cd16e6d34ed37dd9a991b81507dd0a1b2d02fd1122aa8",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 3,
+          "owner": "5Z6Ay5NEcbg3xhopc522sBCRXQujkTiuDRnHGfQdcnSf",
+          "amount": "1001233",
+          "proof": [
+            "b8703b9de116c58c240ae2ebdfcfe8a87680a679c436b04cf9283e3934ac3855",
+            "5e7c655a4951ea9a6c4b9ee0c760b5a203ca2209bda4012b810cfbc873959b7f",
+            "6423e419001008cd0d8cd16e6d34ed37dd9a991b81507dd0a1b2d02fd1122aa8",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 4,
+          "owner": "7EWrbxU7YpHthanStG9yF6KyHS77LBPH6f52ANJmL9rs",
+          "amount": "1002055",
+          "proof": [
+            "245c7b2a8bf7f94a18e579a6b9dcdd4b313bdf87d9e2514ccfb7c61a4491f248",
+            "52e96df74419edbeefb6376be6f503e48740326106c7def7b40c961485bb045a",
+            "602c9763248feae1c0748f0fed8c3d9c55020aaec7ff31a8f2962100b6e9e7d2",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 5,
+          "owner": "7v54NWdBtkjuAFJrLGsS2SXnuk8nKam81mZJeeYxVFi9",
+          "amount": "1001370",
+          "proof": [
+            "2caad409d147f236742cb24875db8a8d9b474087a4c7afad5d6358e0e8a98f6b",
+            "52e96df74419edbeefb6376be6f503e48740326106c7def7b40c961485bb045a",
+            "602c9763248feae1c0748f0fed8c3d9c55020aaec7ff31a8f2962100b6e9e7d2",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 6,
+          "owner": "8SFqwqnq4whPhs8icwHA2hQg3hUoN1qrCLK1SBx3WKwe",
+          "amount": "1000548",
+          "proof": [
+            "996cfe319d25ec0ad9676aec8644527ac9d34337159629355bc26f2070e04517",
+            "8a1ff3f86c0f33848a43a47fd3ec263b2888a3b7b7231394c65a3384a00926c9",
+            "602c9763248feae1c0748f0fed8c3d9c55020aaec7ff31a8f2962100b6e9e7d2",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 7,
+          "owner": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+          "amount": "1000137",
+          "proof": [
+            "d5d122e2448b316ad1a442860c0009acb5b704b538b14170ec47fc010c68d313",
+            "8a1ff3f86c0f33848a43a47fd3ec263b2888a3b7b7231394c65a3384a00926c9",
+            "602c9763248feae1c0748f0fed8c3d9c55020aaec7ff31a8f2962100b6e9e7d2",
+            "5b6723eee7f0b1e286d58ccb2e81717e7c27320e0dae44f423062e9dbd8e1cd4",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 8,
+          "owner": "AKkzLhjhyFtM9j7WAhbaqYpFe49cXeJBg2kzLRC2PnNa",
+          "amount": "1000685",
+          "proof": [
+            "632be88c926d999e0da9bdc1361827e8abe46364d4431efa4dd5f7e055a3036b",
+            "49981302215565e02c2d1b38740e5782af2ae78adea5192efddb0d4cdfc16ea0",
+            "6846cd3369c3e14f55d00ab0131795fad7c7b1fbcfb0a28f720c590a61272c31",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 9,
+          "owner": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+          "amount": "1000000",
+          "proof": [
+            "cb8294be97d80ae182df67e3ad2a0b2e6901faa9c0e4578a4354ed89fbc50e17",
+            "49981302215565e02c2d1b38740e5782af2ae78adea5192efddb0d4cdfc16ea0",
+            "6846cd3369c3e14f55d00ab0131795fad7c7b1fbcfb0a28f720c590a61272c31",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 10,
+          "owner": "AoVsGaj8MSJ6xwKxfFxo9iZWH3enC8RRTXKH2fx2F8os",
+          "amount": "1001644",
+          "proof": [
+            "548d6a33c9e8f07a401bee8d9ad4260a47a98f9f2bfba603b5e72f00d86fab02",
+            "eea7a3f4ae16f9e0d9e80d2350d58e3f25c260bf512aa71f01d6165598e75cf0",
+            "6846cd3369c3e14f55d00ab0131795fad7c7b1fbcfb0a28f720c590a61272c31",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 11,
+          "owner": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+          "amount": "1000411",
+          "proof": [
+            "1049626aba4e5ca0c314542f41b60df8876b52dd820614a2c930090422ae499e",
+            "eea7a3f4ae16f9e0d9e80d2350d58e3f25c260bf512aa71f01d6165598e75cf0",
+            "6846cd3369c3e14f55d00ab0131795fad7c7b1fbcfb0a28f720c590a61272c31",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 12,
+          "owner": "F25s3DdjXdCxYBhh2z8FBusVEMT4b9bGNFVKJi3wFoF4",
+          "amount": "1002192",
+          "proof": [
+            "4bc17aeac977784dd58fb9003aa0119c4061d1cab1ee14d56f813c21e5d32680",
+            "01298016042528401f3fd8037195a470e39bd5d38f4a27a52fc8fd1d2e35f2aa",
+            "7abf89ea340e2d96bdba7f243c7f73376fd0225941c33a981bcffd4702717cd1",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 13,
+          "owner": "FezWPm3UEFa4nbF76D45V3gg9eZzhSxfw3tUES1Gr3o1",
+          "amount": "1001918",
+          "proof": [
+            "1171ff7cd952cf585b497b13d4c60a7218c8d48e0b9c2eab641e5e6439a8e17d",
+            "01298016042528401f3fd8037195a470e39bd5d38f4a27a52fc8fd1d2e35f2aa",
+            "7abf89ea340e2d96bdba7f243c7f73376fd0225941c33a981bcffd4702717cd1",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 14,
+          "owner": "GmaDrppBC7P5ARKV8g3djiwP89vz1jLK23V2GBjuAEGB",
+          "amount": "1000822",
+          "proof": [
+            "dff2215b565093d157dcc0a7d72633bdce503f293091e773b60ec05efcfbad25",
+            "3b4a172f0bd1cc35ee6c9d2cc5bb9a3a68f8e8093c15f9d2ee2fc18c9fd5651e",
+            "7abf89ea340e2d96bdba7f243c7f73376fd0225941c33a981bcffd4702717cd1",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 15,
+          "owner": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse",
+          "amount": "1000274",
+          "proof": [
+            "4238baf407cf607fbf26302519dbc052434b60aa6c26bfdb021c379c665059a9",
+            "3b4a172f0bd1cc35ee6c9d2cc5bb9a3a68f8e8093c15f9d2ee2fc18c9fd5651e",
+            "7abf89ea340e2d96bdba7f243c7f73376fd0225941c33a981bcffd4702717cd1",
+            "5eeaed6f303b1fdaec48fdc7c2a31a37f2acacdfbc71f6ca259a4a9fad1f1507",
+            "56bd6a89e90b94e7a024d9ea8b352679aea1ec3f089f8102a649569e038a995e"
+          ]
+        },
+        {
+          "index": 16,
+          "owner": "J2xccRtuG43drESLYznHhLhQkLTdfepcKYbiQ9BsJVaf",
+          "amount": "1001096",
+          "proof": [
+            "99c750d949de1d8afae6cca735d3ea4102853135dd7cbfd7ff79c372ac4fa7e6"
+          ]
+        }
+      ]
+    }
+  ]
+}
