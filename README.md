@@ -8,12 +8,12 @@ through the day, and never by the callout itself.
 hold(w)     = the MINIMUM balance w held at any point that day
 locked(w)   = w's balance decreased at any point in the last 7 days
 active(w)   = a callout OR a callout update by w in the last 24 h
-eligible(w) = active(w)  AND  hold(w) >= 500,000 CALLPOOL  AND  NOT locked(w)
+eligible(w) = active(w)  AND  hold(w) >= 100,000 CALLPOOL  AND  NOT locked(w)
 weight(w)   = hold(w)
 payout(w)   = pool · weight(w) / Σ weight     airdropped daily, in SOL
 ```
 
-The floor is **500,000 tokens — 0.05% of the supply**, written on chain once and
+The floor is **100,000 tokens — 0.01% of the supply**, written on chain once and
 never changed. There is no dollar threshold and no price feed anywhere in the
 system.
 
@@ -59,7 +59,7 @@ week rather than a day.
 
 | Attack | Why it fails |
 |---|---|
-| Buy a dollar, call out, collect | The floor is 500,000 tokens — 0.05% of the supply. A dust position is not eligible at all, and at most 2,000 wallets can ever qualify at once. |
+| Buy a dollar, call out, collect | The floor is 100,000 tokens — 0.01% of the supply. A dust position is not eligible at all, and at most 10,000 wallets can ever qualify at once. |
 | Call out, let followers buy, sell into them | Hit twice: that day's minimum collapses, **and** the wallet is locked out for the next 7 days. |
 | Call, sell, rebuy, call again | The sale locks the wallet out for 7 days, and buying back does not shorten it. Calling out during those 7 days earns nothing. |
 | Split a bag across 50 wallets, 50 callouts | Weight is **linear**, so 50 wallets of size *h* earn exactly what one wallet of size *50h* earns. Any concave weight function would pay sybils a premium; this one pays them nothing extra. Each wallet must clear the floor on its own. |
@@ -278,8 +278,8 @@ anyone to find a bad root and say so — not time for anyone to stop it.
 to any destination, including a wallet you own yourself. Buying back does not
 shorten it. This is deliberately blunt and it will catch people out.
 
-**The minimum is 0.05% of the supply**, which rises in dollar terms as the coin
-does. At a $10M market cap it is about $5,000. It is written on chain once and
+**The minimum is 0.01% of the supply**, which rises in dollar terms as the coin
+does. At a $10M market cap it is about $1,000. It is written on chain once and
 cannot be changed.
 
 **No yield is promised, and none should be inferred.** The pool is whatever the
