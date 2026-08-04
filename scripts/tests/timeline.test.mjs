@@ -275,3 +275,82 @@ test('extractBalanceEvent ignores accounts the transaction never touched', () =>
   const tx = parsedTx({ pre: 900, post: 400, keys: [OTHER, OTHER] });
   assert.equal(extractBalanceEvent(tx, ACCOUNT, 'sigE'), null);
 });
+
+// ── balanceEventsFor, against a stub connection ────────────────────────────
+//
+// Added after a real failure: `extractBalanceEvent` moved to timeline.mjs in
+// Phase 07 and chain.mjs re-exported it with `export ... from`, which does NOT
+// bind the name in the re-exporting module's scope. Every unit test still
+// passed — they call `extractBalanceEvent` directly — and `balanceEventsFor`
+// threw a ReferenceError at the first RPC call, which only proof 13 caught,
+// three minutes into a local-validator run.
+//
+// A stub connection is enough to walk the whole function without a network,
+// so that class of mistake fails in a quarter of a second from now on.
+
+function stubConnection({ signatures, transactions }) {
+  return {
+    async getSignaturesForAddress(_address, { before }) {
+      // One page, then empty — the loop's normal termination.
+      return before ? [] : signatures;
+    },
+    async getParsedTransactions(sigs) {
+      return sigs.map((s) => transactions[s] ?? null);
+    },
+  };
+}
+
+test('balanceEventsFor turns RPC pages into an oldest-first timeline', async () => {
+  const { balanceEventsFor } = await import('../lib/chain.mjs');
+
+  const connection = stubConnection({
+    // getSignaturesForAddress returns newest first.
+    signatures: [
+      { signature: 'newer', blockTime: W.start + 120 },
+      { signature: 'older', blockTime: W.start - 10 },
+    ],
+    transactions: {
+      older: parsedTx({ pre: null, post: 900 }),
+      newer: parsedTx({ pre: 900, post: 400 }),
+    },
+  });
+
+  const events = await balanceEventsFor(connection, ACCOUNT, W.start);
+  assert.deepEqual(
+    events.map((e) => e.signature),
+    ['older', 'newer'],
+    'oldest first — the timeline is replayed forwards',
+  );
+  assert.deepEqual(
+    events.map((e) => [e.pre, e.post]),
+    [
+      [0n, 900n],
+      [900n, 400n],
+    ],
+  );
+});
+
+test('balanceEventsFor skips failed transactions, which moved nothing', async () => {
+  const { balanceEventsFor } = await import('../lib/chain.mjs');
+
+  const connection = stubConnection({
+    signatures: [{ signature: 'failed', blockTime: W.start - 10 }],
+    transactions: { failed: parsedTx({ pre: 900, post: 0, err: { InstructionError: [0, 'x'] } }) },
+  });
+
+  assert.deepEqual(await balanceEventsFor(connection, ACCOUNT, W.start), []);
+});
+
+test('a signature the RPC lists but will not return is an incomplete history, not an absence', async () => {
+  const { balanceEventsFor } = await import('../lib/chain.mjs');
+
+  const connection = stubConnection({
+    signatures: [{ signature: 'vanished', blockTime: W.start - 10 }],
+    transactions: {},
+  });
+
+  // Phase 05 §5.6: a gap produces a hold that is plausibly wrong rather than
+  // obviously wrong, so it must fail the epoch instead of returning fewer
+  // events.
+  await assert.rejects(() => balanceEventsFor(connection, ACCOUNT, W.start), /history is incomplete/);
+});

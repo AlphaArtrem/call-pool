@@ -49,7 +49,7 @@ export class CalloutError extends Error {
  * `pump.fun/callouts` and grepping the same-origin scripts for
  * `coin-communities`.
  */
-export function apiKeyFromEnv(env = process.env) {
+export function apiKeyFromEnv(env = globalThis.process?.env ?? {}) {
   const key = env.CALLOUT_API_KEY;
   if (!key) {
     throw new CalloutError(

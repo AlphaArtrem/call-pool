@@ -23,17 +23,11 @@ import { createHash } from 'node:crypto';
 export const CARRY_EXPIRY_EPOCHS = 30;
 
 /**
- * Below this, a share is not worth the transaction that would deliver it.
- *
- * A claim costs one signature (5,000 lamports) plus whatever priority fee the
- * network demands, and the airdrop batches several claims per transaction —
- * so the true per-recipient cost is a fraction of that plus the compute. Ten
- * thousand lamports is two base signatures: comfortably above the real cost,
- * and still ~0.00001 SOL, so nothing meaningful is ever withheld.
- *
- * Withholding is not forfeiting. The amount is credited in the next epoch.
+ * Re-exported, not defined here. Moved to config.mjs in Phase 07 so the
+ * website can read it without importing this module's `node:crypto`
+ * dependency. Same constant, one definition.
  */
-export const DUST_THRESHOLD_LAMPORTS = 10_000n;
+export { DUST_THRESHOLD_LAMPORTS } from './config.mjs';
 
 /** SHA-256 of a carry file's canonical JSON, for the next epoch to record. */
 export function hashCarryFile(carry) {

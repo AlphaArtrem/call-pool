@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CALLPOOL — every reward, checkable</title>
+    <meta
+      name="description"
+      content="90% of creator fees, shared daily among holders who called the coin out. Every number on this page is derived in your browser from chain history and a published snapshot."
+    />
+    <!--
+      Root-absolute, not relative. The deploy root is the REPOSITORY root, not
+      site/ — the page imports the real scripts/lib/*.mjs rather than carrying a
+      second copy of the floor and the hold arithmetic, and the published epoch
+      directories live in /snapshots/. Root-absolute paths mean the page works
+      whether it is reached at /site/ or through a host rewrite of /.
+    -->
+    <link rel="stylesheet" href="/site/app.css" />
+
+    <!--
+      config.local.js is gitignored and may not exist. `onerror` keeps a missing
+      file from being a silent failure: app.js checks for the global and renders
+      an explicit "not configured" state rather than defaulting to anything.
+    -->
+    <script src="/site/config.local.js" onerror="window.CALLPOOL_SITE_CONFIG_MISSING = true"></script>
+  </head>
+
+  <body>
+    <header class="wrap">
+      <h1>CALLPOOL</h1>
+      <p class="lede">
+        90% of this coin’s creator fees go to the people who called it out and held
+        their position through the day. Rewards are sent automatically, every day.
+        <strong>Nothing to claim, and no wallet to connect.</strong>
+      </p>
+      <p class="cluster-note">
+        Reading <span id="cluster-label" class="mono">devnet</span>.
+      </p>
+    </header>
+
+    <!-- ── 1. hero ─────────────────────────────────────────────────────── -->
+    <main class="wrap">
+      <section id="hero" aria-labelledby="hero-heading">
+        <h2 id="hero-heading" class="visually-hidden">Live numbers</h2>
+
+        <div id="floor-mismatch" class="banner banner-danger" hidden></div>
+        <div id="hero-status"></div>
+
+        <dl class="metrics">
+          <div class="metric">
+            <dt>Caller pool</dt>
+            <dd id="pool-balance" class="big"></dd>
+            <p class="note">Held by the pool account. This is what the next epoch divides.</p>
+          </div>
+          <div class="metric">
+            <dt>Accrued, not yet swept</dt>
+            <dd id="vault-balance" class="big"></dd>
+            <p class="note">
+              Fees sit in pump.fun’s creator vault between runs. Shown beside the pool, never
+              folded into it — it is coming, but it is not distributable yet.
+            </p>
+          </div>
+          <div class="metric">
+            <dt>Current epoch</dt>
+            <dd id="current-epoch" class="big"></dd>
+            <p class="note">One epoch is one UTC day, 00:00 to 00:00.</p>
+          </div>
+          <div class="metric">
+            <dt>Distributed to date</dt>
+            <dd id="total-distributed" class="big"></dd>
+            <p class="note">Summed from the on-chain epoch accounts below, in your browser.</p>
+          </div>
+        </dl>
+
+        <table class="facts">
+          <caption class="visually-hidden">Addresses</caption>
+          <tbody>
+            <tr><th scope="row">Coin</th><td id="mint-address"></td></tr>
+            <tr><th scope="row">Pool</th><td id="pool-address"></td></tr>
+            <tr><th scope="row">Program</th><td id="program-address"></td></tr>
+            <tr>
+              <th scope="row">Snapshot key</th>
+              <td id="snapshot-key"></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="note">
+          Check the coin address against the pinned post before you buy anything. Address
+          confusion is how people lose money during a launch.
+        </p>
+      </section>
+
+      <!-- ── 2. the address calculator ─────────────────────────────────── -->
+      <section id="position" aria-labelledby="position-heading">
+        <h2 id="position-heading">Your position</h2>
+        <p>
+          Paste any address. Everything below is derived in your browser from that wallet’s
+          transaction history and pump.fun’s own callout record.
+          <strong>No wallet connection is needed here or anywhere on this site</strong> — and
+          rewards arrive without one.
+        </p>
+
+        <form id="position-form" autocomplete="off">
+          <label for="position-input">Wallet address</label>
+          <div class="input-row">
+            <input
+              id="position-input"
+              name="address"
+              type="text"
+              inputmode="text"
+              spellcheck="false"
+              placeholder="Paste a Solana address"
+              aria-describedby="position-input-note"
+            />
+            <button type="submit">Check</button>
+          </div>
+          <p id="position-input-note" class="note">
+            A public address is all this needs. It is never sent anywhere except to a Solana
+            RPC and to pump.fun, both directly from your browser.
+          </p>
+        </form>
+
+        <div id="position-result" class="standing" hidden>
+          <p id="position-headline" class="standing-headline"></p>
+          <ul id="position-detail" class="standing-detail"></ul>
+          <table class="facts"><tbody id="position-facts"></tbody></table>
+        </div>
+
+        <details class="aside">
+          <summary>What counts as selling</summary>
+          <p>
+            <strong>Any decrease is a sale, however small.</strong> Sending tokens to another
+            wallet you own counts. There is no netting, no summing across accounts, and no
+            exemption for housekeeping. A decrease locks the wallet out of earning for the next
+            7 epochs, and buying back does not shorten it.
+          </p>
+          <p>
+            <strong>Only the associated token account counts.</strong> Tokens parked in any
+            other token account earn nothing — the daily settlement and the on-chain check both
+            read the wallet’s associated account and nothing else.
+          </p>
+          <p>
+            <strong>A wallet that has sold out entirely cannot be paid.</strong> The claim
+            instruction checks that the recipient still holds the coin. Because rewards are sent
+            daily rather than monthly, the exposure is one epoch — but it is real.
+          </p>
+        </details>
+      </section>
+
+      <!-- ── 3. this epoch, and the two clocks ─────────────────────────── -->
+      <section id="this-epoch" aria-labelledby="this-epoch-heading">
+        <h2 id="this-epoch-heading">This epoch</h2>
+
+        <div class="clocks">
+          <div class="clock clock-hourly">
+            <h3>Hourly — a data refresh</h3>
+            <p id="hourly-clock" class="clock-label"></p>
+            <p class="badge badge-provisional">provisional</p>
+            <p class="note">
+              Estimates from balance samples. <strong>These are not payouts.</strong>
+            </p>
+          </div>
+          <div class="clock clock-daily">
+            <h3>Daily — when money is decided</h3>
+            <p id="daily-clock" class="clock-label"></p>
+            <p class="note">
+              At 00:00 UTC every transfer is replayed exactly and a root is posted. The payout
+              is sent when the challenge window closes.
+            </p>
+          </div>
+        </div>
+
+        <p id="provisional-explanation" class="explanation"></p>
+      </section>
+
+      <!-- ── 4. epoch history / the audit trail ────────────────────────── -->
+      <section id="history" aria-labelledby="history-heading">
+        <h2 id="history-heading">Every epoch</h2>
+        <p>
+          One row per day, read from the chain. The snapshot link beside each row is everything
+          needed to reproduce that row from scratch: the callouts, the balances, the tree, and
+          the carry ledger.
+        </p>
+        <div id="history-status"></div>
+
+        <div class="scroll-x">
+          <table class="epochs">
+            <thead>
+              <tr>
+                <th scope="col">Epoch</th>
+                <th scope="col">Pool</th>
+                <th scope="col">Callers</th>
+                <th scope="col">Distributed</th>
+                <th scope="col">Unclaimed</th>
+                <th scope="col">Root</th>
+                <th scope="col">Audit</th>
+              </tr>
+            </thead>
+            <tbody id="epoch-rows"></tbody>
+          </table>
+        </div>
+        <p class="note">
+          Unclaimed rewards return to the pool after 30 epochs. An epoch showing
+          <em>not posted</em> was never settled — that is visible on purpose.
+        </p>
+      </section>
+
+      <!-- ── 5. where the fees go ──────────────────────────────────────── -->
+      <section id="fees" aria-labelledby="fees-heading">
+        <h2 id="fees-heading">Where the fees go</h2>
+
+        <p>
+          Every trade on pump.fun pays a creator fee. Ours is split two ways, and the split was
+          fixed before the coin ever traded:
+        </p>
+
+        <p>
+          <strong>90% → the caller pool.</strong> Distributed every epoch to holders who called
+          the coin out and held their position through it.
+          <a href="#hero">Live balance</a> · <a href="#history">every past epoch</a>
+        </p>
+
+        <p>
+          <strong>10% → infrastructure.</strong> It also pays the gas that
+          <strong>airdrops every reward daily, so you never claim anything.</strong> The daily
+          settlement job reads the callout feed and replays each caller’s transfer history from
+          chain. That needs a paid RPC, a host that isn’t someone’s laptop, and a domain. This
+          line pays for those.
+        </p>
+
+        <p>
+          <strong>It is not a founder’s fee, and here is how you can tell.</strong> It only pays
+          anything if the coin trades. At $1M of weekly volume after graduation the whole
+          creator fee is about $500 — roughly $450 to callers and $50 to infrastructure. If this
+          coin does nothing, that line earns nothing and the job gets paid for out of pocket
+          anyway, because the alternative is the settlement quietly stopping and nobody getting
+          paid at all.
+        </p>
+
+        <p>
+          <strong>Neither number can be changed.</strong> Not by us. pump.fun’s fee-sharing
+          instruction sets the split and revokes its own authority in the same transaction — in
+          their documentation, <em>“this instruction can only effectively be used once.”</em> We
+          wrote 90/10 once, and that was the only chance anyone had to write anything.
+        </p>
+
+        <table class="facts">
+          <tbody>
+            <tr>
+              <th scope="row">The transaction that set it</th>
+              <td id="fee-share-tx"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>
+          <strong>What we do still control, and what we don’t.</strong> We hold the key that
+          posts each epoch’s results, and what that key can and cannot do is spelled out in
+          <a href="#limits">what this is not</a>. We do not hold any authority over this split.
+          pump.fun retains the same platform-level powers over this coin that they retain over
+          every coin they host, including the ability to reassign a coin’s fee recipient — that
+          is real, we cannot prevent it, and we would rather you read it here than discover it
+          later.
+        </p>
+      </section>
+
+      <!-- ── 6. the rule ───────────────────────────────────────────────── -->
+      <section id="rule" aria-labelledby="rule-heading">
+        <h2 id="rule-heading">The rule</h2>
+
+        <pre class="formula"><code>eligible(w, d)  =  called_out(w, d)
+                   AND  hold(w, d) >= <span id="floor-tokens"></span>
+                   AND  NOT locked(w, d)
+
+hold(w, d)      =  the MINIMUM balance of w's associated token
+                   account at any point during UTC day d
+
+locked(w, d)    =  w's balance decreased during any of the 7
+                   whole epochs before d
+
+share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
+
+        <table class="facts">
+          <tbody>
+            <tr>
+              <th scope="row">The floor, as this page has it</th>
+              <td>
+                <span id="floor-percent"></span> of the total supply, fixed on chain and
+                immutable. It is a token count. There is no dollar figure and no price anywhere
+                in this system.
+              </td>
+            </tr>
+            <tr>
+              <th scope="row">The floor, as the program enforces it</th>
+              <td id="chain-floor"></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>What each rule is for</h3>
+        <div class="scroll-x">
+          <table class="attacks">
+            <thead>
+              <tr>
+                <th scope="col">Try this</th>
+                <th scope="col">What happens</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Buy at 23:58, call out, sell at 00:02</td>
+                <td>
+                  <code>hold</code> is the <em>minimum</em> across the day, so it is whatever
+                  you held at the low point — near zero. Buying late earns nothing.
+                </td>
+              </tr>
+              <tr>
+                <td>Call out once, then stop</td>
+                <td>Calls do not carry over. Each epoch needs a callout or a callout update.</td>
+              </tr>
+              <tr>
+                <td>Sell after being paid, then buy back</td>
+                <td>7 epochs of nothing. Buying back does not shorten it.</td>
+              </tr>
+              <tr>
+                <td>Move tokens to a second wallet you own</td>
+                <td>Counts as a sale on the sending wallet. There is no netting.</td>
+              </tr>
+              <tr>
+                <td>Split a bag across many wallets</td>
+                <td>
+                  Changes nothing about what you earn — weight is linear. It does let you exit in
+                  increments, and that is a deliberate, known property, not an oversight.
+                </td>
+              </tr>
+              <tr>
+                <td>Push the price down at 23:59 to lower the floor</td>
+                <td>
+                  The floor is a fixed token count, not a dollar value. There is no price oracle
+                  to move.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── 7. verify it yourself ─────────────────────────────────────── -->
+      <section id="verify" aria-labelledby="verify-heading">
+        <h2 id="verify-heading">Verify it yourself</h2>
+        <p>
+          These are the commands that would catch us if any number on this page were wrong.
+          They need no key and no permission from us.
+        </p>
+
+        <h3>The pool balance, straight from an RPC</h3>
+        <pre><code>solana balance &lt;pool address&gt; --url devnet</code></pre>
+
+        <h3>Reproduce an epoch’s root from its published directory</h3>
+        <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --offline</code></pre>
+        <p class="note">
+          Reads only the files in <code>snapshots/epoch-&lt;n&gt;/</code> and rebuilds the merkle
+          root. If it does not match the root posted on chain, we published a number we cannot
+          justify.
+        </p>
+
+        <h3>Re-derive it from chain instead of trusting the directory</h3>
+        <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --recheck-chain</code></pre>
+        <p class="note">
+          Replays every caller’s transfer history from an RPC and recomputes every
+          <code>hold</code>. This is the check that does not take our word for anything except
+          the callout list.
+        </p>
+
+        <h3>Confirm your own callout exists, without us</h3>
+        <pre><code>curl -H "x-api-key: &lt;pump.fun's public key&gt;" \
+  https://api.coin-communities.xyz/api/v1/users/by-wallet/&lt;address&gt;/callouts</code></pre>
+        <p class="note">
+          The same request this page makes from your browser. It is pump.fun’s record, not ours.
+        </p>
+      </section>
+
+      <!-- ── 8. what this is not ───────────────────────────────────────── -->
+      <section id="limits" aria-labelledby="limits-heading">
+        <h2 id="limits-heading">What this is not</h2>
+
+        <div class="banner banner-warn">
+          <h3>The snapshot key, stated precisely</h3>
+          <p>
+            A stolen snapshot key takes the pool’s current balance and every future creator fee,
+            permanently, for roughly the cost of the minimum holding. It cannot touch your tokens
+            and it cannot change any parameter. There is no key rotation, so the only remedy
+            would be to abandon the coin.
+          </p>
+          <p class="note">
+            The key is a 2-of-3 multisig held across independent hosts, which makes theft harder
+            and loss survivable. It does not change the bound above.
+          </p>
+        </div>
+
+        <h3>The caller list is attested, not trustless</h3>
+        <p>
+          Every number here except one can be re-derived by a stranger from public chain history.
+          The exception is <strong>who called out</strong>: that exists only in pump.fun’s
+          database, we read it, and we publish exactly what we read. You can check any individual
+          callout against pump.fun directly — the command is above — but you cannot re-derive the
+          full list without us. We say <em>attested</em> rather than <em>trustless</em> because
+          the second word would be false.
+        </p>
+
+        <h3>The challenge window does not stop anything</h3>
+        <p>
+          Between a root being posted and the payout going out there are 24 hours in which anyone
+          can discover a bad root, and nobody can stop it. There is no pause, no veto and no
+          dispute instruction. The window deters; it does not prevent.
+        </p>
+
+        <h3>Flags are pump.fun’s, and they are retroactive</h3>
+        <p>
+          Callouts marked spam or harmful, or deleted, do not count. Those flags belong to
+          pump.fun, can change after the fact, and are published in each epoch’s snapshot so the
+          rule stays checkable.
+        </p>
+
+        <h3>If pump.fun removes callouts</h3>
+        <p>
+          <strong>Everything earned up to that point stays claimable.</strong> Roots already
+          posted are unaffected — the program has no notion of callouts and cannot be switched
+          off. Epochs would simply stop being created.
+        </p>
+
+        <h3>Risk</h3>
+        <p>
+          This is a memecoin. It can go to zero, and most do. The mechanic described here decides
+          how creator fees are split among holders who call it out; it is not a return, it is not
+          a yield, and nothing on this page is a projection of what the coin will be worth.
+          Nothing here is financial advice.
+        </p>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      <p class="note">
+        Every number above is either read from a Solana account by your browser, taken from a
+        published snapshot, or computed here from those two. The badge beside each one says
+        which.
+      </p>
+    </footer>
+
+    <!--
+      Vendored and pinned, not fetched from a CDN. A CDN <script> tag is a
+      standing permission for whoever controls that CDN to replace this page's
+      JavaScript — see site/vendor/README.md. It must load before app.js:
+      js/addresses.js reads the global it defines.
+    -->
+    <script src="/site/vendor/solana-web3.min.js"></script>
+    <script type="module" src="/site/js/app.js"></script>
+  </body>
+</html>

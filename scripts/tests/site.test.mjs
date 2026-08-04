@@ -1,0 +1,497 @@
+// Tests for site/ — the parts of the website that decide what a visitor is
+// told.
+//
+// Three things are pinned here, and each exists because getting it wrong
+// produces a plausible wrong number rather than an error:
+//
+//   1. **The two account decoders agree.** site/js/program.js decodes Config
+//      and Epoch a second time, on DataView instead of Buffer, because
+//      scripts/lib/program.mjs cannot load in a browser. Same bytes in, same
+//      fields out — asserted, not assumed. This is the D6 pattern applied to
+//      the website.
+//   2. **Every §7.8 state is reachable and says the right thing.** The table in
+//      Phase 07 is a promise about what the page says when someone is locked
+//      out or below the floor, and a promise nothing asserts is a draft.
+//   3. **The vendored web3.js is the installed one.** A stale vendor file is
+//      a silent fork of the library every address on the page is derived with.
+
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import test from 'node:test';
+
+import { decodeConfig as decodeConfigNode, decodeEpoch as decodeEpochNode } from '../lib/program.mjs';
+import { DUST_THRESHOLD_LAMPORTS, LOCKOUT_EPOCHS, MIN_HOLD_RAW } from '../lib/config.mjs';
+import { REPO_ROOT } from '../lib/store.mjs';
+
+import { PublicKey } from '@solana/web3.js';
+
+import {
+  decodeConfig as decodeConfigSite,
+  decodeEpoch as decodeEpochSite,
+  bitmapIsSized,
+  isZeroRoot,
+  isClaimed,
+} from '../../site/js/program.js';
+import { decodeBase58, encodeBase58 } from '../../site/js/base58.js';
+import { standingFor, formatSol, formatTokens, countdown } from '../../site/js/standing.js';
+import * as clocksModule from '../../site/js/clocks.js';
+import { dailyState, epochAt, hourlyState, windowFor } from '../../site/js/clocks.js';
+import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
+
+// ── fixtures ───────────────────────────────────────────────────────────────
+
+const KEY_A = Buffer.alloc(32, 7);
+const KEY_B = Buffer.alloc(32, 9);
+
+/** Anchor's account discriminator, built the same way program.mjs builds it. */
+function disc(name) {
+  return createHash('sha256').update(`account:${name}`).digest().subarray(0, 8);
+}
+
+function configBytes({ genesisTs = 1_767_225_600, minHold = MIN_HOLD_RAW, outstanding = 42n } = {}) {
+  const b = Buffer.alloc(106);
+  disc('Config').copy(b, 0);
+  KEY_A.copy(b, 8); // mint
+  b.writeBigInt64LE(BigInt(genesisTs), 40);
+  b.writeUInt32LE(86_400, 48);
+  b.writeBigUInt64LE(minHold, 52);
+  b.writeUInt32LE(86_400, 60);
+  KEY_B.copy(b, 64); // snapshot key
+  b.writeBigUInt64LE(outstanding, 96);
+  b[104] = 254; // bump
+  b[105] = 253; // pool bump
+  return b;
+}
+
+function epochBytes({ index = 12, leafCount = 9, bits = null, closed = false, root = null } = {}) {
+  const bitmap = bits ?? Buffer.alloc(Math.ceil(leafCount / 8), 0b0000_0101);
+  const b = Buffer.alloc(8 + 8 + 32 + 8 + 8 + 8 + 4 + 1 + 4 + bitmap.length);
+  let o = 0;
+  disc('Epoch').copy(b, o);
+  o += 8;
+  b.writeBigUInt64LE(BigInt(index), o);
+  o += 8;
+  (root ?? Buffer.alloc(32, 3)).copy(b, o);
+  o += 32;
+  b.writeBigUInt64LE(5_000_000_000n, o); // pool lamports
+  o += 8;
+  b.writeBigUInt64LE(1_250_000_000n, o); // claimed lamports
+  o += 8;
+  b.writeBigInt64LE(1_767_312_000n, o); // posted ts
+  o += 8;
+  b.writeUInt32LE(leafCount, o);
+  o += 4;
+  b[o] = closed ? 1 : 0;
+  o += 1;
+  b.writeUInt32LE(bitmap.length, o);
+  o += 4;
+  bitmap.copy(b, o);
+  return b;
+}
+
+// ── 1. the two decoders agree ──────────────────────────────────────────────
+
+test('site and crank decode Config to the same fields', async () => {
+  const bytes = configBytes();
+  const node = decodeConfigNode(bytes);
+  const site = await decodeConfigSite(new Uint8Array(bytes));
+
+  assert.equal(site.mint, node.mint.toBase58());
+  assert.equal(site.genesisTs, node.genesisTs);
+  assert.equal(site.epochSeconds, node.epochSeconds);
+  assert.equal(site.minHold, node.minHold);
+  assert.equal(site.challengeSeconds, node.challengeSeconds);
+  assert.equal(site.snapshotKey, node.snapshotKey.toBase58());
+  assert.equal(site.outstanding, node.outstanding);
+  assert.equal(site.bump, node.bump);
+  assert.equal(site.poolBump, node.poolBump);
+});
+
+test('site and crank decode Epoch to the same fields', async () => {
+  const bytes = epochBytes();
+  const node = decodeEpochNode(bytes);
+  const site = await decodeEpochSite(new Uint8Array(bytes));
+
+  assert.equal(site.index, node.index);
+  assert.deepEqual([...site.root], [...node.root]);
+  assert.equal(site.poolLamports, node.poolLamports);
+  assert.equal(site.claimedLamports, node.claimedLamports);
+  assert.equal(site.postedTs, node.postedTs);
+  assert.equal(site.leafCount, node.leafCount);
+  assert.equal(site.closed, node.closed);
+  assert.deepEqual([...site.claimedBits], [...node.claimedBits]);
+});
+
+test('site and crank agree on which leaves are claimed', async () => {
+  const bytes = epochBytes();
+  const node = decodeEpochNode(bytes);
+  const site = await decodeEpochSite(new Uint8Array(bytes));
+
+  for (let i = 0; i < 9; i++) {
+    assert.equal(isClaimed(site, i), isClaimed(node, i), `leaf ${i}`);
+  }
+});
+
+test('the site refuses to decode an account of the wrong type', async () => {
+  await assert.rejects(() => decodeConfigSite(new Uint8Array(epochBytes())), /not a Config/);
+  await assert.rejects(() => decodeEpochSite(new Uint8Array(configBytes())), /not an? Epoch/);
+});
+
+test('an undersized bitmap is detectable from the epoch account alone (D2)', async () => {
+  const honest = await decodeEpochSite(new Uint8Array(epochBytes({ leafCount: 9 })));
+  assert.equal(bitmapIsSized(honest), true);
+
+  // A root claiming 9 leaves with room for 8 strands the ninth, permanently.
+  const stranded = await decodeEpochSite(
+    new Uint8Array(epochBytes({ leafCount: 9, bits: Buffer.alloc(1) })),
+  );
+  assert.equal(bitmapIsSized(stranded), false);
+});
+
+test('a zeroed root is recognised as the nobody-called-out epoch', async () => {
+  const empty = await decodeEpochSite(
+    new Uint8Array(epochBytes({ leafCount: 0, bits: Buffer.alloc(0), root: Buffer.alloc(32) })),
+  );
+  assert.equal(isZeroRoot(empty), true);
+});
+
+// ── 2. the §7.8 states ─────────────────────────────────────────────────────
+
+const WINDOW = { start: 1_767_225_600, end: 1_767_312_000, epoch: 0 };
+const NOW = WINDOW.start + 3600;
+
+function facts(overrides = {}) {
+  return {
+    now: NOW,
+    window: WINDOW,
+    minHoldRaw: MIN_HOLD_RAW,
+    currentRaw: MIN_HOLD_RAW * 2n,
+    holdRaw: MIN_HOLD_RAW * 2n,
+    callout: { checked: true, lastAt: NOW - 600, activeInWindow: true },
+    lockout: { locked: false, lastDecreaseAt: null, liftsAt: null },
+    ...overrides,
+  };
+}
+
+test('a wallet holding nothing is told so, and told what the minimum is', () => {
+  const s = standingFor(facts({ currentRaw: 0n, holdRaw: 0n }));
+  assert.equal(s.state, 'not-a-holder');
+  assert.equal(s.eligible, false);
+  assert.match(s.detail.join(' '), /100,000 CALLPOOL/);
+});
+
+test('below the floor names the condition and explains it is the minimum, not the balance now', () => {
+  const s = standingFor(facts({ holdRaw: MIN_HOLD_RAW - 1n }));
+  assert.equal(s.state, 'below-floor');
+  assert.equal(s.eligible, false);
+  assert.match(s.detail.join(' '), /lowest balance/i);
+});
+
+test('lockout is reported before the floor, so a locked wallet is never told to buy more', () => {
+  // Both conditions fail at once. Telling someone to buy while they are locked
+  // out costs them money and changes nothing (L1), so lockout must win.
+  const s = standingFor(
+    facts({
+      holdRaw: 0n,
+      currentRaw: 1n,
+      lockout: { locked: true, lastDecreaseAt: NOW - 86_400, liftsAt: WINDOW.start + 7 * 86_400 },
+    }),
+  );
+  assert.equal(s.state, 'locked-out');
+  assert.match(s.detail.join(' '), /another wallet you own counts as selling/i);
+  assert.match(s.detail.join(' '), /Buying back does not shorten it/i);
+  assert.doesNotMatch(s.detail.join(' '), /buy more/i);
+});
+
+test('the lockout message states the exact date it lifts', () => {
+  const liftsAt = WINDOW.start + LOCKOUT_EPOCHS * 86_400;
+  const s = standingFor(
+    facts({ lockout: { locked: true, lastDecreaseAt: NOW - 86_400, liftsAt } }),
+  );
+  assert.match(s.detail.join(' '), /2026-01-08/);
+});
+
+test('no callout today is actionable, and mentions updates as well as new callouts', () => {
+  const s = standingFor(
+    facts({ callout: { checked: true, lastAt: WINDOW.start - 86_400, activeInWindow: false } }),
+  );
+  assert.equal(s.state, 'no-activity');
+  assert.match(s.detail.join(' '), /post an update/i);
+  assert.match(s.detail.join(' '), /do not carry over/i);
+});
+
+test('a failed callout lookup is never rendered as "no callout"', () => {
+  const s = standingFor(facts({ callout: { checked: false, lastAt: null, activeInWindow: false } }));
+  assert.equal(s.state, 'callout-unknown');
+  assert.equal(s.eligible, null, 'unknown is not the same as ineligible');
+});
+
+test('an eligible wallet is told the number is a projection and needs no action', () => {
+  const s = standingFor(facts());
+  assert.equal(s.state, 'eligible');
+  assert.equal(s.eligible, true);
+  assert.match(s.detail.join(' '), /projection/i);
+  assert.match(s.detail.join(' '), /no wallet to connect/i);
+});
+
+test('unfetched balances render as pending, never as zero', () => {
+  const s = standingFor(facts({ currentRaw: null, holdRaw: null }));
+  assert.equal(s.state, 'pending');
+  assert.equal(s.eligible, null);
+});
+
+test('a settled, paid epoch reports the amount and that no action was needed', () => {
+  const s = standingFor(
+    facts({
+      settlement: {
+        posted: true,
+        claimed: true,
+        amountLamports: 1_500_000_000n,
+        signature: 'sig',
+        challengeEndsAt: NOW - 10,
+      },
+    }),
+  );
+  assert.equal(s.state, 'paid');
+  assert.match(s.headline, /1\.5 SOL/);
+  assert.match(s.detail.join(' '), /No action was required/i);
+});
+
+test('inside the challenge window the page says nobody can stop a bad root', () => {
+  const s = standingFor(
+    facts({
+      settlement: {
+        posted: true,
+        claimed: false,
+        amountLamports: 2_000_000_000n,
+        challengeEndsAt: NOW + 3600,
+      },
+    }),
+  );
+  assert.equal(s.state, 'challenge-window');
+  assert.match(s.detail.join(' '), /nobody can stop it/i);
+  assert.doesNotMatch(s.detail.join(' '), /trustless/i);
+});
+
+test('dust below the send threshold is carried, and said to be carried, not lost', () => {
+  const s = standingFor(
+    facts({
+      settlement: {
+        posted: true,
+        claimed: false,
+        amountLamports: DUST_THRESHOLD_LAMPORTS - 1n,
+        carriedLamports: DUST_THRESHOLD_LAMPORTS - 1n,
+        challengeEndsAt: NOW - 10,
+      },
+    }),
+  );
+  assert.equal(s.state, 'withheld-dust');
+  assert.match(s.detail.join(' '), /not forfeiting/i);
+});
+
+test('an expired epoch is shown rather than silently vanished', () => {
+  const s = standingFor(
+    facts({ settlement: { posted: true, claimed: false, expired: true, amountLamports: 1n } }),
+  );
+  assert.equal(s.state, 'expired');
+  assert.match(s.detail.join(' '), /never quietly vanish/i);
+});
+
+test('a pending payout explains that submitting cannot redirect the money', () => {
+  const s = standingFor(
+    facts({
+      settlement: {
+        posted: true,
+        claimed: false,
+        amountLamports: 500_000_000n,
+        challengeEndsAt: NOW - 10,
+      },
+    }),
+  );
+  assert.equal(s.state, 'payout-pending');
+  assert.match(s.detail.join(' '), /cannot redirect/i);
+});
+
+test('no state anywhere quotes a dollar figure, a price, or a yield (L4, L9)', () => {
+  const cases = [
+    facts({ currentRaw: 0n, holdRaw: 0n }),
+    facts({ holdRaw: MIN_HOLD_RAW - 1n }),
+    facts({ lockout: { locked: true, lastDecreaseAt: NOW, liftsAt: NOW + 100 } }),
+    facts({ callout: { checked: true, lastAt: null, activeInWindow: false } }),
+    facts(),
+  ];
+  for (const c of cases) {
+    const s = standingFor(c);
+    const text = `${s.headline} ${s.detail.join(' ')}`;
+    assert.doesNotMatch(text, /\$/, `no dollar sign in ${s.state}`);
+    assert.doesNotMatch(text, /\bAPY\b|\byield\b|\bAPR\b/i, `no yield framing in ${s.state}`);
+  }
+});
+
+// ── 3. the two clocks ──────────────────────────────────────────────────────
+
+test('every hourly state carries the provisional flag', () => {
+  const base = { now: NOW, lastSampleAt: NOW - 600 };
+  for (const state of [
+    hourlyState(base),
+    hourlyState({ ...base, calculating: true }),
+    hourlyState({ now: NOW, lastSampleAt: NOW - 8000 }),
+    hourlyState({ now: NOW, lastSampleAt: null }),
+  ]) {
+    assert.equal(state.provisional, true, `${state.state} must be provisional`);
+  }
+});
+
+test('an hourly refresh more than an hour late is reported as stalled, not as fresh', () => {
+  const fresh = hourlyState({ now: NOW, lastSampleAt: NOW - 600 });
+  assert.equal(fresh.state, 'fresh');
+  assert.equal(fresh.stale, false);
+
+  const stalled = hourlyState({ now: NOW, lastSampleAt: NOW - 3 * 3600 });
+  assert.equal(stalled.state, 'stalled');
+  assert.equal(stalled.stale, true);
+  assert.match(stalled.label, /behind schedule/);
+});
+
+test('the daily clock walks running → settling → challenge → payable', () => {
+  const window = windowFor(WINDOW.start, 0);
+  const challengeSeconds = 86_400;
+
+  assert.equal(dailyState({ now: window.start + 10, window }).state, 'running');
+  assert.equal(dailyState({ now: window.end + 10, window }).state, 'settling');
+
+  const settledAt = window.end + 60;
+  assert.equal(
+    dailyState({ now: settledAt + 10, window, settledAt, challengeSeconds }).state,
+    'challenge',
+  );
+  assert.equal(
+    dailyState({ now: settledAt + challengeSeconds + 10, window, settledAt, challengeSeconds })
+      .state,
+    'payable',
+  );
+});
+
+test('epoch indexing matches the on-chain genesis, not the local calendar', () => {
+  const genesis = WINDOW.start;
+  assert.equal(epochAt(genesis, genesis), 0);
+  assert.equal(epochAt(genesis, genesis + 86_399), 0);
+  assert.equal(epochAt(genesis, genesis + 86_400), 1);
+  assert.equal(windowFor(genesis, 3).start, genesis + 3 * 86_400);
+});
+
+// ── formatting ─────────────────────────────────────────────────────────────
+
+test('lamports render exactly, with no rounding in either direction', () => {
+  assert.equal(formatSol(0n), '0');
+  assert.equal(formatSol(1n), '0.000000001');
+  assert.equal(formatSol(1_000_000_000n), '1');
+  assert.equal(formatSol(1_500_000_000n), '1.5');
+  assert.equal(formatSol(999_999_999n), '0.999999999');
+});
+
+test('token amounts render at the mint’s decimals', () => {
+  assert.equal(formatTokens(100_000_000_000n, 6), '100,000');
+  assert.equal(formatTokens(1n, 6), '0.000001');
+  assert.equal(formatTokens(0n, 6), '0');
+});
+
+test('countdowns are exact, never "soon"', () => {
+  assert.equal(countdown(49_320), '13h 42m');
+  assert.equal(countdown(125), '2m 05s');
+  assert.equal(countdown(-1), '—');
+});
+
+// ── configuration: nothing is invented ─────────────────────────────────────
+
+test('an unconfigured site resolves every field to null, never to a default', () => {
+  const config = siteConfig(undefined, '');
+  assert.equal(config.configured, false);
+  assert.equal(config.rpc, null);
+  assert.equal(config.mint, null);
+  assert.equal(config.snapshotsBase, null);
+  assert.equal(snapshotUrl(config, 4), null);
+  assert.equal(explorerUrl(config, 'address', null), null);
+});
+
+test('blank strings in config are unset, not empty values', () => {
+  const config = siteConfig({ cluster: 'devnet', devnet: { rpc: '   ', mint: '' } }, '');
+  assert.equal(config.rpc, null);
+  assert.equal(config.mint, null);
+});
+
+test('?cluster= overrides the file, and anything unrecognised falls back to devnet', () => {
+  assert.equal(resolveCluster('?cluster=mainnet'), 'mainnet');
+  assert.equal(resolveCluster('?cluster=devnet'), 'devnet');
+  assert.equal(resolveCluster('?cluster=pretend'), 'devnet');
+  assert.equal(resolveCluster(''), 'devnet');
+});
+
+test('snapshot links land on the epoch directory regardless of trailing slashes', () => {
+  const config = siteConfig(
+    { cluster: 'devnet', devnet: { snapshotsBase: '/snapshots///' } },
+    '',
+  );
+  assert.equal(snapshotUrl(config, 7), '/snapshots/epoch-7/');
+  assert.equal(snapshotUrl(config, 7, 'tree.json'), '/snapshots/epoch-7/tree.json');
+});
+
+test('devnet explorer links pin the cluster, so they cannot resolve to mainnet', () => {
+  const devnet = siteConfig({ cluster: 'devnet', devnet: {} }, '');
+  assert.match(explorerUrl(devnet, 'address', 'abc'), /cluster=devnet/);
+});
+
+// ── the vendored library is the installed one ──────────────────────────────
+
+test('site/vendor/solana-web3.min.js matches the installed @solana/web3.js', () => {
+  const vendored = readFileSync(resolve(REPO_ROOT, 'site/vendor/solana-web3.min.js'));
+  const installed = readFileSync(
+    resolve(REPO_ROOT, 'node_modules/@solana/web3.js/lib/index.iife.min.js'),
+  );
+  assert.equal(
+    vendored.equals(installed),
+    true,
+    'the vendored copy has drifted from the pinned dependency — re-copy it (see site/vendor/README.md)',
+  );
+});
+
+// ── base58: no dependency, but not without an oracle ───────────────────────
+
+test('base58 round-trips every byte pattern the decoders will meet', () => {
+  for (let i = 0; i < 200; i++) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    // Force a leading zero into a share of the cases: a pubkey starting with
+    // 0x00 renders one character short if the leading-zero rule is missed, and
+    // the result is a different, entirely plausible-looking address.
+    if (i % 4 === 0) bytes[0] = 0;
+    if (i % 8 === 0) bytes[1] = 0;
+
+    const encoded = encodeBase58(bytes);
+    assert.equal(encoded, new PublicKey(bytes).toBase58(), 'must match web3.js exactly');
+    assert.deepEqual([...decodeBase58(encoded)], [...bytes], 'must round-trip');
+  }
+});
+
+test('base58 handles the all-zero key, the case a naive implementation drops', () => {
+  const zeros = new Uint8Array(32);
+  assert.equal(encodeBase58(zeros), new PublicKey(zeros).toBase58());
+  assert.equal(encodeBase58(zeros).length, 32);
+});
+
+test('base58 refuses characters outside the alphabet rather than guessing', () => {
+  assert.throws(() => decodeBase58('0OIl'), /not base58/);
+});
+
+test('the epoch boundary is described from the window, not asserted as midnight', () => {
+  const { boundaryLabel } = clocksModule;
+
+  // Launch parameters: 86,400-second epochs aligned to midnight.
+  assert.equal(boundaryLabel({ start: 1_767_225_600, end: 1_767_312_000 }), '00:00 UTC');
+
+  // A rehearsal deployment on 60-second epochs must not announce a midnight
+  // boundary every minute. It says the actual time instead.
+  assert.equal(boundaryLabel({ start: 1_767_225_600, end: 1_767_225_660 }), '2026-01-01 00:01 UTC');
+});

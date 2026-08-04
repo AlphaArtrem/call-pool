@@ -9,7 +9,11 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 
-import { TimelineError } from './timeline.mjs';
+// Imported for use below AND re-exported at the bottom. A bare `export ... from`
+// re-export does not bind the name in this module's scope, so `balanceEventsFor`
+// would throw a ReferenceError at the first RPC call — which is exactly what it
+// did until proof 13 caught it.
+import { extractBalanceEvent, TimelineError } from './timeline.mjs';
 
 /**
  * Which token program owns this mint.
@@ -147,33 +151,11 @@ export async function balanceEventsFor(connection, account, since, { chunkSize =
 }
 
 /**
- * One transaction → at most one balance event for the account we care about.
+ * Re-exported, not defined here.
  *
- * Exported for the tests: this is where the SPL-token response shape gets
- * turned into two integers, and the two absence cases are easy to get wrong.
- * An account missing from `preTokenBalances` was created by this transaction
- * (balance was 0 before); missing from `postTokenBalances` means it was closed
- * (balance is 0 after).
+ * `extractBalanceEvent` moved to timeline.mjs in Phase 07 so the website can
+ * import it without pulling in `@solana/spl-token`, which does not load in a
+ * browser. It is pure and it was always pure; this module's callers see no
+ * change, and there is still exactly one implementation.
  */
-export function extractBalanceEvent(tx, accountKey, signature) {
-  const keys = tx.transaction?.message?.accountKeys ?? [];
-  const index = keys.findIndex((k) => (k.pubkey?.toBase58?.() ?? String(k.pubkey)) === accountKey);
-  if (index === -1) return null;
-
-  const find = (list) => (list ?? []).find((b) => b.accountIndex === index);
-  const pre = find(tx.meta?.preTokenBalances);
-  const post = find(tx.meta?.postTokenBalances);
-  if (!pre && !post) return null; // touched the account without moving tokens
-
-  const preRaw = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
-  const postRaw = post ? BigInt(post.uiTokenAmount.amount) : 0n;
-  if (preRaw === postRaw) return null; // no step in a piecewise-constant timeline
-
-  return {
-    signature,
-    slot: tx.slot,
-    blockTime: tx.blockTime ?? null,
-    pre: preRaw,
-    post: postRaw,
-  };
-}
+export { extractBalanceEvent };

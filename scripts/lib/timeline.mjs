@@ -14,6 +14,14 @@
 // One account. No summing across accounts, no netting, no exception for
 // moving tokens between wallets the same person owns. Any transfer out is a
 // sale.
+//
+// `extractBalanceEvent` lives here too, and it belongs here for the same
+// reason everything else does: it is pure, it takes an already-parsed
+// transaction and returns two integers, and it touches no network. It sat in
+// chain.mjs until Phase 07, when the website needed it — chain.mjs imports
+// `@solana/spl-token`, which a browser cannot load, so leaving it there would
+// have meant a second copy of the step that turns RPC shapes into the numbers
+// `hold` is computed from. `chain.mjs` re-exports it, so nothing else moved.
 
 /**
  * @typedef {object} BalanceEvent
@@ -207,4 +215,43 @@ export function decreasesIn(events, window) {
 export function computeLocked(events, lockoutWindow) {
   const decreases = decreasesIn(events, lockoutWindow);
   return { locked: decreases.length > 0, decreases };
+}
+
+/**
+ * One parsed transaction → at most one balance event for the account we care
+ * about.
+ *
+ * This is where the SPL-token response shape gets turned into two integers,
+ * and the two absence cases are easy to get wrong. An account missing from
+ * `preTokenBalances` was created by this transaction (balance was 0 before);
+ * missing from `postTokenBalances` means it was closed (balance is 0 after).
+ *
+ * Pure: it takes an already-parsed transaction object and reads no network.
+ * Both the crank (via chain.mjs) and the website call this exact function, so
+ * a holder's browser and the settlement job cannot disagree about what a
+ * transaction did to a balance.
+ *
+ * @returns {BalanceEvent|null}
+ */
+export function extractBalanceEvent(tx, accountKey, signature) {
+  const keys = tx.transaction?.message?.accountKeys ?? [];
+  const index = keys.findIndex((k) => (k.pubkey?.toBase58?.() ?? String(k.pubkey)) === accountKey);
+  if (index === -1) return null;
+
+  const find = (list) => (list ?? []).find((b) => b.accountIndex === index);
+  const pre = find(tx.meta?.preTokenBalances);
+  const post = find(tx.meta?.postTokenBalances);
+  if (!pre && !post) return null; // touched the account without moving tokens
+
+  const preRaw = pre ? BigInt(pre.uiTokenAmount.amount) : 0n;
+  const postRaw = post ? BigInt(post.uiTokenAmount.amount) : 0n;
+  if (preRaw === postRaw) return null; // no step in a piecewise-constant timeline
+
+  return {
+    signature,
+    slot: tx.slot,
+    blockTime: tx.blockTime ?? null,
+    pre: preRaw,
+    post: postRaw,
+  };
 }
