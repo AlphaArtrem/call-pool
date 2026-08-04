@@ -1,0 +1,100 @@
+{
+  "cluster": "http://127.0.0.1:8899",
+  "ranAt": "2026-08-04T17:48:04.694Z",
+  "program": "ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7",
+  "mint": "EtVTrjdVfENhRrVHGQubWcqmSQWFPcpBdajMkX8BhPEm",
+  "pool": "CFYLY6MsW6gYGWMKvhpYoDFdcshV1bomTSRwQDLE9DBw",
+  "epochSeconds": 60,
+  "genesisTs": 1785865500,
+  "holder": "2YnRPVN1scZskA89QYu43Wm7qR6knGF5smZb2WgKkA6e",
+  "dumper": "BPRKvWPMb4EBgPwB5t6omhCSEymPRYzPi2MPBW2SuJJE",
+  "root": "74dc0593d2bf835767da08eac408dd468fd5d9d58f264651733f2499676ea7c6",
+  "allocate": "9000000000",
+  "assertions": [
+    {
+      "what": "min_hold on chain is the raw-unit floor",
+      "actual": "100000000000",
+      "expected": "100000000000",
+      "ok": true
+    },
+    {
+      "what": "genesis is aligned to an epoch boundary",
+      "actual": "0",
+      "expected": "0",
+      "ok": true
+    },
+    {
+      "what": "leaves in the tree",
+      "actual": "1",
+      "expected": "1",
+      "ok": true
+    },
+    {
+      "what": "the paid wallet is the holder",
+      "actual": "2YnRPVN1scZskA89QYu43Wm7qR6knGF5smZb2WgKkA6e",
+      "expected": "2YnRPVN1scZskA89QYu43Wm7qR6knGF5smZb2WgKkA6e",
+      "ok": true
+    },
+    {
+      "what": "the dumper appears in payouts.csv",
+      "actual": "true",
+      "expected": "true",
+      "ok": true
+    },
+    {
+      "what": "the dumper is paid nothing",
+      "actual": "true",
+      "expected": "true",
+      "ok": true
+    },
+    {
+      "what": "the on-chain root is the published root",
+      "actual": "74dc0593d2bf835767da08eac408dd468fd5d9d58f264651733f2499676ea7c6",
+      "expected": "74dc0593d2bf835767da08eac408dd468fd5d9d58f264651733f2499676ea7c6",
+      "ok": true
+    },
+    {
+      "what": "the on-chain allocation is what the tree pays",
+      "actual": "9000000000",
+      "expected": "9000000000",
+      "ok": true
+    },
+    {
+      "what": "a stranger reproduces the posted root",
+      "actual": "true",
+      "expected": "true",
+      "ok": true
+    },
+    {
+      "what": "the holder was paid without signing anything",
+      "actual": "9000000000",
+      "expected": "9000000000",
+      "ok": true
+    },
+    {
+      "what": "the epoch is fully claimed",
+      "actual": "9000000000",
+      "expected": "9000000000",
+      "ok": true
+    },
+    {
+      "what": "outstanding returns to zero",
+      "actual": "0",
+      "expected": "0",
+      "ok": true
+    },
+    {
+      "what": "an empty epoch posts a zeroed root",
+      "actual": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected": "0000000000000000000000000000000000000000000000000000000000000000",
+      "ok": true
+    },
+    {
+      "what": "and allocates nothing, so the fees roll forward",
+      "actual": "0",
+      "expected": "0",
+      "ok": true
+    }
+  ],
+  "passed": true
+}

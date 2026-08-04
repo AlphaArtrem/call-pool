@@ -44,6 +44,9 @@ callout-token*
 # they are the audit trail. Scratch output does not.
 epochs/scratch/
 *.snapshot.tmp
+# The hourly poll's rolling memory. Working state between polls — every epoch's
+# raw capture is committed under snapshots/, which is the record that matters.
+epochs/callout-store.json
 
 # ─────────────────────────────────────────────────────────────
 # Build output and dependencies

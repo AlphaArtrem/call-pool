@@ -50,8 +50,9 @@ cargo test --quiet 2>&1 | grep -E "test result|FAILED" || true
 cargo test --quiet >/dev/null || fail "cargo test"
 pass "rust: unit, merkle, program and invariant tests"
 
+npm test --silent 2>&1 | grep -E "^. (tests|pass|fail) " || true
 npm test --silent >/dev/null 2>&1 || fail "npm test"
-pass "js: timeline and merkle tests"
+pass "js: timeline, merkle, program-client and crank tests"
 
 # ── structure ──────────────────────────────────────────────────────────────
 echo
