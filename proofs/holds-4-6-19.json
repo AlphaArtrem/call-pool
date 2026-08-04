@@ -1,0 +1,146 @@
+{
+  "cluster": "http://127.0.0.1:8899",
+  "solanaCore": "4.1.2",
+  "ranAt": "2026-08-04T13:36:18.506Z",
+  "mint": "91tZthQND7YLRqTppCADdwB585ZYqHpaDvnyQgGNTFWM",
+  "decimals": 6,
+  "wallets": {
+    "alice": "7GP214cGrTtpQ5T8mgqoLGCjm2pnTXy83aXXNPb8qmNH",
+    "bob": "FNuYxuFXuZvyy7damH8mtST8wHVNpKVHLup9v8NHafHq",
+    "carol": "eCNusRFA7CbpyDuXXxo2e2WkmqghP4g7ufetCkuyA9v",
+    "carolSecondWallet": "Er97n82rDQ4fdzXzywyvxy7gcF3k5qGEQczwudzpexgK"
+  },
+  "windows": {
+    "proof4": {
+      "start": 1785850572,
+      "end": 1785936972,
+      "human": "2026-08-04T13:36:12Z → 2026-08-05T13:36:12Z"
+    },
+    "proof6": {
+      "start": 1785850575,
+      "end": 1785936975,
+      "human": "2026-08-04T13:36:15Z → 2026-08-05T13:36:15Z"
+    },
+    "proof19": {
+      "start": 1785850577,
+      "end": 1785936977,
+      "human": "2026-08-04T13:36:17Z → 2026-08-05T13:36:17Z"
+    }
+  },
+  "signatures": {
+    "p4_open": "qBLERptfvFGvTkp8TmY8CNrZuxTgk6R5GeLLKnh7BaiqkAd82wFeFpHVFoEVigVyzscjkcoK1fa2BnYoKrSKQna",
+    "p4_sell": "3mBrrEuyNa4dotrStwsqromESjAXJ7Ci4kj6wKFXcYXEA4d62ym3wjizX42b8NryWj2GPc8fswyzNHizUsrGqKo5",
+    "p4_rebuy": "2wsxV84ptQAnbLMivhnYepMeSfs8Txto5qghANdS2kP9qPWN9g3XBEdP3LkHbZAKCRc92mUL4A4tGsVY7mRk6C1B",
+    "p6_buy": "4nSXaCUyiHCws3drqaBZYV6KoWQoykHuUzYvVCmqef1dz4vPkzJJAq2GCQUCxTzsrikBxVyRonbqpDtQZ5NdcGTs",
+    "p19_buy": "q774b7qpWGvPNkidCEMDgAbv7VfLm3XE4zK7CUUyJZ247RdjUwKyNwYz7KTQF4pTgCJ5TG7jV1zYo8fm5USTcWC",
+    "p19_selfTransfer": "4hxmenye3J6TmnXg1YYnAG14dkjUm8m1WZzwUorWnavwvaferGx1NMoA5Hnv3qDVqNeEMxczfZ6MjLeDYKnazzT5"
+  },
+  "assertions": [
+    {
+      "proof": 4,
+      "what": "opening balance (seeded from before the epoch)",
+      "actual": "1000000000000",
+      "expected": "1000000000000",
+      "ok": true
+    },
+    {
+      "proof": 4,
+      "what": "maximum reached during the epoch",
+      "actual": "1200000000000",
+      "expected": "1200000000000",
+      "ok": true
+    },
+    {
+      "proof": 4,
+      "what": "closing balance",
+      "actual": "1200000000000",
+      "expected": "1200000000000",
+      "ok": true
+    },
+    {
+      "proof": 4,
+      "what": "hold — the trough",
+      "actual": "500000000000",
+      "expected": "500000000000",
+      "ok": true
+    },
+    {
+      "proof": 4,
+      "what": "balance changes replayed inside the epoch",
+      "actual": "2",
+      "expected": "2",
+      "ok": true
+    },
+    {
+      "proof": 6,
+      "what": "transfers during the epoch",
+      "actual": "0",
+      "expected": "0",
+      "ok": true
+    },
+    {
+      "proof": 6,
+      "what": "hold — the carried balance, not zero",
+      "actual": "250000000000",
+      "expected": "250000000000",
+      "ok": true
+    },
+    {
+      "proof": 6,
+      "what": "opening equals closing (a flat timeline)",
+      "actual": "250000000000",
+      "expected": "250000000000",
+      "ok": true
+    },
+    {
+      "proof": 6,
+      "what": "a first-time buyer earns nothing for the epoch they bought in",
+      "actual": "0",
+      "expected": "0",
+      "ok": true
+    },
+    {
+      "proof": 19,
+      "what": "hold collapses to the post-transfer balance",
+      "actual": "700000000000",
+      "expected": "700000000000",
+      "ok": true
+    },
+    {
+      "proof": 19,
+      "what": "no netting — the 300,000 in the second wallet does not count",
+      "actual": "700000000000",
+      "expected": "700000000000",
+      "ok": true
+    },
+    {
+      "proof": 19,
+      "what": "the tokens do still exist, in the other account",
+      "actual": "300000000000",
+      "expected": "300000000000",
+      "ok": true
+    },
+    {
+      "proof": 19,
+      "what": "locked for the epoch containing the sale",
+      "actual": "false",
+      "expected": "false",
+      "ok": true
+    },
+    {
+      "proof": 19,
+      "what": "locked for the following epoch",
+      "actual": "true",
+      "expected": "true",
+      "ok": true
+    },
+    {
+      "proof": 19,
+      "what": "the lockout names the transaction that caused it",
+      "actual": "4hxmenye3J6TmnXg1YYnAG14dkjUm8m1WZzwUorWnavwvaferGx1NMoA5Hnv3qDVqNeEMxczfZ6MjLeDYKnazzT5",
+      "expected": "4hxmenye3J6TmnXg1YYnAG14dkjUm8m1WZzwUorWnavwvaferGx1NMoA5Hnv3qDVqNeEMxczfZ6MjLeDYKnazzT5",
+      "ok": true
+    }
+  ],
+  "passed": true
+}

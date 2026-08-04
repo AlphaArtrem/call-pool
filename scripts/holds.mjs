@@ -66,9 +66,14 @@ function tokens(raw) {
  *
  * Exported so the snapshot crank and the devnet proofs call exactly the same
  * code the CLI does — a second implementation is a second set of bugs.
+ *
+ * `day` addresses a UTC calendar day, which is what production uses. `window`
+ * takes an explicit `{start, end}` instead, which is what lets the proofs
+ * exercise a full buy/sell/rebuy cycle against real chain history without
+ * waiting for a real midnight to pass.
  */
-export async function holdsFor(connection, { wallet, mint, day }) {
-  const window = windowForDay(day);
+export async function holdsFor(connection, { wallet, mint, day, window: explicit }) {
+  const window = explicit ?? windowForDay(day);
   const lockWindow = lockoutWindow(window, LOCKOUT_EPOCHS);
 
   const tokenProgram = await tokenProgramForMint(connection, mint);
@@ -87,7 +92,7 @@ export async function holdsFor(connection, { wallet, mint, day }) {
   return {
     wallet,
     mint,
-    day,
+    day: day ?? `${iso(window.start)} → ${iso(window.end)}`,
     tokenProgram: tokenProgram.toBase58(),
     ata: ata.toBase58(),
     window,
@@ -107,7 +112,7 @@ export async function holdsFor(connection, { wallet, mint, day }) {
 }
 
 function report(r) {
-  const line = (label, value) => console.log(`${label.padEnd(22)}${value}`);
+  const line = (label, value) => console.log(`${label.padEnd(25)}${value}`);
 
   console.log(`\nCALLPOOL — hold(w, d) for ${r.day} (UTC)\n`);
   line('wallet', r.wallet);
@@ -131,7 +136,7 @@ function report(r) {
   line('hold (minimum)', `${tokens(r.hold)}   ← the weight`);
 
   console.log('');
-  line('floor', `${tokens(MIN_HOLD_RAW)} (${MIN_HOLD_TOKENS.toLocaleString('en-US')} tokens, 0.01% of supply)`);
+  line('floor', `${MIN_HOLD_TOKENS.toLocaleString('en-US')} tokens — 0.01% of supply (L12)`);
   line('clears the floor', r.meetsFloor ? 'yes' : 'NO');
   line(
     `locked (prev ${LOCKOUT_EPOCHS} epochs)`,
