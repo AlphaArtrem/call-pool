@@ -182,6 +182,19 @@ quietly is the failure mode.
     are not moving. The sentence is `freshnessNote` in `clocks.js` — pure, and
     tested — and the one refresh path is `refresh()` in `app.js`, which the
     minute timer and the day rollover both go through.
+12. **Any cluster but mainnet says so, at the top, and it cannot be closed.** A
+    devnet page is the most convincing wrong impression this site can give: the
+    figures are real chain reads, and they are real chain reads of activity we
+    fabricated ourselves, on a network whose SOL is not money and which gets
+    wiped. So the banner names all three — not money, gets wiped, we wrote the
+    callouts — and ends on the one thing that survives the cluster: the rules
+    are final, the numbers are not a record. It is derived from
+    `config.cluster` alone, so it cannot be left off by someone publishing a
+    devnet link in a hurry, and there is **no dismiss control**, because a
+    banner a visitor can close is a banner that gets closed. `demoNotice` in
+    `config.js` — pure, tested, and it quotes no figure so it can never go
+    stale. The cluster chip in the top bar does not carry this on its own: a
+    link someone was sent is a much stronger claim than a dev preview.
 
 ## What is not built yet
 

@@ -22,7 +22,7 @@ import {
   PROVISIONAL_EXPLANATION,
   windowFor,
 } from './clocks.js';
-import { explorerUrl, FLOOR_PERCENT_LABEL, siteConfig } from './config.js';
+import { demoNotice, explorerUrl, FLOOR_PERCENT_LABEL, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
 import { decodeConfig } from './program.js';
 import { loadPosition, looksLikeAddress, renderPosition, renderPositionFailure } from './position.js';
@@ -220,6 +220,12 @@ async function main() {
   const config = siteConfig();
   state.config = config;
 
+  // First, before the top bar and before anything is read. A visitor who lands
+  // on a devnet link and reads one thing should read this one — and it has to
+  // survive every early return below, all of which are pages that still show
+  // figures or promises of them.
+  renderDemoBanner(config);
+
   // Before the configured check: the theme toggle, the cluster switch and the
   // social links must work on a page that cannot read a single number, which
   // is exactly the page someone lands on when the RPC is down.
@@ -272,6 +278,26 @@ async function main() {
 
   await refresh();
   wireCalculator(config);
+}
+
+/**
+ * The rehearsal banner: shown on every cluster except mainnet.
+ *
+ * Rendered from the cluster alone, so it cannot be forgotten before publishing
+ * a devnet link and cannot be turned off without changing what the page is
+ * actually reading. `demoNotice` decides the wording; this only puts it on the
+ * page, and there is no dismiss control by design.
+ */
+function renderDemoBanner(config) {
+  const notice = demoNotice(config.cluster);
+  const node = el('demo-banner');
+
+  node.hidden = notice == null;
+  if (notice == null) return;
+
+  el('demo-banner-title').textContent = notice.title;
+  el('demo-banner-body').textContent = notice.body;
+  el('demo-banner-emphasis').textContent = notice.emphasis;
 }
 
 /**

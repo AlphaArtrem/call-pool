@@ -92,6 +92,24 @@
       </div>
     </div>
 
+    <!--
+      The rehearsal banner, above everything.
+
+      Shown by js/app.js whenever the cluster is not mainnet — mainnet being the
+      only place any of these figures are money. It is **not dismissible**, on
+      purpose: a banner a visitor can close is a banner that gets closed, and
+      this one is the whole difference between a demo and a claim. The cluster
+      chip in the top bar is not enough to carry that on a link someone has been
+      sent.
+    -->
+    <div id="demo-banner" class="wrap" hidden>
+      <div class="banner banner-warn">
+        <h3 id="demo-banner-title"></h3>
+        <p id="demo-banner-body"></p>
+        <p><strong id="demo-banner-emphasis"></strong></p>
+      </div>
+    </div>
+
     <header class="wrap hero" id="top">
       <p class="eyebrow">solana · pump.fun</p>
       <h1>Hold it, call it out, get paid.</h1>

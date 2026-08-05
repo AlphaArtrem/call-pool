@@ -38,7 +38,7 @@ import { decodeBase58, encodeBase58 } from '../../site/js/base58.js';
 import { standingFor, formatSol, formatTokens, countdown, utcTime } from '../../site/js/standing.js';
 import * as clocksModule from '../../site/js/clocks.js';
 import { dailyState, epochAt, freshnessNote, hourlyState, windowFor } from '../../site/js/clocks.js';
-import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
+import { demoNotice, siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
 import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
 
 // ── fixtures ───────────────────────────────────────────────────────────────
@@ -468,6 +468,35 @@ test('snapshot links land on the epoch directory regardless of trailing slashes'
   );
   assert.equal(snapshotUrl(config, 7), '/snapshots/epoch-7/');
   assert.equal(snapshotUrl(config, 7, 'tree.json'), '/snapshots/epoch-7/tree.json');
+});
+
+// The rehearsal banner. A devnet page shows real chain reads of fabricated
+// activity, which is the most convincing wrong impression this site can give:
+// the figures are true about devnet and mean nothing about money.
+
+test('every cluster except mainnet is labelled a demo', () => {
+  assert.equal(demoNotice('mainnet'), null, 'mainnet is the only place the numbers are money');
+  for (const cluster of ['devnet', 'testnet', 'localnet', undefined]) {
+    assert.notEqual(demoNotice(cluster), null, `${cluster} must be labelled`);
+  }
+});
+
+test('the demo notice says the SOL is not money, the network is wiped, and we made the callouts', () => {
+  const notice = demoNotice('devnet');
+  assert.match(notice.title, /demo/i);
+  assert.match(notice.body, /not money/);
+  assert.match(notice.body, /wiped/);
+  assert.match(notice.body, /pump\.fun does not exist on devnet/);
+  assert.match(notice.emphasis, /Nobody has been paid/);
+  // The rules are true on any cluster, and a visitor who reads only the banner
+  // still needs to know which half of the page survives it.
+  assert.match(notice.emphasis, /rules on this page are final/);
+});
+
+test('the demo notice quotes no figure, so it can never go stale', () => {
+  const notice = demoNotice('devnet');
+  const text = `${notice.title} ${notice.body} ${notice.emphasis}`;
+  assert.ok(!/\d/.test(text), `the banner must name no number, got: ${text}`);
 });
 
 test('devnet explorer links pin the cluster, so they cannot resolve to mainnet', () => {
