@@ -1,0 +1,75 @@
+# CALLPOOL — the site's Node process: static fallback plus the /rpc proxy.
+#
+# Caddy serves the static files from disk (see deploy/Caddyfile), so in
+# practice this process exists for `/rpc` alone. It still serves files if asked
+# directly, which is why it stays bound to 127.0.0.1 and is never reachable
+# from outside the box.
+#
+#   install -m 0644 deploy/callpool-site.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now callpool-site
+
+[Unit]
+Description=CALLPOOL site and RPC proxy
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+ExecStart=/usr/bin/node scripts/serve-site.mjs
+
+# The port Caddy proxies to. serve-site.mjs binds 127.0.0.1 itself.
+Environment=PORT=8099
+
+# Without this the rate limiter sees every request as coming from Caddy and
+# the whole internet shares one token bucket — 60 requests for everyone at
+# once. With it, the limiter reads the real client from X-Forwarded-For.
+Environment=CALLPOOL_TRUST_PROXY=1
+
+# CALLPOOL_RPC_URL_MAINNET lives here, root-owned and 0600, NOT in the
+# repository — the provider key is in that URL's path, and anything under
+# /srv/callpool is a directory a web server is pointed at. CALLPOOL_RPC_URL_DEVNET
+# is deliberately absent: on a production host that route serves nothing.
+#
+# The leading `-` makes a missing or empty file non-fatal, and that is
+# deliberate. Without it systemd refuses to start the unit at all, which takes
+# the whole site down over an unset key — but pre-launch the page makes no RPC
+# call whatsoever (programId is empty), and an unconfigured route already has a
+# designed answer: 503, with a log line naming the variable and the cluster.
+# Serving the page and refusing /rpc beats serving nothing.
+EnvironmentFile=-/etc/callpool/site.env
+
+Restart=always
+RestartSec=5
+
+# ── hardening ────────────────────────────────────────────────────────────
+#
+# This process parses JSON from strangers and holds the provider key in
+# memory. It reads files and talks to one upstream; it needs nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+
+# Nothing is written. The crank writes snapshots/ and runs as its own unit
+# under its own user — it is not this service, and it must not share one.
+ReadOnlyPaths=/srv/callpool
+
+# A static server and a JSON pass-through on a 4 GB box. If this is ever
+# approached, something is wrong and a restart is the right answer.
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

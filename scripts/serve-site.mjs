@@ -18,7 +18,7 @@
 //   CALLPOOL_RPC_URL_MAINNET='https://<provider>/<key>' node scripts/serve-site.mjs
 //     → /rpc forwards to that endpoint, and /rpc/devnet to
 //       CALLPOOL_RPC_URL_DEVNET. One route and one key per cluster, so one
-//       exposure cannot burn both and the mainnet key is the only one a domain
+//       exposure cannot burn both and the mainnet key is the only one a
 //       restriction has to reason about. The page is configured with
 //       `rpc: '/rpc'` and never sees either. See lib/rpc-proxy.mjs for what is
 //       allowed through and why it is a narrow list rather than a forwarder.

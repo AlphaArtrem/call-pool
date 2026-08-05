@@ -47,9 +47,16 @@ The domain is **callpool.fun** (registered 2026-08-05), so on the live host:
 | `https://callpool.fun/snapshots/epoch-N/` | one settled day's working, linked from the epoch table |
 
 Nothing in the config names the domain — `snapshotsBase` is the relative
-`/snapshots`, so the same files work on localhost and in production. The one
-place the domain does matter is the RPC key, which has to be locked to it or
-proxied through it; see "Before launch, and on launch day".
+`/snapshots`, so the same files work on localhost and in production. The RPC key
+is not in the page at all; it sits behind the same-origin `/rpc` proxy. See
+"Before launch, and on launch day".
+
+**In production the host does not serve the repository root.** `serve-site.mjs`
+does, which is right for a dev server and wrong on the public internet: the
+repository root is where `.env`, `.callout-auth`, `.git/` and any stray signing
+key live. The live edge serves an allowlist of `site/`, `scripts/lib/` and
+`snapshots/`, and only `/rpc` reaches Node — see
+[`deploy/`](../deploy/README.md).
 
 This is also why `scripts/` being public is a feature: the verification tile
 under "Every day, on the record" tells people to run those exact files.
@@ -260,7 +267,7 @@ the 90/10 split, the risks — renders in full and is final.
 
   **One key per cluster, and one route each**, because a single key serving both
   means one exposure burns both — and because the mainnet key is the one that
-  will carry a domain restriction, which is impossible to reason about if the
+  will carry a restriction, which is impossible to reason about if the
   rehearsal's traffic also runs through it. A production host leaves
   `CALLPOOL_RPC_URL_DEVNET` unset and that route then serves nothing.
   (`CALLPOOL_RPC_URL` still works as an alias for the mainnet one.)
@@ -283,14 +290,34 @@ the 90/10 split, the risks — renders in full and is final.
   batches / id-less notifications are refused, and every call the real vendored
   web3.js makes passes the allowlist.
 
-  **Still to do, owner's call 2026-08-05: restrict the mainnet key to
-  `callpool.fun` in the provider's dashboard**, at the same time as publishing
-  the site. That is a second layer rather than the load-bearing one — the proxy
-  already means the key is not in the page — but it is what stops a key that
-  leaks some other way from being usable. Today that endpoint answers
-  `access-control-allow-origin: *`, so no restriction is in place; verify from
-  another origin after setting it, because a restriction nobody tested is a
-  restriction nobody has.
+  **Still to do, owner's call: restrict the mainnet key in the provider's
+  dashboard — by IP, not by domain**, at the same time as publishing the site.
+  Today that endpoint answers `access-control-allow-origin: *`, so no
+  restriction is in place at all.
+
+  **Do not set a domain restriction on this key.** A provider's "allowed
+  domains" is an allowlist on the `Referer` (or `Origin`) header of the incoming
+  request, and since the key moved behind the proxy nothing sends one: the proxy
+  builds a fresh server-to-server request and forwards none of the caller's
+  headers, deliberately. Turning a domain restriction on would fail *every*
+  request the site makes and the page would render "can't reach Solana". It
+  would also protect nothing if the key did leak — a header is one `curl` flag,
+  so a `Referer` allowlist is only worth anything when a browser you trust to
+  set it truthfully is the thing making the call, which was the architecture
+  before the proxy and is not the architecture now.
+
+  **The restriction that fits a server-held key is an IP allowlist**, set to the
+  egress address of the host running `serve-site.mjs` — it needs no header, and
+  someone holding a leaked key cannot source traffic from your host. Providers
+  name it variously ("Allowlist IPs", "allowed IPs", endpoint security); check
+  yours offers it on the plan in use, because that is a hosting constraint and
+  therefore an input to **O3**. A host with no stable egress address — most
+  serverless platforms — cannot use one, and then the proxy's method allowlist
+  and token bucket are the whole of the defence rather than a second layer.
+
+  Verify after setting it, from an address that is *not* the host: the provider
+  URL should be refused. A restriction nobody tested is a restriction nobody
+  has.
 
   None of this applies to the crank. `snapshot.mjs`, `post-root.mjs`,
   `airdrop.mjs` and `verify-epoch.mjs` read `SOLANA_RPC_URL` from the

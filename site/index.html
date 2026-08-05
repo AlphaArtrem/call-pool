@@ -19,6 +19,15 @@
     <link rel="stylesheet" href="/site/app.css" />
 
     <!--
+      One SVG, no .ico. Every browser that can run this page takes an SVG
+      favicon, and the mark is two shapes — a raster set would be four more
+      files to keep in step with the accent colour for nothing. It carries its
+      own prefers-color-scheme switch, so the tab follows the theme the way the
+      page does.
+    -->
+    <link rel="icon" href="/site/favicon.svg" type="image/svg+xml" />
+
+    <!--
       The theme, before first paint. Inline and blocking on purpose: read from
       localStorage after the stylesheet has already applied and every visitor
       who chose light gets a black flash on every navigation. Three lines in

@@ -58,8 +58,11 @@ const ALLOWED = new Set(ALLOWED_METHODS);
  *
  * Two keys rather than one because a key that serves both clusters means one
  * exposure burns both, and because the mainnet key is the one that will carry a
- * domain restriction — mixing the rehearsal's traffic through it would make
- * that restriction impossible to reason about.
+ * restriction — mixing the rehearsal's traffic through it would make that
+ * restriction impossible to reason about. That restriction is an IP allowlist
+ * and not a domain one: this proxy forwards none of the caller's headers, so
+ * nothing reaching the provider carries a `Referer` for a domain rule to match.
+ * See site/README.md.
  *
  * `CALLPOOL_RPC_URL` stays as an alias for the mainnet one: a host that was
  * configured before this split keeps working rather than silently serving a

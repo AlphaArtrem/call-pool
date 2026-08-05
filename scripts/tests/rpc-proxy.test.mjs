@@ -174,7 +174,7 @@ test('X-Forwarded-For is only believed when the operator says there is a proxy',
 // A single `/rpc` could not pick an upstream: the body is a JSON-RPC call and
 // says nothing about which chain it is for. So the cluster is in the path, and
 // each route reads its own variable — one exposure cannot burn both, and the
-// mainnet key is the only one a domain restriction has to reason about.
+// mainnet key is the only one a restriction has to reason about.
 
 test('each cluster resolves to its own key', () => {
   const env = {

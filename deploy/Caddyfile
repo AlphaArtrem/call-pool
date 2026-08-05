@@ -1,0 +1,185 @@
+# CALLPOOL — the public edge for callpool.fun.
+#
+# Two jobs, and the second one is load-bearing.
+#
+# 1. Terminate TLS. `serve-site.mjs` binds 127.0.0.1 and speaks no TLS on
+#    purpose, so something has to. Caddy gets and renews the certificate on its
+#    own; there is nothing to schedule.
+#
+# 2. **Serve an allowlist of two directories, and let nothing else through.**
+#    `serve-site.mjs` resolves any path under the repository root and serves it
+#    — its containment check stops traversal *above* the root and permits
+#    everything below. That is right for a dev server and wrong for the public
+#    internet, because the repository root is exactly where the dangerous files
+#    live: `.env`, `.callout-auth`, `.git/`, `epochs/callout-store.json`, and
+#    any signing key someone drops next to the scripts while running a crank
+#    command. Being gitignored keeps those out of the repository; it does
+#    nothing to keep them out of a browser.
+#
+#    So Node is not in the static path at all. Caddy serves three trees from
+#    disk — `site/`, `scripts/lib/` and `snapshots/` — answers 404 to
+#    everything else, and the only thing that reaches Node is `/rpc`.
+#
+# Validate before reloading — a syntax error here takes the site down:
+#
+#   caddy validate --config /etc/caddy/Caddyfile
+#   systemctl reload caddy
+
+callpool.fun, www.callpool.fun {
+	encode zstd gzip
+
+	# ── the RPC proxy — the only path that reaches Node ──────────────────
+	#
+	# Both cluster routes match: `/rpc` for mainnet and `/rpc/devnet` for the
+	# rehearsal. A production host leaves CALLPOOL_RPC_URL_DEVNET unset, and
+	# that route then answers 503 from Node rather than being absent here —
+	# the difference matters when reading a log.
+	#
+	# X-Forwarded-For is what the proxy's token bucket keys on, so the
+	# service must run with CALLPOOL_TRUST_PROXY=1 or every visitor looks
+	# like this one machine and shares one budget.
+	handle /rpc* {
+		reverse_proxy 127.0.0.1:8099
+	}
+
+	# ── the page ────────────────────────────────────────────────────────
+	#
+	# `/` serves site/index.html with the URL unchanged — a rewrite, not a
+	# redirect. That is the contract in site/README.md: the host is pointed
+	# at the repository root and `/` is rewritten, so a visitor sees
+	# `callpool.fun` rather than `callpool.fun/site/`. Every asset in the
+	# page is root-absolute (`/site/…`, `/scripts/lib/…`) precisely so this
+	# works.
+	#
+	# ⚠️ Do not write this as `redir /site/ 302`. `redir` takes an OPTIONAL
+	# matcher first, and a token starting with `/` is read as one — Caddy
+	# silently builds "match /site/, Location: 302", `/` then matches nothing
+	# inside the block, and the response is an empty 200 that validates
+	# cleanly and looks like a blank page. An explicit `redir * /site/ 302`
+	# would be the safe redirect form; the rewrite below is what we want.
+	handle / {
+		rewrite * /site/index.html
+		root * /srv/callpool
+		file_server
+		header Cache-Control "public, max-age=300"
+	}
+
+	handle /site/* {
+		root * /srv/callpool
+		file_server
+	}
+
+	# The page imports `../../scripts/lib/*.mjs` directly — timeline.mjs,
+	# config.mjs, epoch.mjs, callouts.mjs — so a visitor's browser runs the
+	# same arithmetic the settlement job runs, which is the whole reason the
+	# deploy root is the repository root and not `site/`. Those resolve to
+	# /scripts/lib/, so this tree is not optional: without it the page loads
+	# and then fails on its first import.
+	#
+	# `lib/` only. The rest of scripts/ is public on GitHub and nothing there
+	# is secret, but it has no business being fetched from the web root, and
+	# a narrower rule is one fewer place for a stray file to become a URL.
+	handle /scripts/lib/* {
+		root * /srv/callpool
+		file_server
+	}
+
+	# ── the audit trail ─────────────────────────────────────────────────
+	#
+	# `snapshots/epoch-<n>/` is public by design — it is the record a
+	# stranger re-derives with verify-epoch.mjs, and the page links straight
+	# into it. `epochs/` is NOT here: it is working state, and
+	# epochs/callout-store.json is deliberately unpublished.
+	#
+	# No directory listing: a browsable index of the audit trail invites
+	# reading it as an API, and the page links exact paths.
+	handle /snapshots/* {
+		root * /srv/callpool
+		file_server
+	}
+
+	# ── everything else does not exist ──────────────────────────────────
+	handle {
+		respond "not found" 404
+	}
+
+	# ── caching ─────────────────────────────────────────────────────────
+	#
+	# serve-site.mjs sends `cache-control: no-store` on every static file.
+	# That is a dev-server default — it is described as "no caching" in its
+	# own header comment, with no decision or test behind it — and on a
+	# single-core box under launch traffic it means every visitor re-fetches
+	# the whole ~700 KB, including the pinned web3.js bundle, on every page
+	# load. Caddy is serving these from disk now, so it sets the policy.
+	#
+	# The vendored bundle is pinned (see site/vendor/README.md), so it is
+	# genuinely immutable. Everything else is short-lived: the page's live
+	# numbers come from RPC, not from cached HTML, but a holder reading the
+	# lockout rules should not be served a stale explanation for a year.
+	@immutable path /site/vendor/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# `not path /site/vendor/*` is load-bearing, not belt-and-braces: these
+	# two matchers would otherwise both match the bundle, and the later
+	# `header` wins — silently downgrading the one asset the long cache was
+	# for. Caught only by reading the response header, so it is worth a curl
+	# after any edit here.
+	@page {
+		path /site/* /scripts/lib/* /snapshots/*
+		not path /site/vendor/*
+	}
+	header @page Cache-Control "public, max-age=300"
+
+	# A published epoch never changes once its root is posted, but it is
+	# cheap to be wrong in the safe direction here: five minutes of staleness
+	# on the audit trail costs nothing, and a long cache on a directory that
+	# was corrected during the challenge window would be a real problem.
+
+	# ── headers ─────────────────────────────────────────────────────────
+	#
+	# The page loads no third-party anything — the web3.js bundle is
+	# vendored precisely so it does not — so most of this can be strict.
+	#
+	# `connect-src 'self'` is the one that earns its place: with the key
+	# behind /rpc, this is what stops anything on the page from talking to a
+	# chain endpoint that is not ours.
+	#
+	# ⚠️ `script-src` carries 'unsafe-inline' because index.html has two
+	# inline pieces, and a hash covers neither well:
+	#
+	#   * the anti-flash theme script (index.html:28), which must run before
+	#     first paint and so cannot be a separate request;
+	#   * `onerror="window.CALLPOOL_SITE_CONFIG_MISSING = true"` on the
+	#     config.local.js tag — an inline event handler, which script hashes
+	#     do not cover at all ('unsafe-hashes' territory).
+	#
+	# Blocking either is worse than the weakened directive: the second one
+	# silently breaks the "not configured" state, which is the page's honest
+	# failure mode. Tightening this means editing index.html — move the theme
+	# script to a file with `blocking=render`, and attach the error listener
+	# from JS — and only then dropping 'unsafe-inline' here. Do not tighten
+	# the header alone; it will look fine and break the page.
+	#
+	# style-src is strict: the page has one stylesheet, no <style> blocks, no
+	# style attributes and nothing writing cssText. Verified 2026-08-05.
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Access logs to journald, not a file. The packaged caddy.service is
+	# sandboxed and cannot write outside /var/lib/caddy, so a file writer
+	# fails at startup with a permission error that looks nothing like a
+	# permissions problem. journald is already rotated and size-capped:
+	#
+	#   journalctl -u caddy -f
+	#
+	# These lines carry visitor IPs. Default journald retention is the policy;
+	# if that is ever not wanted, this block is the thing to delete.
+	log {
+		output stderr
+	}
+}

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="CALLPOOL">
+  <!--
+    The mark: an open ring with the drop sitting in its mouth. It reads as the
+    C of CALLPOOL and as the pool with one call landing in it, which is the
+    whole mechanic in two shapes.
+
+    Drawn as a stroked arc rather than a letter, because a <text> element in a
+    favicon depends on whatever font the renderer happens to have and a
+    monogram that falls back to a serif is worse than no monogram. Paths render
+    identically everywhere.
+
+    No background plate. A near-black chip disappears into a dark tab strip and
+    a white one glares in it; the accent green carries against both, which is
+    why the site uses it as the one accent in the first place.
+
+    Sized for 16px: stroke is 17% of the viewBox and the ring is 80% of it, so
+    the opening survives being drawn into a dozen pixels. Check any edit at
+    actual size — a mark that is legible at 32 and mud at 16 is a mark that
+    nobody ever sees working.
+
+    Colours are the site's own accent tokens from app.css. Dark is the default
+    there and here; the light override follows the same prefers-color-scheme
+    switch the page uses, so the tab agrees with the page it belongs to.
+  -->
+  <style>
+    .ring { fill: none; stroke: #22c55e; }
+    .drop { fill: #22c55e; }
+    @media (prefers-color-scheme: light) {
+      .ring { stroke: #15803d; }
+      .drop { fill: #15803d; }
+    }
+  </style>
+
+  <path
+    class="ring"
+    d="M21.74 7.81 A10 10 0 1 0 21.74 24.19"
+    stroke-width="5.5"
+    stroke-linecap="round"
+  />
+  <circle class="drop" cx="25.6" cy="16" r="3.4" />
+</svg>
