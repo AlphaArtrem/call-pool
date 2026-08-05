@@ -26,7 +26,7 @@ import { barSeries, epochProgress, sparkPath } from './graphs.js';
  */
 export const SOURCES = {
   chain: { key: 'chain', label: 'chain', title: 'Read live from a Solana account by your browser. Nothing here passed through our server.' },
-  snapshot: { key: 'snapshot', label: 'snapshot', title: 'From a published epoch directory. We wrote this file — it is reproducible from chain, and the commands to reproduce it are in “Verify it yourself”.' },
+  snapshot: { key: 'snapshot', label: 'snapshot', title: 'From the published working for that day. We wrote this file — it is reproducible from chain, and the commands to redo it are under “Every day, on the record”.' },
   pumpfun: { key: 'pumpfun', label: 'pump.fun', title: 'From pump.fun’s callout API, queried by your browser. This is the one input that cannot be re-derived from chain — it exists only in their database.' },
   derived: { key: 'derived', label: 'computed here', title: 'Computed in your browser from the values beside it. Never fetched — our server cannot influence this number.' },
 };
@@ -82,6 +82,13 @@ export function field(node, { value, source, pending = 'reading…', unavailable
  * Says what could not be reached and what that means, rather than leaving a
  * spinner forever. §7.3: a wrong number here is worse than no number, and an
  * eternal spinner is a number the visitor invents themselves.
+ *
+ * Two audiences, in order. `what` and `consequence` are for someone who wants
+ * to know whether to worry, and are written in plain words. The raw error —
+ * an RPC message, a PDA that has no account — is folded away, because it
+ * answers a question most readers did not ask and reads as "something is
+ * broken" to everyone who cannot parse it. It is still one click away, and it
+ * is still the thing that lets a technical reader check us.
  */
 export function failure(node, { what, error, consequence }) {
   node.replaceChildren();
@@ -89,17 +96,28 @@ export function failure(node, { what, error, consequence }) {
 
   const heading = document.createElement('p');
   heading.className = 'failure-headline';
-  heading.textContent = `⚠️ ${what}`;
+  heading.textContent = what;
 
   const because = document.createElement('p');
   because.className = 'failure-detail';
   because.textContent = consequence;
 
-  const detail = document.createElement('pre');
-  detail.className = 'failure-error';
-  detail.textContent = error instanceof Error ? error.message : String(error);
+  node.append(heading, because);
 
-  node.append(heading, because, detail);
+  if (error != null) {
+    const fold = document.createElement('details');
+    fold.className = 'failure-technical';
+
+    const summary = document.createElement('summary');
+    summary.textContent = 'Technical detail';
+
+    const detail = document.createElement('pre');
+    detail.className = 'failure-error';
+    detail.textContent = error instanceof Error ? error.message : String(error);
+
+    fold.append(summary, detail);
+    node.append(fold);
+  }
 }
 
 /** A copyable address, monospace, with the copy affordance built in. */
@@ -248,7 +266,7 @@ export function progressRail(node, { window: w, now, challengeSeconds, empty, un
   rail.setAttribute('role', 'img');
   rail.setAttribute(
     'aria-label',
-    `Epoch ${w.epoch} is ${Math.round(progress.elapsed * 100)}% elapsed.`,
+    `Today’s round is ${Math.round(progress.elapsed * 100)}% through.`,
   );
 
   const elapsed = document.createElement('span');
@@ -267,7 +285,7 @@ export function progressRail(node, { window: w, now, challengeSeconds, empty, un
   const left = document.createElement('span');
   left.textContent = `${Math.round(progress.elapsed * 100)}% elapsed`;
   const right = document.createElement('span');
-  right.textContent = progress.challengeShare > 0 ? 'then the challenge window' : 'epoch';
+  right.textContent = progress.challengeShare > 0 ? 'then the checking window' : 'today';
   legend.append(left, right);
 
   node.append(rail, legend);

@@ -72,6 +72,34 @@ vendor/          pinned @solana/web3.js — see vendor/README.md
 `scripts/tests/site.test.mjs` exercises them in Node, so the copy a holder
 reads when they are locked out is asserted rather than hoped for.
 
+## How the page is ordered
+
+Seven sections, in the order a first-time reader needs them, and each one
+answers its question in plain words before any machinery appears:
+
+| | |
+|---|---|
+| **How it works** | three steps, the minimum, and the 7-day lockout |
+| **Check your wallet** | the calculator, high up, because it is what people came for |
+| **The pool right now** | the live figures and the three card charts |
+| **When you get paid** | the two clocks, and why they are not the same thing |
+| **Every day, on the record** | the audit trail |
+| **Where the fees go** | 90/10 |
+| **What this is not** | the risks |
+
+The technical layer sits inside `<details class="tech">` tiles — the exact
+rule and the attack table, what counts as selling, the addresses, the four
+verification commands, the founder's-fee argument. **Everything that was on
+the page before is still on the page.** A tile is a fold, not a deletion, and
+nothing in "What this is not" is behind one: a risk a reader has to open is a
+risk a reader will not read.
+
+The headline countdown ticks once a second, and `countdown()` shows seconds at
+every scale for that reason. It is driven from the on-chain window, so it
+survives the rollover — when the clock passes the boundary the epoch index
+moves, the window moves with it and the daily record reloads, rather than a
+page left open overnight counting down to a moment that has already gone.
+
 ## The look
 
 pump.fun's palette, borrowed deliberately, with its habits left behind.
@@ -124,6 +152,14 @@ quietly is the failure mode.
    and a bar sitting at zero because a balance never loaded is a claim that the
    balance is zero. The refusing happens in `graphs.js`, in the pure layer, so
    a test can hold it there — `ui.js` only turns a refusal into a sentence.
+10. **Plain words first; the technical version one click away.** Rule 8 says
+    every failure has to say what happened — it does not say the visitor has to
+    read a PDA to find out. A state is written for someone deciding whether to
+    worry (`not launched yet`, `can't reach Solana`), and the RPC message or
+    the missing account address goes inside a `Technical detail` fold. The
+    three states live together in `UNAVAILABLE` in `app.js` so no call site
+    invents its own wording, and "Unknown" is not one of them: it is honest and
+    it tells a reader nothing they can act on.
 
 ## What is not built yet
 

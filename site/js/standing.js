@@ -86,14 +86,14 @@ export function standingFor(facts) {
       state: 'locked-out',
       severity: SEVERITY.blocked,
       eligible: false,
-      headline: 'Locked out — a balance decrease resets earning for 7 epochs.',
+      headline: 'Locked out — selling resets earning for 7 days.',
       detail: [
         lockout.lastDecreaseAt
           ? `Tokens left this wallet on ${utcDate(lockout.lastDecreaseAt)}.`
-          : 'A decrease was found in the last 7 epochs.',
+          : 'A decrease was found in the last 7 days.',
         lockout.liftsAt
           ? `Earning resumes ${utcDate(lockout.liftsAt)} (00:00 UTC).`
-          : `The lockout runs ${LOCKOUT_EPOCHS} whole epochs from the decrease.`,
+          : `The lockout runs ${LOCKOUT_EPOCHS} whole days from the decrease.`,
         'Any decrease triggers this, however small.',
         'Sending tokens to another wallet you own counts as selling. There is no netting and no housekeeping exemption.',
         'Buying back does not shorten it.',
@@ -106,7 +106,7 @@ export function standingFor(facts) {
       state: 'below-floor',
       severity: SEVERITY.action,
       eligible: false,
-      headline: `Below the minimum for this epoch.`,
+      headline: 'Below the minimum for today.',
       detail: [
         `The minimum is ${MIN_HOLD_TOKENS.toLocaleString('en-US')} CALLPOOL — 0.01% of the supply, fixed on chain.`,
         'It is measured as the lowest balance at any point in the day, not the balance now — so a dip below the floor costs the whole day even if you bought back.',
@@ -138,7 +138,7 @@ export function standingFor(facts) {
           ? `Last callout: ${utcDate(callout.lastAt)}.`
           : 'No callout has been found for this wallet.',
         'Calls do not carry over. Call CALLPOOL out again, or post an update to your existing callout, before 00:00 UTC to earn today.',
-        `This epoch closes ${utcTime(epochWindow.end)}.`,
+        `Today’s round closes ${utcTime(epochWindow.end)}.`,
       ],
     };
   }
@@ -147,7 +147,7 @@ export function standingFor(facts) {
     state: 'eligible',
     severity: SEVERITY.ok,
     eligible: true,
-    headline: 'On track for this epoch.',
+    headline: 'On track for today.',
     detail: [
       'Held above the floor all day so far, and a callout is on record.',
       'Your share is a projection until 00:00 UTC — it moves as others call out, buy and sell.',
@@ -174,9 +174,9 @@ function settlementState(settlement, now) {
       state: 'expired',
       severity: SEVERITY.blocked,
       eligible: true,
-      headline: 'This epoch closed unpaid and returned to the pool.',
+      headline: 'That day closed unpaid and the share went back to the pool.',
       detail: [
-        'Unclaimed rewards return to the pool after 30 epochs.',
+        'Unclaimed rewards return to the pool after 30 days.',
         'It is shown rather than hidden: a number you once saw should never quietly vanish.',
       ],
     };
@@ -198,12 +198,12 @@ function settlementState(settlement, now) {
       state: 'withheld-dust',
       severity: SEVERITY.ok,
       eligible: true,
-      headline: `This epoch’s share (${formatSol(amountLamports)} SOL) is smaller than the network fee to send it.`,
+      headline: `That day’s share (${formatSol(amountLamports)} SOL) is smaller than the network fee to send it.`,
       detail: [
         'It is carried forward and paid automatically once it clears the threshold.',
         carriedLamports != null
           ? `Carried so far: ${formatSol(carriedLamports)} SOL.`
-          : 'Carried amounts are listed in each epoch’s carry.json.',
+          : 'Carried amounts are listed in each day’s carry.json.',
         'Withholding is not forfeiting.',
       ],
     };
@@ -262,11 +262,19 @@ export function utcTime(unixSeconds) {
   return `${new Date(unixSeconds * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
 
-/** `13h 42m`, or `42m 05s` under an hour. Never "soon". */
+/**
+ * `13h 42m 00s`, or `42m 05s` under an hour. Never "soon".
+ *
+ * The seconds are always there because the page ticks this once a second. A
+ * countdown that only moves once a minute reads as a static number somebody
+ * typed, which is the opposite of what a countdown is for.
+ */
 export function countdown(seconds) {
   if (seconds == null || seconds < 0) return '—';
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
-  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m ${String(s).padStart(2, '0')}s`;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}h ${mm}m ${ss}s` : `${m}m ${ss}s`;
 }

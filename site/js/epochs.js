@@ -54,7 +54,7 @@ export function renderEpochs(tbody, epochs, config) {
     const td = document.createElement('td');
     td.colSpan = 7;
     td.className = 'pending';
-    td.textContent = 'No epochs yet. The first settles at the first 00:00 UTC after launch.';
+    td.textContent = 'No days yet. The first is settled at the first 00:00 UTC after launch.';
     tr.append(td);
     tbody.append(tr);
     return;
@@ -100,7 +100,7 @@ function epochRow(epoch, config) {
   const rootCell = document.createElement('span');
   if (isZeroRoot(epoch)) {
     rootCell.className = 'pending';
-    rootCell.textContent = 'zeroed — nobody called out this epoch';
+    rootCell.textContent = 'nobody called out that day';
   } else {
     rootCell.append(addressNode(rootHex(epoch), { truncate: true }));
     if (!bitmapIsSized(epoch)) {

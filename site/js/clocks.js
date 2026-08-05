@@ -56,7 +56,7 @@ export function hourlyState({ now, lastSampleAt, calculating = false }) {
   if (lastSampleAt == null) {
     return {
       state: 'unknown',
-      label: 'No provisional standings published yet.',
+      label: 'No estimate published yet.',
       provisional: true,
       stale: false,
     };
@@ -68,7 +68,7 @@ export function hourlyState({ now, lastSampleAt, calculating = false }) {
   if (calculating) {
     return {
       state: 'running',
-      label: `Calculating ${utcTime(lastSampleAt)} – ${utcTime(lastSampleAt + HOUR)}…`,
+      label: `Working out the ${utcTime(lastSampleAt)} – ${utcTime(lastSampleAt + HOUR)} estimate…`,
       provisional: true,
       stale: false,
     };
@@ -86,7 +86,7 @@ export function hourlyState({ now, lastSampleAt, calculating = false }) {
 
   return {
     state: 'fresh',
-    label: `Updated ${utcTime(lastSampleAt)}. Provisional — final at 00:00 UTC.`,
+    label: `Updated ${utcTime(lastSampleAt)}. An estimate — the real figure is set at 00:00 UTC.`,
     provisional: true,
     stale: false,
   };
@@ -103,7 +103,7 @@ export function dailyState({ now, window, settledAt = null, challengeSeconds = n
   if (now < window.end) {
     return {
       state: 'running',
-      label: `Epoch ${window.epoch} closes in ${countdown(window.end - now)} (${boundaryLabel(window)}).`,
+      label: `Today’s round closes in ${countdown(window.end - now)}, at ${boundaryLabel(window)}.`,
       decidesMoney: true,
     };
   }
@@ -111,7 +111,7 @@ export function dailyState({ now, window, settledAt = null, challengeSeconds = n
   if (settledAt == null) {
     return {
       state: 'settling',
-      label: `Settling epoch ${window.epoch}… every transfer is being replayed exactly.`,
+      label: 'Working out today’s payouts — every transfer of the day is being replayed exactly.',
       decidesMoney: true,
     };
   }
@@ -120,7 +120,7 @@ export function dailyState({ now, window, settledAt = null, challengeSeconds = n
     const opensAt = settledAt + challengeSeconds;
     return {
       state: 'challenge',
-      label: `Epoch ${window.epoch} settled. Payouts sent in ${countdown(opensAt - now)}.`,
+      label: `Today’s results are posted. Payouts go out in ${countdown(opensAt - now)}.`,
       decidesMoney: true,
       challengeEndsAt: opensAt,
     };
@@ -128,7 +128,7 @@ export function dailyState({ now, window, settledAt = null, challengeSeconds = n
 
   return {
     state: 'payable',
-    label: `Epoch ${window.epoch} settled and payable.`,
+    label: 'Today’s results are posted and the payouts are going out.',
     decidesMoney: true,
     challengeEndsAt: challengeSeconds == null ? null : settledAt + challengeSeconds,
   };
@@ -142,4 +142,4 @@ export function dailyState({ now, window, settledAt = null, challengeSeconds = n
  * enough to run hourly for every holder, and too weak to pay from.
  */
 export const PROVISIONAL_EXPLANATION =
-  'Hourly figures come from balance samples taken once an hour. The daily settlement replays every transfer, so it catches a sale and rebuy that happened between two samples. The final number is the exact one; the hourly one is an estimate that is usually identical.';
+  'The hourly figure is a spot check: it looks at balances once an hour. The daily settlement replays every single transfer of the day, so it catches a sale and a rebuy that happened between two of those checks. The daily number is the exact one. The hourly one is usually identical, and it is never what you are paid.';

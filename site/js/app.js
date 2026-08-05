@@ -28,6 +28,37 @@ const state = {
   connection: null,
   chainConfig: null,
   window: null,
+  // Why the live numbers are missing, in words a reader can act on. Set once,
+  // at the point of failure, and reused everywhere a value would otherwise
+  // have to invent its own explanation — see UNAVAILABLE.
+  unavailable: null,
+};
+
+/**
+ * The three reasons a live number can be missing, said plainly.
+ *
+ * `short` goes in the slot where the number would have been, so it has to read
+ * as an answer rather than as an error code. `clock` replaces a countdown, and
+ * has to be a sentence because a countdown that has stopped is alarming if it
+ * does not say why.
+ *
+ * The rule this serves is §7.4 — never a blank — but the wording is a separate
+ * decision on top of it: "Unknown" and "not read" are technically honest and
+ * tell a reader nothing they can do anything with.
+ */
+const UNAVAILABLE = {
+  notLaunched: {
+    short: 'not launched yet',
+    clock: 'The first round starts when the coin launches.',
+  },
+  unreachable: {
+    short: 'can’t reach Solana',
+    clock: 'Could not reach Solana just now, so the countdown is not running. Reloading usually fixes it.',
+  },
+  notSetUp: {
+    short: 'not set up yet',
+    clock: 'This page has not been pointed at a coin yet.',
+  },
 };
 
 /**
@@ -38,7 +69,9 @@ const state = {
  * for every live value; an empty box is neither, and a reader fills it in
  * themselves with whatever they were hoping for.
  */
-function resetLiveFields(message = null) {
+function resetLiveFields(reason = null) {
+  state.unavailable = reason;
+
   for (const id of [
     'pool-balance',
     'vault-balance',
@@ -46,21 +79,28 @@ function resetLiveFields(message = null) {
     'total-distributed',
     'chain-floor',
   ]) {
-    field(el(id), { value: null, unavailable: message });
+    field(el(id), { value: null, unavailable: reason?.short ?? null });
   }
 
   // The clocks, the cards and the history are regions rather than single
   // values, so they get the same treatment in their own shape.
-  const clockText = message ?? 'reading…';
-  el('hourly-clock').textContent = clockText;
-  el('daily-clock').textContent = clockText;
+  el('daily-clock').textContent = reason?.clock ?? 'reading…';
+
+  // The hourly estimate is NOT downstream of the chain: it reports whether
+  // provisional standings have been published, and the honest answer to that
+  // is the same whether or not an RPC answered. Saying "could not reach
+  // Solana" here would blame the wrong thing.
+  el('hourly-clock').textContent = hourlyState({
+    now: Math.floor(Date.now() / 1000),
+    lastSampleAt: null,
+  }).label;
 
   for (const [valueId, chartId] of CARDS) {
-    field(el(valueId), { value: null, unavailable: message });
-    chartState(el(chartId), message ?? 'reading…', { unavailable: message != null });
+    field(el(valueId), { value: null, unavailable: reason?.short ?? null });
+    chartState(el(chartId), reason?.clock ?? 'reading…', { unavailable: reason != null });
   }
 
-  if (message != null) renderEpochs(el('epoch-rows'), [], state.config ?? {});
+  if (reason != null) renderEpochs(el('epoch-rows'), [], state.config ?? {});
 }
 
 /** The three card charts, as [value slot, chart slot]. */
@@ -72,7 +112,65 @@ const CARDS = [
 
 /** `formatSol` that survives a balance which never loaded. */
 function sol(lamports) {
-  return lamports == null ? 'not read' : `${formatSol(lamports)} SOL`;
+  return lamports == null ? '—' : `${formatSol(lamports)} SOL`;
+}
+
+/**
+ * The headline countdown, re-rendered once a second.
+ *
+ * Two states and no third: the round is running, or it has closed and the
+ * payouts are being worked out. Both are things a reader wants to know without
+ * learning what an epoch is.
+ */
+function renderHeroCountdown(now) {
+  const label = el('hero-countdown-label');
+  const value = el('hero-countdown');
+
+  if (state.window == null) {
+    label.textContent = 'Today’s round';
+    value.replaceChildren(pendingNode(state.unavailable?.short ?? 'reading…'));
+    return;
+  }
+
+  if (now < state.window.end) {
+    label.textContent = 'Today’s round ends in';
+    value.textContent = countdown(state.window.end - now);
+    return;
+  }
+
+  label.textContent = 'Right now';
+  value.textContent = 'working out today’s payouts…';
+}
+
+/**
+ * The one-second tick.
+ *
+ * A countdown that only redraws on load is a number somebody typed, and it is
+ * wrong from the first second onwards. This also catches the rollover: when
+ * the clock passes midnight the epoch index changes, the window moves with it,
+ * and the history table reloads — a page left open overnight would otherwise
+ * still be counting down to a boundary that has already passed.
+ */
+function startTicking() {
+  const tick = () => {
+    const now = Math.floor(Date.now() / 1000);
+    const chainConfig = state.chainConfig;
+
+    if (chainConfig != null) {
+      const epoch = epochAt(chainConfig.genesisTs, now, chainConfig.epochSeconds);
+      if (state.window == null || epoch !== state.window.epoch) {
+        state.window = windowFor(chainConfig.genesisTs, epoch, chainConfig.epochSeconds);
+        field(el('current-epoch'), { value: String(epoch), source: SOURCES.derived });
+        loadHistory(state.config).catch((error) => console.error('rollover reload', error));
+      }
+      renderClocks(chainConfig, now);
+    }
+
+    renderHeroCountdown(now);
+  };
+
+  tick();
+  setInterval(tick, 1000);
 }
 
 async function main() {
@@ -85,15 +183,17 @@ async function main() {
   wireTopbar(config);
 
   el('cluster-label').textContent = config.cluster;
+  renderRules();
   resetLiveFields();
+  startTicking();
 
   if (!config.configured || config.rpc == null) {
-    resetLiveFields('not configured');
+    resetLiveFields(UNAVAILABLE.notSetUp);
     failure(el('hero-status'), {
-      what: 'This site is not configured.',
+      what: 'This page has not been set up yet.',
       consequence:
-        'Copy site/config.local.example.js to site/config.local.js and fill in the RPC endpoint. Nothing is rendered from a default, because a default here would be a number with no source.',
-      error: 'window.CALLPOOL_SITE_CONFIG is missing or has no rpc for this cluster',
+        'Nothing is shown from a default, because a default here would be a number with nothing behind it. Everything that explains how this works is below and is final.',
+      error: 'window.CALLPOOL_SITE_CONFIG is missing or has no rpc for this cluster. Copy site/config.local.example.js to site/config.local.js and fill in the RPC endpoint.',
     });
     return;
   }
@@ -103,33 +203,54 @@ async function main() {
   renderStaticFacts(config);
 
   if (config.programId == null) {
-    resetLiveFields('waiting on the coin');
+    resetLiveFields(UNAVAILABLE.notLaunched);
     failure(el('hero-status'), {
-      what: 'The coin does not exist yet.',
+      what: 'The coin has not launched yet.',
       consequence:
-        'Every live number waits on a deployed program. The mechanic below is final and readable now; the numbers arrive when the coin does.',
+        'The rules on this page are final and you can read them now. The live numbers arrive the moment the coin does.',
       error: 'programId is unset in config.local.js',
     });
     return;
   }
 
   await loadChainConfig(config);
-  if (state.window == null) clocksWithoutAWindow();
+
+  // Without the program's own config there is nothing worth reading, and
+  // reading anyway is actively worse than not: `getAccountInfo` on an account
+  // that does not exist yet reports a balance of zero, and "0 SOL" with a
+  // `chain` badge beside it is a far more convincing wrong answer than "not
+  // launched yet". The state set above already says which it is.
+  if (state.chainConfig == null) {
+    resetLiveFields(state.unavailable ?? UNAVAILABLE.unreachable);
+    wireCalculator(config);
+    return;
+  }
 
   await Promise.allSettled([loadPool(config), loadHistory(config)]);
   wireCalculator(config);
 }
 
 /**
- * The things that are true before any RPC answers: the floor, the lockout, the
- * split. All sourced from scripts/lib/config.mjs, which is also what the crank
- * and the tests read.
+ * The rule itself — true before any RPC answers, and true if none ever does.
+ *
+ * Rendered before the configuration is even checked, because "how it works" is
+ * the half of this page that does not depend on a chain being reachable, and a
+ * visitor who arrives while the RPC is down should still be able to read it.
+ * All three values come from scripts/lib/config.mjs, which is also what the
+ * crank and the tests read.
  */
-function renderStaticFacts(config) {
-  el('floor-tokens').textContent = `${MIN_HOLD_TOKENS.toLocaleString('en-US')} CALLPOOL`;
+function renderRules() {
+  const floor = `${MIN_HOLD_TOKENS.toLocaleString('en-US')} CALLPOOL`;
+  el('floor-tokens').textContent = floor;
+  el('floor-tokens-formula').textContent = floor;
   el('floor-percent').textContent = FLOOR_PERCENT_LABEL;
   el('provisional-explanation').textContent = PROVISIONAL_EXPLANATION;
+}
 
+/**
+ * The addresses, which do need a configured program id.
+ */
+function renderStaticFacts(config) {
   const pool = poolPda(config.programId);
   el('pool-address').replaceChildren(
     addressNode(pool.toBase58(), { href: explorerUrl(config, 'address', pool.toBase58()) }),
@@ -140,12 +261,12 @@ function renderStaticFacts(config) {
   el('mint-address').replaceChildren(
     config.mint
       ? addressNode(config.mint, { href: explorerUrl(config, 'address', config.mint) })
-      : pendingNode('the coin does not exist yet'),
+      : pendingNode('not launched yet'),
   );
 
   // Read from the on-chain Config, so until that loads it says so rather than
   // sitting empty.
-  el('snapshot-key').replaceChildren(pendingNode('reading from the program’s config…'));
+  el('snapshot-key').replaceChildren(pendingNode('reading…'));
 
   const feeTx = el('fee-share-tx');
   if (config.feeShareTx) {
@@ -157,7 +278,7 @@ function renderStaticFacts(config) {
     );
   } else {
     feeTx.replaceChildren(
-      pendingNode('not yet set — until this transaction exists, treat the 90/10 split as unverified'),
+      pendingNode('not published yet — until this transaction is here, treat the 90/10 split as unverified'),
     );
   }
 }
@@ -185,9 +306,11 @@ async function loadChainConfig(config) {
     const address = configPda(config.programId);
     const info = await state.connection.getAccountInfo(address);
     if (!info) {
+      state.unavailable = UNAVAILABLE.notLaunched;
       failure(node, {
-        what: 'The program is deployed but not initialized.',
-        consequence: 'No epochs exist yet, so there is nothing to distribute or verify.',
+        what: 'The coin has not launched yet.',
+        consequence:
+          'No day has been settled, so there is nothing to pay out or check yet. The rules below are final and you can read them now.',
         error: `no Config account at ${address.toBase58()}`,
       });
       return;
@@ -201,10 +324,15 @@ async function loadChainConfig(config) {
     // something is pointed at the wrong deployment and the page says so
     // instead of rendering another coin's epochs as if they were this one's.
     if (config.mint != null && config.mint !== chainConfig.mint) {
+      // Dropped, not kept: every later number is derived from this account, and
+      // a ticking countdown built from the wrong coin's genesis would be the
+      // most convincing wrong number on the page.
+      state.chainConfig = null;
+      state.unavailable = UNAVAILABLE.notSetUp;
       failure(el('hero-status'), {
-        what: 'This page is configured for a different coin than the program holds.',
+        what: 'This page is pointing at the wrong coin.',
         consequence:
-          'Nothing further is read. Every epoch address is derived from the mint, so continuing would show a different coin\u2019s history under this coin\u2019s name.',
+          'Nothing further is read. Every address here is worked out from the coin, so carrying on would show another coin\u2019s history under this one\u2019s name.',
         error: `config.local.js says ${config.mint}; the program\u2019s config says ${chainConfig.mint}`,
       });
       return;
@@ -247,36 +375,15 @@ async function loadChainConfig(config) {
     renderClocks(chainConfig, now);
     node.hidden = true;
   } catch (error) {
+    state.chainConfig = null;
+    state.unavailable = UNAVAILABLE.unreachable;
     failure(node, {
-      what: 'Could not read the program’s configuration.',
+      what: 'Could not reach Solana just now.',
       consequence:
-        'Everything downstream depends on it — the epoch number, the floor, the payout schedule — so none of it is shown.',
+        'The live numbers are missing until it answers — reloading usually fixes it. Nothing else on this page depends on it.',
       error,
     });
   }
-}
-
-/**
- * What the clocks say when the program's config never loaded.
- *
- * `loadChainConfig` has four ways out — no account, a mint mismatch, a decode
- * failure, an RPC failure — and every one of them leaves the epoch window
- * unknown. Rather than remembering to say so at each `return`, the caller
- * checks once: if there is no window, nothing that depends on one is left
- * sitting on "reading…" pretending it is still trying.
- */
-function clocksWithoutAWindow() {
-  const now = Math.floor(Date.now() / 1000);
-
-  el('daily-clock').textContent =
-    'Unknown — when this epoch closes comes from the program’s config, which was not read.';
-
-  // The hourly clock is not downstream of the chain config at all: it reports
-  // whether provisional standings have been published, and the honest answer
-  // to that is the same whether or not an RPC answered.
-  el('hourly-clock').textContent = hourlyState({ now, lastSampleAt: null }).label;
-
-  renderClockCard(null, now);
 }
 
 /**
@@ -293,13 +400,13 @@ function renderPoolCard(config, poolLamports, vaultLamports) {
   field(el('card-pool-value'), {
     value: poolLamports == null ? null : sol(poolLamports),
     source: SOURCES.chain,
-    unavailable: poolLamports == null ? 'the pool balance could not be read' : null,
+    unavailable: poolLamports == null ? UNAVAILABLE.unreachable.short : null,
   });
 
   const missing =
     config.creatorVault == null
-      ? 'The creator vault is not configured, so there is nothing to compare the pool against.'
-      : 'Both balances have to load before they can be compared. One of them did not.';
+      ? 'Nothing to compare against yet — the creator vault has not been set on this page.'
+      : 'Both figures have to load before they can be put side by side. One of them did not.';
 
   bars(el('card-pool-chart'), {
     series: [
@@ -309,7 +416,7 @@ function renderPoolCard(config, poolLamports, vaultLamports) {
     empty:
       poolLamports == null || vaultLamports == null
         ? missing
-        : 'Both accounts are empty. Nothing has accrued to split yet.',
+        : 'Both are empty. No fees have come in yet.',
     unavailable: poolLamports == null || vaultLamports == null,
   });
 }
@@ -325,17 +432,17 @@ function renderHistoryCard(epochs) {
   const settled = epochs.filter((e) => e.posted).reverse();
 
   field(el('card-history-value'), {
-    value: `${settled.length} settled`,
+    value: settled.length === 1 ? '1 day paid' : `${settled.length} days paid`,
     source: SOURCES.chain,
   });
 
   sparkline(el('card-history-chart'), {
     values: settled.map((e) => e.claimedLamports),
-    label: `Distributed per epoch across ${settled.length} settled epochs, oldest first.`,
+    label: `Paid out on each of the ${settled.length} days settled so far, oldest first.`,
     empty:
       settled.length === 0
-        ? 'No epoch has settled yet. The first settles at the first 00:00 UTC after launch.'
-        : 'One epoch has settled. A single point is not a trend, so nothing is drawn yet.',
+        ? 'No day has been paid out yet. The first is settled at the first 00:00 UTC after launch.'
+        : 'One day so far. A single point is not a shape, so there is nothing to draw yet.',
   });
 }
 
@@ -354,16 +461,16 @@ function renderClockCard(chainConfig, now) {
         ? null
         : running
           ? `${countdown(state.window.end - now)} left`
-          : 'closed',
+          : 'closed for today',
     source: SOURCES.derived,
-    unavailable: state.window == null ? 'the epoch window is not known yet' : null,
+    unavailable: state.window == null ? (state.unavailable?.short ?? 'reading…') : null,
   });
 
   progressRail(el('card-clock-chart'), {
     window: state.window,
     now,
     challengeSeconds: chainConfig?.challengeSeconds ?? null,
-    empty: 'The epoch window comes from the program’s config, which has not been read.',
+    empty: state.unavailable?.clock ?? 'Reading the day’s window from Solana…',
     unavailable: true,
   });
 }
@@ -405,19 +512,19 @@ async function loadPool(config) {
     poolLamports = await lamportsOf(state.connection, pool);
     field(node, { value: `${formatSol(poolLamports)} SOL`, source: SOURCES.chain });
   } catch (error) {
-    field(node, { value: null, unavailable: 'can’t reach chain' });
+    field(node, { value: null, unavailable: UNAVAILABLE.unreachable.short });
     console.error('pool balance', error);
   }
 
   const vaultNode = el('vault-balance');
   if (config.creatorVault == null) {
-    field(vaultNode, { value: null, unavailable: 'creator vault not configured' });
+    field(vaultNode, { value: null, unavailable: 'not set on this page yet' });
   } else {
     try {
       vaultLamports = await lamportsOf(state.connection, config.creatorVault);
       field(vaultNode, { value: `${formatSol(vaultLamports)} SOL`, source: SOURCES.chain });
     } catch (error) {
-      field(vaultNode, { value: null, unavailable: 'can’t reach chain' });
+      field(vaultNode, { value: null, unavailable: UNAVAILABLE.unreachable.short });
       console.error('creator vault balance', error);
     }
   }
@@ -430,8 +537,8 @@ async function loadHistory(config) {
   // derived from it. Say so in both places rather than leaving the table and
   // the card sitting on "reading…" forever.
   if (state.window == null) {
-    field(el('card-history-value'), { value: null, unavailable: 'the current epoch is not known' });
-    chartState(el('card-history-chart'), 'Which epochs to read comes from the program’s config, which has not been read.', {
+    field(el('card-history-value'), { value: null, unavailable: state.unavailable?.short ?? 'reading…' });
+    chartState(el('card-history-chart'), state.unavailable?.clock ?? 'Reading the day’s window from Solana…', {
       unavailable: true,
     });
     return;
@@ -444,12 +551,12 @@ async function loadHistory(config) {
     renderHistoryCard(epochs);
   } catch (error) {
     failure(el('history-status'), {
-      what: 'Could not read the epoch history.',
-      consequence: 'The table below may be incomplete. Every epoch is still readable on chain directly.',
+      what: 'Could not read the daily record just now.',
+      consequence: 'The table below may be missing rows. Every day is still readable on Solana directly.',
       error,
     });
-    field(el('card-history-value'), { value: null, unavailable: 'the epoch accounts could not be read' });
-    chartState(el('card-history-chart'), 'The epoch history could not be read, so there is nothing to plot.', {
+    field(el('card-history-value'), { value: null, unavailable: UNAVAILABLE.unreachable.short });
+    chartState(el('card-history-chart'), 'The daily record could not be read just now, so there is nothing to draw.', {
       unavailable: true,
     });
   }
@@ -482,8 +589,9 @@ function wireCalculator(config) {
     if (state.window == null || state.chainConfig == null) {
       nodes.result.hidden = false;
       failure(nodes.result, {
-        what: 'The program’s configuration has not loaded.',
-        consequence: 'Without genesis_ts and min_hold from chain, any answer here would be guessed.',
+        what: `Nothing to check yet — ${state.unavailable?.short ?? 'the coin has not launched'}.`,
+        consequence:
+          'The day’s window and the minimum are both read from Solana, and without them any answer here would be a guess.',
         error: 'chain config unavailable',
       });
       return;

@@ -1,14 +1,14 @@
 {
   "cluster": "http://127.0.0.1:8899",
-  "ranAt": "2026-08-04T19:44:04.550Z",
+  "ranAt": "2026-08-05T05:05:04.914Z",
   "program": "ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7",
-  "mint": "CDPMUNd5RgBdjbUszKAUr1gnU6v8kLNCMiq9rcQhH29Y",
+  "mint": "CxXTkw5Vx7pwY8DKyxAuwQuM6zkahb3buswErbcjW2WJ",
   "pool": "CFYLY6MsW6gYGWMKvhpYoDFdcshV1bomTSRwQDLE9DBw",
   "epochSeconds": 60,
-  "genesisTs": 1785872460,
-  "holder": "4RnQeaw7RFKJwTU2FD2kM1RKRTGo3j77qXFwuYnSehsj",
-  "dumper": "4Fs5KV9U2utc9n59DmacdANWT4EPQqVfQEpVsdMCdDnP",
-  "root": "e4538c69c4f29c52cd8e1220b85ebd436eb5fee7f35063ecb1fed4b6bf4e6933",
+  "genesisTs": 1785906120,
+  "holder": "939nP9oVUfZEcwzptdrdDhSzV9uvZSY83GDyhiRecLZd",
+  "dumper": "BceWwsQnit8d5ZhL7cVxTLDjXA342er8DT6nSE8gpxDC",
+  "root": "7cabeaede1f42fd4bd9eef83e1cd78d6f52c43114d8f03fef546d2538b665fe0",
   "allocate": "9000000000",
   "assertions": [
     {
@@ -31,8 +31,8 @@
     },
     {
       "what": "the paid wallet is the holder",
-      "actual": "4RnQeaw7RFKJwTU2FD2kM1RKRTGo3j77qXFwuYnSehsj",
-      "expected": "4RnQeaw7RFKJwTU2FD2kM1RKRTGo3j77qXFwuYnSehsj",
+      "actual": "939nP9oVUfZEcwzptdrdDhSzV9uvZSY83GDyhiRecLZd",
+      "expected": "939nP9oVUfZEcwzptdrdDhSzV9uvZSY83GDyhiRecLZd",
       "ok": true
     },
     {
@@ -49,8 +49,8 @@
     },
     {
       "what": "the on-chain root is the published root",
-      "actual": "e4538c69c4f29c52cd8e1220b85ebd436eb5fee7f35063ecb1fed4b6bf4e6933",
-      "expected": "e4538c69c4f29c52cd8e1220b85ebd436eb5fee7f35063ecb1fed4b6bf4e6933",
+      "actual": "7cabeaede1f42fd4bd9eef83e1cd78d6f52c43114d8f03fef546d2538b665fe0",
+      "expected": "7cabeaede1f42fd4bd9eef83e1cd78d6f52c43114d8f03fef546d2538b665fe0",
       "ok": true
     },
     {

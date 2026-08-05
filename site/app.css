@@ -443,8 +443,15 @@ pre code {
 
 /* ── sections ─────────────────────────────────────────────────────────── */
 
-main > section {
-  padding: 3rem 0;
+/* A class, not `main > section`. Every section also carries `.wrap`, whose
+ * `padding: 0 1rem` shorthand beats an element selector on specificity no
+ * matter what order they appear in — which is how the sections ended up with
+ * their headings sitting on top of the divider line above them. Longhands
+ * here, so `.wrap` keeps the inline padding and this keeps the block padding.
+ */
+.section {
+  padding-top: 4rem;
+  padding-bottom: 4rem;
   border-top: 1px solid var(--line);
 }
 
@@ -452,7 +459,7 @@ main > section {
   display: grid;
   grid-template-columns: 1fr;
   gap: 0.75rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 @media (min-width: 52rem) {
@@ -466,6 +473,155 @@ main > section {
 .section-head p {
   color: var(--muted);
   margin: 0;
+  font-size: 1.0625rem;
+}
+
+.section-head .eyebrow {
+  margin-bottom: 0.5rem;
+}
+
+/* ── the three steps ──────────────────────────────────────────────────── */
+
+.steps {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: none;
+}
+
+@media (min-width: 46rem) {
+  .steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.step {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.25rem;
+  min-width: 0;
+}
+
+.step-no {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.step h3 {
+  margin: 0.75rem 0 0.5rem;
+  font-size: 1.0625rem;
+}
+
+.step p {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+/* One sentence that has to survive skim-reading. Used where the page would
+ * otherwise bury a rule with money attached in a paragraph. */
+.highlight {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  background: var(--raised);
+  padding: 1rem 1.125rem;
+  margin: 1.5rem 0;
+  font-size: 1rem;
+}
+
+.highlight strong {
+  color: var(--fg);
+}
+
+/* ── the fee split ────────────────────────────────────────────────────── */
+
+.split-pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 46rem) {
+  .split-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.split {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+
+.split-share {
+  font-family: var(--mono);
+  font-size: 2.5rem;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 0.75rem;
+}
+
+.split-what {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.split-what strong {
+  color: var(--fg);
+}
+
+/* ── risks ────────────────────────────────────────────────────────────── */
+
+.risk-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+@media (min-width: 52rem) {
+  .risk-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.risk-card {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.25rem;
+  min-width: 0;
+}
+
+.risk-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.risk-card p {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.risk-card strong {
+  color: var(--fg);
 }
 
 /* ── buttons ──────────────────────────────────────────────────────────── */
@@ -527,7 +683,41 @@ summary:focus-visible {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
-  margin: 1.25rem 0 1rem;
+  margin: 1.75rem 0 1.5rem;
+}
+
+/* The live countdown. It ticks once a second, so it is set in the monospace
+ * face — a proportional font reflows on every tick and the whole strip
+ * shivers. */
+.countdown-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.875rem 1.125rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.countdown-label {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.countdown-value {
+  font-family: var(--mono);
+  font-size: 1.375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.countdown-value .pending {
+  font-size: 1rem;
+  color: var(--faint);
 }
 
 /* ── metrics ──────────────────────────────────────────────────────────── */
@@ -789,16 +979,14 @@ summary:focus-visible {
 
 /* ── expandable tiles ─────────────────────────────────────────────────── */
 
-details.tech,
-.aside {
+details.tech {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--raised);
   margin: 1rem 0;
 }
 
-details.tech > summary,
-.aside > summary {
+details.tech > summary {
   list-style: none;
   cursor: pointer;
   padding: 0.875rem 2.5rem 0.875rem 1rem;
@@ -807,13 +995,11 @@ details.tech > summary,
   position: relative;
 }
 
-details.tech > summary::-webkit-details-marker,
-.aside > summary::-webkit-details-marker {
+details.tech > summary::-webkit-details-marker {
   display: none;
 }
 
-details.tech > summary::after,
-.aside > summary::after {
+details.tech > summary::after {
   content: "+";
   position: absolute;
   right: 1rem;
@@ -825,13 +1011,11 @@ details.tech > summary::after,
   line-height: 1;
 }
 
-details.tech[open] > summary::after,
-.aside[open] > summary::after {
+details.tech[open] > summary::after {
   content: "–";
 }
 
-details.tech > summary:hover,
-.aside > summary:hover {
+details.tech > summary:hover {
   color: var(--accent);
 }
 
@@ -844,23 +1028,13 @@ details.tech > summary:hover,
   margin-bottom: 0;
 }
 
-.detail-body p,
-.aside p {
+.detail-body p {
   font-size: 0.9375rem;
   color: var(--muted);
 }
 
-.detail-body strong,
-.aside strong {
+.detail-body strong {
   color: var(--fg);
-}
-
-.aside p {
-  padding: 0 1rem;
-}
-
-.aside p:last-child {
-  padding-bottom: 1rem;
 }
 
 /* ── verification cards ───────────────────────────────────────────────── */
@@ -1107,12 +1281,36 @@ input[type="text"]::placeholder {
   font-size: 0.9375rem;
 }
 
+.failure-technical {
+  margin-top: 0.75rem;
+}
+
+.failure-technical > summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  list-style: none;
+}
+
+.failure-technical > summary::-webkit-details-marker {
+  display: none;
+}
+
+.failure-technical > summary::before {
+  content: "+ ";
+  font-family: var(--mono);
+}
+
+.failure-technical[open] > summary::before {
+  content: "– ";
+}
+
 .failure-error {
   font-size: 0.75rem;
   color: var(--muted);
   background: none;
   border: none;
-  padding: 0;
+  padding: 0.5rem 0 0;
   white-space: pre-wrap;
   word-break: break-word;
 }

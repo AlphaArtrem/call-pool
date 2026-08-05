@@ -146,7 +146,7 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     source: SOURCES.derived,
   });
   table.append(
-    row('hold — lowest balance this epoch', holdCell, 'The number that decides the reward.'),
+    row('lowest balance today', holdCell, 'This is the number your share is worked out from.'),
   );
 
   const nowCell = document.createElement('span');
@@ -163,7 +163,7 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   sellCell.className = 'warn';
   sellCell.textContent = loaded.lockout.locked
     ? 'Already locked out — a further sale does not extend it, but it does not shorten it either.'
-    : `hold drops to 0 and this wallet earns nothing for ${LOCKOUT_EPOCHS} epochs, starting tomorrow.`;
+    : `today’s lowest balance drops to 0, and this wallet earns nothing for ${LOCKOUT_EPOCHS} days, starting tomorrow.`;
   table.append(row('if you sell any amount now', sellCell));
 
   const ataCell = addressNode(loaded.ata, { href: explorerUrl(config, 'address', loaded.ata) });
@@ -197,7 +197,7 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     lockCell.className = 'warn';
     lockCell.textContent = loaded.lockout.liftsAt
       ? `until ${utcDate(loaded.lockout.liftsAt)}`
-      : `${LOCKOUT_EPOCHS} epochs from the decrease`;
+      : `${LOCKOUT_EPOCHS} days from the decrease`;
     table.append(row('locked out', lockCell, 'Buying back does not shorten it.'));
   }
 

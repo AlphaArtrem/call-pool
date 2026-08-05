@@ -399,8 +399,11 @@ test('token amounts render at the mint’s decimals', () => {
   assert.equal(formatTokens(0n, 6), '0');
 });
 
-test('countdowns are exact, never "soon"', () => {
-  assert.equal(countdown(49_320), '13h 42m');
+test('countdowns are exact, never "soon", and always tick', () => {
+  // Seconds at every scale: the page updates this once a second, and a figure
+  // that only moves once a minute reads as static text somebody typed.
+  assert.equal(countdown(49_320), '13h 42m 00s');
+  assert.equal(countdown(49_321), '13h 42m 01s');
   assert.equal(countdown(125), '2m 05s');
   assert.equal(countdown(-1), '—');
 });
