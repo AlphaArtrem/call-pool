@@ -14,6 +14,7 @@
 //   CALLOUT_API_KEY=... node scripts/snapshot.mjs --day 2026-08-04
 //   node scripts/snapshot.mjs --epoch 12        # by on-chain index instead
 //   ... --rpc <URL> --mint <MINT>     # mint defaults to the on-chain config
+//   ... --store <PATH>                # a callout store other than the poll's
 //   ... --dry-run                     # compute and print, write nothing
 //
 // `--day` is how a human refers to an epoch and `--epoch` is how the chain
@@ -126,7 +127,13 @@ async function main() {
   console.log(`window    ${iso(window.start)} → ${iso(window.end)}`);
 
   // ── step 1 ───────────────────────────────────────────────────────────────
-  const store = readStore();
+  // The store is the one input that cannot be re-derived from chain, so which
+  // file it came from is named on the command line rather than picked up from
+  // the environment. The rehearsal points this at a fabricated store under
+  // epochs/devnet/; production leaves it alone and reads the poll's own.
+  const storePath = args.store ? resolve(process.cwd(), args.store) : undefined;
+  const store = readStore(storePath);
+  if (storePath) console.log(`store     ${storePath}`);
   const holdersFile = args.holders ? readJson(resolve(process.cwd(), args.holders)) : null;
   const { records, usedFallback, truncated } = await resolveCallouts({
     store,

@@ -172,6 +172,16 @@ quietly is the failure mode.
     three states live together in `UNAVAILABLE` in `app.js` so no call site
     invents its own wording, and "Unknown" is not one of them: it is honest and
     it tells a reader nothing they can act on.
+11. **A figure that has stopped updating says so.** The page re-reads chain data
+    every minute, and a value is replaced **only on success** — a figure that
+    blanks to "reading…" once a minute reads as broken, and a re-read that fails
+    is not evidence that the pool is empty, so the last figure that was actually
+    read stays on screen. The cost of that is that a stopped page looks exactly
+    like a working one, which is rule 8 in a different disguise, so the moment a
+    refresh fails the page names the time the figures were read and says they
+    are not moving. The sentence is `freshnessNote` in `clocks.js` — pure, and
+    tested — and the one refresh path is `refresh()` in `app.js`, which the
+    minute timer and the day rollover both go through.
 
 ## What is not built yet
 
@@ -223,5 +233,21 @@ charts — the pool/accrued bars, the per-epoch sparkline, and the epoch rail,
 which sized itself from the 60-second window rather than assuming a day. The
 floor check passed again. The theme toggle was checked in both directions,
 including the case the OS already prefers the theme being toggled away from.
+
+Re-run again after the minute refresh was added, against the dry-run deployment
+(`scripts/tools/deploy-devnet.mjs`, 60-second epochs, eleven epochs settled by
+`dry-run-loop.mjs`). Over roughly twenty minutes with the page left open and
+never reloaded: every hero figure and the epoch table tracked the chain, the
+per-day sparkline **started drawing** the moment a second epoch had been settled
+*and paid*, the table gained a zero-root row reading "nobody called out that
+day" and a `not posted` row for the epoch deliberately skipped, and the floor
+check passed throughout.
+
+Then the validator was stopped mid-session to exercise rule 11. Every figure
+stayed on screen with its badge, all three charts stayed drawn, and the page
+added, in amber: *"Could not reach Solana just now, so the figures above are
+from 2026-08-05 06:33 UTC and are not updating. Reloading usually fixes it."*
+Nothing blanked. No console errors at any point except the expected fetch
+failures, which are logged deliberately.
 
 Not yet run against devnet or mainnet.

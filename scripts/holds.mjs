@@ -24,7 +24,6 @@ import { Connection } from '@solana/web3.js';
 
 import {
   DEFAULT_RPC_URL,
-  EPOCH_SECONDS,
   LOCKOUT_EPOCHS,
   MINT_DECIMALS,
   MIN_HOLD_RAW,
@@ -81,8 +80,11 @@ export async function holdsFor(connection, { wallet, mint, day, window: explicit
 
   // Fetch from the start of the lockout window so one pass answers both
   // questions, and one epoch further back so the timeline is always seeded by
-  // a real transaction rather than by the current balance where possible.
-  const since = lockWindow.start - EPOCH_SECONDS;
+  // a real transaction rather than by the current balance where possible. One
+  // epoch is the window's own length, not the mainnet constant — a rehearsal
+  // running short epochs would otherwise fetch seven days of history it has no
+  // use for.
+  const since = lockWindow.start - (window.end - window.start);
   const events = await balanceEventsFor(connection, ata, since);
   const current = await currentBalanceRaw(connection, ata);
 

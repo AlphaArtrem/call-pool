@@ -14,7 +14,14 @@ import { MINT_DECIMALS, MIN_HOLD_RAW, MIN_HOLD_TOKENS, EPOCH_SECONDS } from '../
 
 import { lamportsOf } from './chain.js';
 import { configPda, connect, poolPda } from './addresses.js';
-import { dailyState, epochAt, hourlyState, PROVISIONAL_EXPLANATION, windowFor } from './clocks.js';
+import {
+  dailyState,
+  epochAt,
+  freshnessNote,
+  hourlyState,
+  PROVISIONAL_EXPLANATION,
+  windowFor,
+} from './clocks.js';
 import { explorerUrl, FLOOR_PERCENT_LABEL, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
 import { decodeConfig } from './program.js';
@@ -33,6 +40,32 @@ const state = {
   // have to invent its own explanation — see UNAVAILABLE.
   unavailable: null,
 };
+
+/**
+ * The last values that were actually read, and when.
+ *
+ * The page re-reads every minute, and two things follow that are not optional.
+ * A value is replaced only on success, so a figure never flashes "reading…"
+ * once a minute; and a refresh that fails leaves the last good figure on screen
+ * rather than erasing it, because a number that was true 60 seconds ago is
+ * worth more to a reader than a blank. What is not allowed is doing that
+ * quietly — `renderLiveStatus` says how old the figures are the moment a
+ * refresh fails.
+ */
+const live = {
+  poolLamports: null,
+  vaultLamports: null,
+  epochs: null,
+  /** When a full pass last succeeded, and when one last failed. Unix seconds. */
+  readAt: null,
+  failedAt: null,
+  /** When a pass was last *started* — what the minute timer counts from. */
+  attemptedAt: 0,
+  refreshing: false,
+};
+
+/** How often the page re-reads chain data. */
+const REFRESH_SECONDS = 60;
 
 /**
  * The three reasons a live number can be missing, said plainly.
@@ -148,8 +181,12 @@ function renderHeroCountdown(now) {
  * A countdown that only redraws on load is a number somebody typed, and it is
  * wrong from the first second onwards. This also catches the rollover: when
  * the clock passes midnight the epoch index changes, the window moves with it,
- * and the history table reloads — a page left open overnight would otherwise
- * still be counting down to a boundary that has already passed.
+ * and the chain data reloads — a page left open overnight would otherwise still
+ * be counting down to a boundary that has already passed.
+ *
+ * The minute refresh lives here too rather than in a timer of its own, so a
+ * rollover and a scheduled re-read can never run over each other: there is one
+ * clock, and `refresh` is one function that both reach.
  */
 function startTicking() {
   const tick = () => {
@@ -158,11 +195,17 @@ function startTicking() {
 
     if (chainConfig != null) {
       const epoch = epochAt(chainConfig.genesisTs, now, chainConfig.epochSeconds);
-      if (state.window == null || epoch !== state.window.epoch) {
+      const rolledOver = state.window == null || epoch !== state.window.epoch;
+
+      if (rolledOver) {
         state.window = windowFor(chainConfig.genesisTs, epoch, chainConfig.epochSeconds);
         field(el('current-epoch'), { value: String(epoch), source: SOURCES.derived });
-        loadHistory(state.config).catch((error) => console.error('rollover reload', error));
       }
+
+      if (rolledOver || now - live.attemptedAt >= REFRESH_SECONDS) {
+        refresh().catch((error) => console.error('refresh', error));
+      }
+
       renderClocks(chainConfig, now);
     }
 
@@ -227,7 +270,7 @@ async function main() {
     return;
   }
 
-  await Promise.allSettled([loadPool(config), loadHistory(config)]);
+  await refresh();
   wireCalculator(config);
 }
 
@@ -504,33 +547,88 @@ function renderClocks(chainConfig, now) {
  * showing only the pool would understate what is coming.
  */
 async function loadPool(config) {
-  let poolLamports = null;
-  let vaultLamports = null;
+  let ok = true;
 
-  const node = el('pool-balance');
   try {
-    const pool = poolPda(config.programId);
-    poolLamports = await lamportsOf(state.connection, pool);
-    field(node, { value: `${formatSol(poolLamports)} SOL`, source: SOURCES.chain });
+    live.poolLamports = await lamportsOf(state.connection, poolPda(config.programId));
   } catch (error) {
-    field(node, { value: null, unavailable: UNAVAILABLE.unreachable.short });
+    // The previous balance stays in `live`, and therefore on screen. A failed
+    // re-read is not evidence that the pool is empty.
+    ok = false;
     console.error('pool balance', error);
   }
 
-  const vaultNode = el('vault-balance');
-  if (config.creatorVault == null) {
-    field(vaultNode, { value: null, unavailable: 'not set on this page yet' });
-  } else {
+  if (config.creatorVault != null) {
     try {
-      vaultLamports = await lamportsOf(state.connection, config.creatorVault);
-      field(vaultNode, { value: `${formatSol(vaultLamports)} SOL`, source: SOURCES.chain });
+      live.vaultLamports = await lamportsOf(state.connection, config.creatorVault);
     } catch (error) {
-      field(vaultNode, { value: null, unavailable: UNAVAILABLE.unreachable.short });
+      ok = false;
       console.error('creator vault balance', error);
     }
   }
 
-  renderPoolCard(config, poolLamports, vaultLamports);
+  field(el('pool-balance'), {
+    value: live.poolLamports == null ? null : `${formatSol(live.poolLamports)} SOL`,
+    source: SOURCES.chain,
+    unavailable: live.poolLamports == null ? UNAVAILABLE.unreachable.short : null,
+  });
+
+  field(el('vault-balance'), {
+    value: live.vaultLamports == null ? null : `${formatSol(live.vaultLamports)} SOL`,
+    source: SOURCES.chain,
+    unavailable:
+      config.creatorVault == null
+        ? 'not set on this page yet'
+        : live.vaultLamports == null
+          ? UNAVAILABLE.unreachable.short
+          : null,
+  });
+
+  renderPoolCard(config, live.poolLamports, live.vaultLamports);
+  return ok;
+}
+
+/**
+ * Re-read everything that comes from chain. The one refresh path.
+ *
+ * Called on load, once a minute, and on the day rollover — deliberately the
+ * same function each time, because two paths that both reload the history is
+ * how one of them ends up subtly different from the other.
+ *
+ * Returns nothing and throws nothing: each region already renders its own
+ * failure, and this decides only whether the page is showing figures older
+ * than it claims.
+ */
+async function refresh() {
+  if (state.chainConfig == null || live.refreshing) return;
+  live.refreshing = true;
+  live.attemptedAt = Math.floor(Date.now() / 1000);
+
+  try {
+    const results = await Promise.all([loadPool(state.config), loadHistory(state.config)]);
+    const now = Math.floor(Date.now() / 1000);
+    // Only a fully successful pass updates the timestamp. A partial one leaves
+    // some region stale, and a "read at" that covers only half the page is a
+    // more confident claim than the page can actually make.
+    if (results.every(Boolean)) {
+      live.readAt = now;
+      live.failedAt = null;
+    } else {
+      live.failedAt = now;
+    }
+  } finally {
+    live.refreshing = false;
+    renderLiveStatus();
+  }
+}
+
+/** Say how old the figures are, but only once they have stopped updating. */
+function renderLiveStatus() {
+  const node = el('live-status');
+  const { stale, label } = freshnessNote(live);
+
+  node.hidden = !stale;
+  node.textContent = label ?? '';
 }
 
 async function loadHistory(config) {
@@ -542,25 +640,37 @@ async function loadHistory(config) {
     chartState(el('card-history-chart'), state.unavailable?.clock ?? 'Reading the day’s window from Solana…', {
       unavailable: true,
     });
-    return;
+    return false;
   }
 
   try {
-    const epochs = await loadEpochs(state.connection, config, state.window.epoch);
-    renderEpochs(el('epoch-rows'), epochs, config);
-    renderTotals(el('total-distributed'), epochs);
-    renderHistoryCard(epochs);
+    live.epochs = await loadEpochs(state.connection, config, state.window.epoch);
   } catch (error) {
-    failure(el('history-status'), {
-      what: 'Could not read the daily record just now.',
-      consequence: 'The table below may be missing rows. Every day is still readable on Solana directly.',
-      error,
-    });
-    field(el('card-history-value'), { value: null, unavailable: UNAVAILABLE.unreachable.short });
-    chartState(el('card-history-chart'), 'The daily record could not be read just now, so there is nothing to draw.', {
-      unavailable: true,
-    });
+    console.error('daily record', error);
+
+    // A record read once and not re-read is still the record. It is left on the
+    // page exactly as it was, and `renderLiveStatus` says it is not updating —
+    // replacing a correct table with an error is the worse of the two.
+    if (live.epochs == null) {
+      failure(el('history-status'), {
+        what: 'Could not read the daily record just now.',
+        consequence: 'The table below may be missing rows. Every day is still readable on Solana directly.',
+        error,
+      });
+      field(el('card-history-value'), { value: null, unavailable: UNAVAILABLE.unreachable.short });
+      chartState(el('card-history-chart'), 'The daily record could not be read just now, so there is nothing to draw.', {
+        unavailable: true,
+      });
+    }
+    return false;
   }
+
+  el('history-status').replaceChildren();
+  el('history-status').classList.remove('failed');
+  renderEpochs(el('epoch-rows'), live.epochs, config);
+  renderTotals(el('total-distributed'), live.epochs);
+  renderHistoryCard(live.epochs);
+  return true;
 }
 
 function wireCalculator(config) {

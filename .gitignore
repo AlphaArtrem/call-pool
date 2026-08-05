@@ -47,6 +47,10 @@ epochs/scratch/
 # The hourly poll's rolling memory. Working state between polls — every epoch's
 # raw capture is committed under snapshots/, which is the record that matters.
 epochs/callout-store.json
+# The devnet dry run: its manifest, its throwaway keys, its fabricated callout
+# store and its snapshots. None of it is evidence of anything and a fake epoch
+# in the audit trail is worse than no audit trail.
+epochs/devnet/
 
 # ─────────────────────────────────────────────────────────────
 # Build output and dependencies

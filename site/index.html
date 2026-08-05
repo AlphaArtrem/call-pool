@@ -201,13 +201,20 @@
             <h2 id="pool-heading">The pool right now</h2>
           </div>
           <p>
-            Read from Solana by your browser as this page loaded. Each figure says where it came
-            from — hover a badge to see what that means.
+            Read from Solana by your browser, and re-read every minute. Each figure says where it
+            came from — hover a badge to see what that means.
           </p>
         </div>
 
         <div id="floor-mismatch" class="banner banner-danger" hidden></div>
         <div id="hero-status"></div>
+        <!--
+          Staleness, said out loud. A refresh that fails leaves the last figures
+          that were actually read on the page rather than blanking them — but a
+          number that has stopped updating and does not say so is the one kind of
+          wrong this page cannot allow, so this line names the time it was read.
+        -->
+        <p id="live-status" class="live-status" hidden></p>
 
         <dl class="metrics">
           <div class="metric">

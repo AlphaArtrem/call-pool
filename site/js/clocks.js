@@ -135,6 +135,36 @@ export function dailyState({ now, window, settledAt = null, challengeSeconds = n
 }
 
 /**
+ * Whether the live figures on the page are still live, and what to say if not.
+ *
+ * The page re-reads chain data on a timer and **keeps the last figures it
+ * actually read** when a re-read fails: a balance that was true a minute ago is
+ * worth more to a reader than a blank, and a value that flashes "reading…"
+ * every minute reads as broken. The cost of that choice is that a stopped page
+ * looks exactly like a working one, which is the §7.4 failure — so the moment a
+ * refresh fails, the page says how old the figures are and that they have
+ * stopped moving.
+ *
+ * `readAt` is the last fully successful pass; `failedAt` the last failure. A
+ * partial pass counts as a failure, because a timestamp covering half the page
+ * is a more confident claim than the page can make.
+ *
+ * @returns {{stale: boolean, label: string|null}}
+ */
+export function freshnessNote({ readAt, failedAt }) {
+  if (failedAt == null) return { stale: false, label: null };
+
+  return {
+    stale: true,
+    label:
+      readAt == null
+        ? 'Could not reach Solana, so nothing above has been read yet. Reloading usually fixes it.'
+        : `Could not reach Solana just now, so the figures above are from ${utcTime(readAt)} ` +
+          'and are not updating. Reloading usually fixes it.',
+  };
+}
+
+/**
  * Why the provisional number and the final one can differ.
  *
  * One line, on the page, because someone will ask and the honest answer is

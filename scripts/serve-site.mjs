@@ -38,7 +38,10 @@ const TYPES = {
 
 const args = process.argv.slice(2);
 const portFlag = args.indexOf('--port');
-const port = portFlag === -1 ? 8099 : Number(args[portFlag + 1]);
+// `--port`, then `PORT` from the environment (which is how a supervising tool
+// hands one over), then the default. Two people serving this at once is normal.
+const port =
+  portFlag === -1 ? Number(process.env.PORT ?? 8099) : Number(args[portFlag + 1]);
 
 /**
  * Resolve a request path to a file inside the repository, or null.

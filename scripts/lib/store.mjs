@@ -15,8 +15,23 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..
 /** Where the hourly poll accumulates. Working state, not the audit trail. */
 export const STORE_PATH = resolve(REPO_ROOT, 'epochs/callout-store.json');
 
-/** The audit trail. Committed, and never rewritten once published. */
-export const SNAPSHOTS_DIR = resolve(REPO_ROOT, 'snapshots');
+/**
+ * The audit trail. Committed, and never rewritten once published.
+ *
+ * `CALLPOOL_SNAPSHOTS_DIR` redirects it, and exists for exactly one reason: the
+ * devnet dry run settles fabricated epochs through the real scripts, and a fake
+ * epoch left in the published audit trail is worse than no audit trail. The
+ * dry-run tooling sets it for every child process it spawns; nothing else does,
+ * and production must never set it.
+ *
+ * A path, not a parameter — none of the immutable values live here. The rule
+ * against environment overrides applies to `config.mjs`, where an override
+ * would be a second source of truth for the floor.
+ */
+export const SNAPSHOTS_DIR = resolve(
+  REPO_ROOT,
+  process.env.CALLPOOL_SNAPSHOTS_DIR ?? 'snapshots',
+);
 
 export function snapshotDir(epoch) {
   return resolve(SNAPSHOTS_DIR, `epoch-${epoch}`);

@@ -823,6 +823,21 @@ summary:focus-visible {
   color: var(--warn);
 }
 
+/*
+ * "These figures are from 14:03 UTC and are not updating."
+ *
+ * The page re-reads every minute and leaves the last good numbers on screen
+ * when a re-read fails, so this line is what stops that from being a silent
+ * lie. Same warning colour as `.unavailable`, because it is the same class of
+ * statement — the number beside it is not what the chain says right now.
+ */
+.live-status {
+  color: var(--warn);
+  font-size: 0.875rem;
+  font-style: italic;
+  margin: 0.5rem 0 0;
+}
+
 /* ── card charts ──────────────────────────────────────────────────────── */
 
 .graph-grid {

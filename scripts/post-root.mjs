@@ -54,6 +54,19 @@ function parseArgs(argv) {
   return args;
 }
 
+/**
+ * The challenge window in the unit a human would use for it.
+ *
+ * Not always hours: `challenge_seconds` is an `initialize` argument, and a
+ * rehearsal running a 10-second window would otherwise be told claims open in
+ * `0.002777777777777778h`.
+ */
+function afterThis(seconds) {
+  if (seconds >= 3600) return `${(seconds / 3600).toFixed(seconds % 3600 === 0 ? 0 : 2)}h`;
+  if (seconds >= 60) return `${(seconds / 60).toFixed(seconds % 60 === 0 ? 0 : 1)}m`;
+  return `${seconds}s`;
+}
+
 function loadKeypair(path) {
   const bytes = JSON.parse(readFileSync(resolve(path), 'utf8'));
   return Keypair.fromSecretKey(Uint8Array.from(bytes));
@@ -111,9 +124,7 @@ async function main() {
   console.log(`leaf_count   ${leafCount}`);
   console.log(`allocate     ${allocate} of ${pool.available} available`);
   console.log(`snapshot key ${config.snapshotKey.toBase58()}`);
-  console.log(
-    `challenge    ${config.challengeSeconds}s — claims open ${config.challengeSeconds / 3600}h after this lands\n`,
-  );
+  console.log(`challenge    ${config.challengeSeconds}s — claims open ${afterThis(config.challengeSeconds)} after this lands\n`);
 
   const ix = postEpochRootIx({
     snapshotKey: config.snapshotKey,

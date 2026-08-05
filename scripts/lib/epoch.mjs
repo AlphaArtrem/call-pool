@@ -30,9 +30,21 @@ export function windowForDay(day) {
  *
  * A sale inside the epoch is already paid for by the minimum collapsing to the
  * trough, so counting it here as well would make the penalty 8 days, not 7.
+ *
+ * The epoch length is taken from the window itself rather than from
+ * `EPOCH_SECONDS`, because it is an `initialize` argument and lives on chain: a
+ * deployment running 300-second epochs must look back 7 × 300 seconds, not 7
+ * days. A window is exactly one epoch by construction — `windowForDay` and
+ * `windowForEpoch` both build it that way — so its own length is the only
+ * epoch length that can never disagree with the window being judged.
+ *
+ * This was hardcoded to `EPOCH_SECONDS` until 2026-08-05. At any non-default
+ * epoch length it looked back seven *days*, and it reaches the verifier the
+ * crank runs before posting a root — so a wrong lookback would have been
+ * confirmed rather than caught.
  */
 export function lockoutWindow(window, epochs) {
-  return { start: window.start - epochs * EPOCH_SECONDS, end: window.start };
+  return { start: window.start - epochs * (window.end - window.start), end: window.start };
 }
 
 /** Format a unix-seconds timestamp for human-readable output. */

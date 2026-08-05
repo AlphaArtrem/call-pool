@@ -75,9 +75,13 @@ export async function loadPosition({ connection, config, address, window: epochW
   };
 }
 
+// The epoch length comes from the window rather than from a constant: it is an
+// `initialize` argument, so a deployment running short epochs lifts its lockout
+// proportionally sooner. Same reason `lockoutWindow` derives it that way.
 function liftsAt(decrease, epochWindow) {
-  const epochsAgo = Math.floor((epochWindow.start - decrease.blockTime) / 86_400);
-  return epochWindow.start + (LOCKOUT_EPOCHS - epochsAgo) * 86_400;
+  const epochSeconds = epochWindow.end - epochWindow.start;
+  const epochsAgo = Math.floor((epochWindow.start - decrease.blockTime) / epochSeconds);
+  return epochWindow.start + (LOCKOUT_EPOCHS - epochsAgo) * epochSeconds;
 }
 
 /**

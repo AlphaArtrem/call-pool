@@ -35,9 +35,9 @@ import {
   isClaimed,
 } from '../../site/js/program.js';
 import { decodeBase58, encodeBase58 } from '../../site/js/base58.js';
-import { standingFor, formatSol, formatTokens, countdown } from '../../site/js/standing.js';
+import { standingFor, formatSol, formatTokens, countdown, utcTime } from '../../site/js/standing.js';
 import * as clocksModule from '../../site/js/clocks.js';
-import { dailyState, epochAt, hourlyState, windowFor } from '../../site/js/clocks.js';
+import { dailyState, epochAt, freshnessNote, hourlyState, windowFor } from '../../site/js/clocks.js';
 import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
 import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
 
@@ -354,6 +354,34 @@ test('an hourly refresh more than an hour late is reported as stalled, not as fr
   assert.equal(stalled.state, 'stalled');
   assert.equal(stalled.stale, true);
   assert.match(stalled.label, /behind schedule/);
+});
+
+// The page re-reads chain data every minute and keeps the last figures it
+// actually read when a re-read fails. That is the right trade — a blank helps
+// nobody — but it means a stopped page looks exactly like a working one unless
+// it says otherwise, which is the §7.4 failure this pins down.
+
+test('a successful refresh says nothing at all', () => {
+  const note = freshnessNote({ readAt: NOW, failedAt: null });
+  assert.equal(note.stale, false);
+  assert.equal(note.label, null, 'nothing to say while the figures are live');
+});
+
+test('a failed refresh names the time the figures on screen were read', () => {
+  const note = freshnessNote({ readAt: NOW - 300, failedAt: NOW });
+  assert.equal(note.stale, true);
+  assert.match(note.label, /not updating/);
+  assert.ok(
+    note.label.includes(utcTime(NOW - 300)),
+    `expected the label to name ${utcTime(NOW - 300)}, got: ${note.label}`,
+  );
+});
+
+test('failing before anything was ever read does not claim a reading time', () => {
+  const note = freshnessNote({ readAt: null, failedAt: NOW });
+  assert.equal(note.stale, true);
+  assert.match(note.label, /nothing above has been read yet/);
+  assert.ok(!/\d\d:\d\d/.test(note.label), 'no timestamp, because there is no reading to date');
 });
 
 test('the daily clock walks running → settling → challenge → payable', () => {

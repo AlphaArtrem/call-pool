@@ -63,6 +63,35 @@ test('epoch windows are UTC calendar days', () => {
   assert.throws(() => windowForDay('4 Aug 2026'), /YYYY-MM-DD/);
 });
 
+// The epoch length is an `initialize` argument, so it is not always 86,400.
+// `lockoutWindow` hardcoded the constant until 2026-08-05, which made the
+// lookback seven *days* on any deployment running short epochs — including the
+// one inside the verifier the crank runs before posting a root.
+test('the lockout scales with the epoch length, not with the calendar', () => {
+  const short = { start: 1_785_801_600, end: 1_785_801_600 + 300 };
+  const lock = lockoutWindow(short, LOCKOUT_EPOCHS);
+
+  assert.equal(lock.end, short.start);
+  assert.equal(lock.start, short.start - LOCKOUT_EPOCHS * 300, '7 epochs of 300s, not 7 days');
+
+  // The boundary the whole rule turns on, at a length that is not a day: a sale
+  // one epoch back locks, one epoch further back has expired.
+  const decrease = (secondsBack) => ({
+    signature: `s${secondsBack}`,
+    slot: 1,
+    blockTime: short.start - secondsBack,
+    pre: 500n,
+    post: 400n,
+  });
+  assert.equal(computeLocked([decrease(300)], lock).locked, true, '1 epoch back locks');
+  assert.equal(computeLocked([decrease(7 * 300)], lock).locked, true, '7 epochs back still locks');
+  assert.equal(
+    computeLocked([decrease(7 * 300 + 1)], lock).locked,
+    false,
+    'past 7 epochs it has expired',
+  );
+});
+
 // ── proof 4 ────────────────────────────────────────────────────────────────
 // "A wallet buys, calls, sells half, rebuys; hold must return the trough, not
 // the closing balance or the maximum."
