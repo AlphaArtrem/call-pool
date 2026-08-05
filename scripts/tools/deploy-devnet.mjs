@@ -32,7 +32,6 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
-  Connection,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
@@ -40,6 +39,7 @@ import {
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
+import { connect } from '../lib/rpc.mjs';
 import { createMint, getOrCreateAssociatedTokenAccount, mintTo } from '@solana/spl-token';
 
 import {
@@ -158,7 +158,7 @@ async function fund(connection, payer, to, lamports) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
 
   console.log('\nCALLPOOL — devnet deployment for the dry run\n');
 

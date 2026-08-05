@@ -22,11 +22,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
-  Connection,
   Keypair,
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
+import { connect } from './lib/rpc.mjs';
 
 import { associatedTokenAddress, tokenProgramForMint } from './lib/chain.mjs';
 import { DEFAULT_RPC_URL } from './lib/config.mjs';
@@ -62,7 +62,7 @@ const chunk = (items, size) => {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const epoch = Number(args.epoch);
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
 
   const config = await fetchConfig(connection);
   const mint = config.mint.toBase58();

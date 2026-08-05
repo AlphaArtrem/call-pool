@@ -36,7 +36,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { Connection } from '@solana/web3.js';
+import { connect } from './lib/rpc.mjs';
 
 import { DEFAULT_RPC_URL } from './lib/config.mjs';
 import { iso, windowForDay } from './lib/epoch.mjs';
@@ -99,7 +99,7 @@ function run(script, scriptArgs, { dryRun }) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
   const config = await fetchConfig(connection);
   const { window, epoch, label } = resolveTarget(args, config);
 

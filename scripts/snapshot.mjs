@@ -29,7 +29,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { Connection } from '@solana/web3.js';
+import { connect } from './lib/rpc.mjs';
 
 import { apiKeyFromEnv, collectByWallet, isTruncated, mergeById, recordsInWindow } from './lib/callouts.mjs';
 import { DEFAULT_RPC_URL, LOCKOUT_EPOCHS } from './lib/config.mjs';
@@ -104,7 +104,7 @@ async function resolveCallouts({ store, window, mint, apiKey, holdersAboveFloor 
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
 
   const config = await fetchConfig(connection);
   const mint = args.mint ?? config.mint.toBase58();

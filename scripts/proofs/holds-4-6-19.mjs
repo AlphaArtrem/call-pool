@@ -30,7 +30,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Connection, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { connect } from '../lib/rpc.mjs';
 import {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -97,7 +98,7 @@ async function main() {
   const rpcIndex = argv.indexOf('--rpc');
   const rpc = rpcIndex === -1 ? 'http://127.0.0.1:8899' : argv[rpcIndex + 1];
 
-  const connection = new Connection(rpc, 'confirmed');
+  const connection = connect(rpc);
   const version = await connection.getVersion();
   console.log(`\nCALLPOOL — Phase 06 proofs 4, 6 and 19`);
   console.log(`cluster   ${rpc}  (solana-core ${version['solana-core']})\n`);

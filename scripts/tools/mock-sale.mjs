@@ -15,7 +15,7 @@
 // way round the cycle — eligible → sells → locked out → eligible again — which
 // is what the website's wallet check is for.
 
-import { Connection } from '@solana/web3.js';
+import { connect } from '../lib/rpc.mjs';
 import { getOrCreateAssociatedTokenAccount, mintTo, transfer } from '@solana/spl-token';
 
 import { DEFAULT_RPC_URL, MINT_DECIMALS } from '../lib/config.mjs';
@@ -36,7 +36,7 @@ const raw = (tokens) => BigInt(tokens) * 10n ** BigInt(MINT_DECIMALS);
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
   await assertNotMainnet(connection, 'mock-sale.mjs');
 
   const manifest = readManifest();

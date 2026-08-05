@@ -28,7 +28,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { Connection } from '@solana/web3.js';
+import { connect } from './lib/rpc.mjs';
 
 import * as chain from './lib/chain.mjs';
 import { DEFAULT_RPC_URL, MIN_HOLD_RAW } from './lib/config.mjs';
@@ -59,7 +59,7 @@ export async function verify({ dir, recheckChain: doRecheck, rpc, allowUnposted 
   let connection = null;
   let config = null;
   if (doRecheck) {
-    connection = new Connection(rpc, 'confirmed');
+    connection = connect(rpc);
     config = await fetchConfig(connection);
     minHold = config.minHold;
     results.minHoldSource = 'on-chain config';

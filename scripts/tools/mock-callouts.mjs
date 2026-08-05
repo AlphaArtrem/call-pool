@@ -24,7 +24,7 @@
 
 import { resolve } from 'node:path';
 
-import { Connection } from '@solana/web3.js';
+import { connect } from '../lib/rpc.mjs';
 
 import { mergeById, recordsInWindow } from '../lib/callouts.mjs';
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
@@ -57,7 +57,7 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
   await assertNotMainnet(connection, 'mock-callouts.mjs');
 
   const manifest = readManifest();

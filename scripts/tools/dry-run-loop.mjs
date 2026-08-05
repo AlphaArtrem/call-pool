@@ -24,7 +24,7 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
-import { Connection } from '@solana/web3.js';
+import { connect } from '../lib/rpc.mjs';
 
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
 import { iso } from '../lib/epoch.mjs';
@@ -99,7 +99,7 @@ async function waitUntil(connection, target, what) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
   await assertNotMainnet(connection, 'dry-run-loop.mjs');
 
   const manifest = readManifest();

@@ -29,13 +29,13 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
-  Connection,
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
+import { connect } from '../lib/rpc.mjs';
 import {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -108,7 +108,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const rpcIndex = argv.indexOf('--rpc');
   const rpc = rpcIndex === -1 ? 'http://127.0.0.1:8899' : argv[rpcIndex + 1];
-  const connection = new Connection(rpc, 'confirmed');
+  const connection = connect(rpc);
 
   console.log('\nCALLPOOL — proof 13, the crank end to end');
   console.log(`cluster   ${rpc}`);

@@ -17,7 +17,8 @@
 // accruing vault and a growing pool. It proves nothing about pump.fun, and
 // devnet proofs 1, 3 and 12b are still the only things that will.
 
-import { Connection, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { connect } from '../lib/rpc.mjs';
 
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
 import { poolPda } from '../lib/program.mjs';
@@ -55,7 +56,7 @@ async function move(connection, from, to, lamports) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
   await assertNotMainnet(connection, 'mock-fees.mjs');
 
   const manifest = readManifest();

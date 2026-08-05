@@ -20,7 +20,7 @@
 //
 // Reads SOLANA_RPC_URL from the environment; defaults to devnet.
 
-import { Connection } from '@solana/web3.js';
+import { connect } from './lib/rpc.mjs';
 
 import {
   DEFAULT_RPC_URL,
@@ -193,7 +193,7 @@ function toJson(r) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const connection = new Connection(args.rpc, 'confirmed');
+  const connection = connect(args.rpc);
   const result = await holdsFor(connection, args);
 
   if (args.json) console.log(JSON.stringify(toJson(result), null, 2));
