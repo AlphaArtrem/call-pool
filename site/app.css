@@ -670,6 +670,15 @@ summary:focus-visible {
   flex-wrap: wrap;
 }
 
+/* Both labels stay on one line at every width. "Check your wallet" wrapping to
+ * two lines makes the pair different heights and reads as a broken layout, so
+ * the type shrinks with the viewport instead — the clamp floor is 12px, which
+ * still clears the two halves of a 320px screen. */
+.hero-buttons .button {
+  white-space: nowrap;
+  font-size: clamp(0.75rem, 3.9vw, 0.9375rem);
+}
+
 @media (max-width: 46rem) {
   .hero-actions {
     display: grid;
@@ -680,6 +689,10 @@ summary:focus-visible {
   .hero-buttons {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-buttons .button {
+    padding-inline: 0.75rem;
   }
 }
 
