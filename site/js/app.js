@@ -182,7 +182,8 @@ async function main() {
   // is exactly the page someone lands on when the RPC is down.
   wireTopbar(config);
 
-  el('cluster-label').textContent = config.cluster;
+  // No cluster line in the body: the switch in the top bar already names it,
+  // and saying it twice made the hero read like a status page.
   renderRules();
   resetLiveFields();
   startTicking();

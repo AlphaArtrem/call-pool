@@ -426,10 +426,6 @@ pre code {
   margin: 0.25rem 0 0.75rem;
 }
 
-.cluster-note {
-  color: var(--faint);
-  font-size: 0.8125rem;
-}
 
 .visually-hidden {
   position: absolute;
@@ -480,30 +476,44 @@ pre code {
   margin-bottom: 0.5rem;
 }
 
-/* ── the three steps ──────────────────────────────────────────────────── */
+/* ── cards, and the numbered steps built on them ──────────────────────── */
 
-.steps {
+.cards {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
   margin: 0 0 1.5rem;
   padding: 0;
   list-style: none;
-  counter-reset: none;
 }
 
 @media (min-width: 46rem) {
-  .steps {
+  .cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-.step {
+.card {
   background: var(--raised);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 1.25rem;
   min-width: 0;
+}
+
+.card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.0625rem;
+}
+
+.card p {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.card strong {
+  color: var(--fg);
 }
 
 .step-no {
@@ -520,14 +530,13 @@ pre code {
 }
 
 .step h3 {
-  margin: 0.75rem 0 0.5rem;
-  font-size: 1.0625rem;
+  margin-top: 0.75rem;
 }
 
-.step p {
-  color: var(--muted);
-  font-size: 0.9375rem;
-  margin: 0;
+/* A heading inside a section, under its own group of cards. */
+.subhead {
+  font-size: 1.125rem;
+  margin: 2rem 0 1rem;
 }
 
 /* One sentence that has to survive skim-reading. Used where the page would
@@ -586,43 +595,6 @@ pre code {
   color: var(--fg);
 }
 
-/* ── risks ────────────────────────────────────────────────────────────── */
-
-.risk-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-@media (min-width: 52rem) {
-  .risk-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.risk-card {
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 1.25rem;
-  min-width: 0;
-}
-
-.risk-card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-}
-
-.risk-card p {
-  color: var(--muted);
-  font-size: 0.9375rem;
-  margin: 0;
-}
-
-.risk-card strong {
-  color: var(--fg);
-}
 
 /* ── buttons ──────────────────────────────────────────────────────────── */
 
@@ -679,11 +651,36 @@ summary:focus-visible {
   padding: 3rem 1rem 2.5rem;
 }
 
+/* Countdown first, then the two buttons, on one row from tablet up. Below
+ * that the countdown takes the full width and the buttons split it 50/50
+ * underneath — two half-width buttons are both reachable with one thumb, and a
+ * countdown squeezed next to them wraps into two lines and jitters as it
+ * ticks. */
 .hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1.75rem 0 0;
+}
+
+.hero-buttons {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
-  margin: 1.75rem 0 1.5rem;
+}
+
+@media (max-width: 46rem) {
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .hero-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* The live countdown. It ticks once a second, so it is set in the monospace
@@ -694,12 +691,17 @@ summary:focus-visible {
   align-items: baseline;
   gap: 0.75rem;
   flex-wrap: wrap;
-  padding: 0.875rem 1.125rem;
+  padding: 0.75rem 1.125rem;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--raised);
-  width: fit-content;
   max-width: 100%;
+}
+
+@media (max-width: 46rem) {
+  .countdown-strip {
+    justify-content: space-between;
+  }
 }
 
 .countdown-label {
@@ -1185,6 +1187,16 @@ form label {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+/* On a phone the button drops below the field and matches its width. A narrow
+ * "Check" tucked beside a full-width paste target is the smallest tap target
+ * on the page, in the one place everybody has to tap. */
+@media (max-width: 34rem) {
+  .input-row input[type="text"],
+  .input-row button[type="submit"] {
+    flex: 1 1 100%;
+  }
 }
 
 input[type="text"] {

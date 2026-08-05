@@ -38,13 +38,13 @@ So the host is pointed at the repository root, with `/` rewritten to
 reason, and `/snapshots/` — the audit trail linked from the epoch table — is
 served from the same root.
 
-This is also why `scripts/` being public is a feature: section 7 of the page
-tells people to run those exact files.
+This is also why `scripts/` being public is a feature: the verification tile
+under "Every day, on the record" tells people to run those exact files.
 
 ## Layout
 
 ```
-index.html                the whole page — all eight sections
+index.html                the whole page — seven sections
 app.css                   pump.fun's palette, light/dark, one accent
 config.local.example.js   copy to config.local.js (gitignored)
 
@@ -79,20 +79,26 @@ answers its question in plain words before any machinery appears:
 
 | | |
 |---|---|
-| **How it works** | three steps, the minimum, and the 7-day lockout |
-| **Check your wallet** | the calculator, high up, because it is what people came for |
-| **The pool right now** | the live figures and the three card charts |
+| **Check your wallet** | the calculator, first, because it is what people came for |
 | **When you get paid** | the two clocks, and why they are not the same thing |
-| **Every day, on the record** | the audit trail |
+| **The pool right now** | the live figures and the three card charts |
+| **How it works** | three steps, the minimum, the lockout, what counts as selling |
 | **Where the fees go** | 90/10 |
+| **Every day, on the record** | the audit trail |
 | **What this is not** | the risks |
 
+The order is the owner's, set 2026-08-05. It puts the two things a visitor
+arrived for — *where do I stand* and *when do I get paid* — above the
+explanation of the mechanic, on the reasoning that someone who wants the
+mechanic will scroll and someone who wants their answer will not.
+
 The technical layer sits inside `<details class="tech">` tiles — the exact
-rule and the attack table, what counts as selling, the addresses, the four
-verification commands, the founder's-fee argument. **Everything that was on
-the page before is still on the page.** A tile is a fold, not a deletion, and
-nothing in "What this is not" is behind one: a risk a reader has to open is a
-risk a reader will not read.
+rule and the attack table, the addresses, the four verification commands, the
+founder's-fee argument, and each of the four risk statements. **Everything is
+a fold, never a deletion.** One exception in each direction: the memecoin
+warning at the top of "What this is not" is never collapsed, and "what counts
+as selling" is not a tile at all — it is three cards in "How it works",
+because it is the rule people lose money to.
 
 The headline countdown ticks once a second, and `countdown()` shows seconds at
 every scale for that reason. It is driven from the on-chain window, so it
@@ -138,8 +144,14 @@ quietly is the failure mode.
 3. **No prices, no dollar figures, no yield, no APY** (L4, L9). The floor is a
    token count. A test asserts no `standing.js` state can emit a `$`.
 4. **"Attested", never "trustless"**, about the caller set.
-5. **Phase 05 §5.5's exact stolen-key wording**, not the old "worst case is one
-   week" sentence, which described a one-shot bound for a repeatable capability.
+5. **Nothing about our key architecture is on the page.** Phase 05 §5.5's
+   stolen-key paragraph shipped until 2026-08-05 and the owner removed it:
+   naming the custody model tells an attacker what to attack, and the exact
+   wording named it. The rule it replaces is narrower and still binding —
+   *when a limitation is described, describe it precisely rather than
+   flatteringly*; the old paragraph existed because an earlier "worst case is
+   one week" sentence described a one-shot bound for a repeatable capability.
+   The other three limitations are still on the page in full.
 6. **Decision 9's sentence is on the page**: if pump.fun removes callouts,
    everything earned stays claimable.
 7. **No wallet connection, for anything.** Every number resolves from a pasted
