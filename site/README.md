@@ -290,10 +290,24 @@ the 90/10 split, the risks — renders in full and is final.
   batches / id-less notifications are refused, and every call the real vendored
   web3.js makes passes the allowlist.
 
-  **Still to do, owner's call: restrict the mainnet key in the provider's
-  dashboard — by IP, not by domain**, at the same time as publishing the site.
-  Today that endpoint answers `access-control-allow-origin: *`, so no
-  restriction is in place at all.
+  **Done 2026-08-05: the mainnet key is restricted by IP** to the egress
+  addresses of the host running `serve-site.mjs`, and verified the only way that
+  means anything — the same `getBalance`, with the same key, from two places:
+
+  | From | Result |
+  |---|---|
+  | A laptop, straight to the provider | refused, on the grounds of the source address |
+  | Through `https://callpool.fun/rpc` | **200**, with a live slot |
+
+  (The provider's wording is not quoted here for the same reason
+  `rpc-proxy.mjs` never passes its error body to a caller: it can name the
+  endpoint, and the endpoint is the key.)
+
+  **Both** of the host's egress addresses are on the list, IPv4 and IPv6. A
+  dual-stack box picks either without announcing it, and Node's `fetch` will use
+  IPv6 whenever the provider's hostname has an AAAA record — so authorising only
+  the v4 leaves a site that works until the day it doesn't. Do not tidy the v6
+  entry away on the grounds that nothing seems to use it.
 
   **Do not set a domain restriction on this key.** A provider's "allowed
   domains" is an allowlist on the `Referer` (or `Origin`) header of the incoming
@@ -307,17 +321,12 @@ the 90/10 split, the risks — renders in full and is final.
   before the proxy and is not the architecture now.
 
   **The restriction that fits a server-held key is an IP allowlist**, set to the
-  egress address of the host running `serve-site.mjs` — it needs no header, and
+  egress addresses of the host running `serve-site.mjs` — it needs no header, and
   someone holding a leaked key cannot source traffic from your host. Providers
-  name it variously ("Allowlist IPs", "allowed IPs", endpoint security); check
-  yours offers it on the plan in use, because that is a hosting constraint and
-  therefore an input to **O3**. A host with no stable egress address — most
-  serverless platforms — cannot use one, and then the proxy's method allowlist
-  and token bucket are the whole of the defence rather than a second layer.
-
-  Verify after setting it, from an address that is *not* the host: the provider
-  URL should be refused. A restriction nobody tested is a restriction nobody
-  has.
+  name it variously ("Allowlist IPs", "allowed IPs", endpoint security). A host
+  with no stable egress address — most serverless platforms — cannot use one, and
+  then the proxy's method allowlist and token bucket are the whole of the defence
+  rather than a second layer.
 
   None of this applies to the crank. `snapshot.mjs`, `post-root.mjs`,
   `airdrop.mjs` and `verify-epoch.mjs` read `SOLANA_RPC_URL` from the
