@@ -38,6 +38,19 @@ So the host is pointed at the repository root, with `/` rewritten to
 reason, and `/snapshots/` — the audit trail linked from the epoch table — is
 served from the same root.
 
+The domain is **callpool.fun** (registered 2026-08-05), so on the live host:
+
+| URL | Serves |
+|---|---|
+| `https://callpool.fun/` | `site/index.html` |
+| `https://callpool.fun/site/app.css`, `/site/js/…`, `/scripts/lib/…` | the page and the modules it imports |
+| `https://callpool.fun/snapshots/epoch-N/` | one settled day's working, linked from the epoch table |
+
+Nothing in the config names the domain — `snapshotsBase` is the relative
+`/snapshots`, so the same files work on localhost and in production. The one
+place the domain does matter is the RPC key, which has to be locked to it or
+proxied through it; see "Before launch, and on launch day".
+
 This is also why `scripts/` being public is a feature: the verification tile
 under "Every day, on the record" tells people to run those exact files.
 
@@ -235,13 +248,14 @@ the 90/10 split, the risks — renders in full and is final.
 
   One of these has to be true before the URL goes in:
 
-  1. **A proxy you control** — the page calls a same-origin path such as
-     `/rpc`, and the key lives server-side where a browser cannot reach it.
-     This is the option that does not depend on the provider offering anything.
-  2. **A key restricted to your domain** in the provider's dashboard, and
-     scoped read-only. The key is still visible; it just stops being usable by
-     anyone else. Verify the restriction by calling it from another origin
-     *before* trusting it.
+  1. **A proxy you control** — the page calls `https://callpool.fun/rpc` and the
+     key lives server-side where a browser cannot reach it. `rpc: '/rpc'` in the
+     config, same-origin, no CORS involved. This is the option that does not
+     depend on the provider offering anything.
+  2. **A key restricted to `callpool.fun`** in the provider's dashboard, scoped
+     read-only. The key is still visible; it just stops being usable by anyone
+     else. Verify the restriction by calling it from another origin *before*
+     trusting it — today that call returns `*`, so the restriction is not on.
 
   Use a **separate key per cluster** either way. One key currently serves both
   devnet and mainnet, so exposing the page's key would burn the rehearsal's too.
@@ -254,9 +268,10 @@ the 90/10 split, the risks — renders in full and is final.
   ```bash
   export SOLANA_RPC_URL='https://<provider>/<key>'
   ```
-- **`links.x` and `links.github`.** `x` currently points at the owner's personal
-  account; `github` is unset and renders as a disabled chip. Both are the first
-  things anyone clicks.
+- ~~**`links.x` and `links.github`.**~~ Both set 2026-08-05: `github` to the
+  repository, `x` to the announcement post. They are the first things anyone
+  clicks, so re-check them the day you publish — an announcement post can be
+  deleted, and the top bar has no way to know.
 
 ### On launch day, in this order
 

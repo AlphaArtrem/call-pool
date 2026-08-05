@@ -98,7 +98,7 @@ function wireCluster(config) {
  */
 function wireLinks(config) {
   const targets = [
-    ['link-x', config.links.x, 'The announcement account is not published yet.'],
+    ['link-x', config.links.x, 'The announcement post is not published yet.'],
     ['link-github', config.links.github, 'The source repository is not published yet.'],
   ];
 

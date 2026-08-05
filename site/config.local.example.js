@@ -29,7 +29,7 @@ window.CALLPOOL_SITE_CONFIG = {
   // header of a page whose whole claim is "check everything" costs more than
   // an empty slot.
   links: {
-    x: '',
+    x: 'https://x.com/AlphaArtrem/status/2084662737830056073',
     github: 'https://github.com/AlphaArtrem/call-pool',
   },
 
