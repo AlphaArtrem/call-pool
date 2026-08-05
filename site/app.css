@@ -649,23 +649,37 @@ summary:focus-visible {
   padding: 3rem 1rem 2.5rem;
 }
 
-/* Countdown first, then the two buttons, on one row from tablet up. Below
- * that the countdown takes the full width and the buttons split it 50/50
- * underneath — two half-width buttons are both reachable with one thumb, and a
- * countdown squeezed next to them wraps into two lines and jitters as it
- * ticks. */
+/* The countdown sits ABOVE the two buttons at every width, and the block is
+ * exactly as wide as the buttons are — one tidy stack rather than a row that
+ * rearranges itself at 46rem.
+ *
+ * The width is the button pair's, and only the button pair's. `fit-content`
+ * sizes the grid to its widest child, and the countdown must not be allowed to
+ * be that child: its widest state — "Right now / working out today's payouts…",
+ * which shows for a few minutes after every boundary — dragged the buttons 136px
+ * wider once a day. So the strip is given `width: 0`, which is what it
+ * contributes to the grid's intrinsic size, and `min-width: 100%`, which then
+ * stretches it back to whatever the buttons settled on. Long text wraps inside
+ * it rather than pushing it.
+ *
+ * `max-width: 100%` is what makes it degrade to full width on a phone, where the
+ * buttons already span the screen. */
 .hero-actions {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
   gap: 0.75rem;
-  flex-wrap: wrap;
   margin: 1.75rem 0 0;
+  width: fit-content;
+  max-width: 100%;
 }
 
+/* 50/50, always. Two equal halves are both reachable with one thumb, and equal
+ * widths mean neither label's length decides the layout. */
 .hero-buttons {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
-  flex-wrap: wrap;
 }
 
 /* Both labels stay on one line at every width. "Check your wallet" wrapping to
@@ -678,15 +692,12 @@ summary:focus-visible {
 }
 
 @media (max-width: 46rem) {
+  /* On a phone the block spans the column instead of sizing to the buttons.
+   * The buttons are already close to full width there, so `fit-content` leaves
+   * a ragged 30px of dead space on the right that reads as a bug rather than as
+   * a margin. */
   .hero-actions {
-    display: grid;
-    grid-template-columns: 1fr;
-    align-items: stretch;
-  }
-
-  .hero-buttons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    width: auto;
   }
 
   .hero-buttons .button {
@@ -706,13 +717,15 @@ summary:focus-visible {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--raised);
-  max-width: 100%;
-}
-
-@media (max-width: 46rem) {
-  .countdown-strip {
-    justify-content: space-between;
-  }
+  /* See .hero-actions: `width: 0` is the strip's contribution to the grid's
+   * intrinsic width — none — and `min-width: 100%` stretches it to the track the
+   * buttons sized. Without the pair, a long countdown state widens the buttons. */
+  width: 0;
+  min-width: 100%;
+  /* Label left, figure right, at every width — the strip is as wide as the
+   * buttons under it, so letting the two sit together on the left would leave a
+   * gap that reads as a rendering fault. */
+  justify-content: space-between;
 }
 
 .countdown-label {
