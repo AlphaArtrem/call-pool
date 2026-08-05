@@ -41,7 +41,20 @@ Environment=PORT=8099
 # Scoped to this service on purpose. Disabling IPv6 host-wide would reach apt,
 # DNS and anything binding ::1, and the provider's network config may put it
 # back at reboot; the problem lives in one process, so the fix does too.
-Environment=NODE_OPTIONS=--dns-result-order=ipv4first --no-network-family-autoselection
+#
+# ⚠️ The quotes are required. `Environment=` splits on whitespace, so writing
+# this unquoted sets NODE_OPTIONS to the first flag alone and silently discards
+# the rest — no error, and `systemctl show` looks plausible. Check with:
+#
+#   tr '\0' '\n' < /proc/$(systemctl show -p MainPID --value callpool-site)/environ
+#
+# Both flags earn their place. `--dns-result-order=ipv4first` only reorders
+# resolution; Happy Eyeballs still races both families and merely gives IPv4 a
+# head start, so a slow v4 connect hands the connection to IPv6 and the
+# allowlist refuses it. That failure is intermittent, which is worse to chase
+# than a constant one. `--no-network-family-autoselection` makes the choice
+# deterministic instead of usually-right.
+Environment="NODE_OPTIONS=--dns-result-order=ipv4first --no-network-family-autoselection"
 
 # Without this the rate limiter sees every request as coming from Caddy and
 # the whole internet shares one token bucket — 60 requests for everyone at
