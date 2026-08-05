@@ -158,6 +158,128 @@ fetched. A webfont link is a third-party request on every page load, on a page
 whose whole claim is that nothing it renders passed through anyone else's
 server.
 
+### The visual layer (added 2026-08-05, owner-requested)
+
+A second visual pass added imagery on top of the palette. All of it is inline
+SVG in the page's own CSS variables — nothing is fetched, nothing is raster,
+and everything re-tints with the theme:
+
+- **The hero illustration** is the favicon's mark blown up (same
+  stroke-to-radius proportion, so the tab icon and the hero read as one shape),
+  with coins on dashed orbits around it. It is `aria-hidden`, it plots no data,
+  and it must stay that way: the moment it encodes a number, rules 1, 2 and 9
+  apply to it and it stops being decoration.
+- **The hero is three siblings — copy, art, actions — in that source order**,
+  and the grid rearranges them at each width. Above 46rem it is two equal
+  halves: **the mark spans both rows on the left**, the copy and the buttons
+  stack down the right, with `align-self: end` / `align-self: start` keeping
+  the two right-hand items together when the taller column stretches the rows.
+  Below 46rem **the mark leads** — `order: -1` — and the words and the buttons
+  follow it as one block, with a wider gap under the mark than between the two
+  of them so the pair reads as belonging together. **Nothing overlaps anything
+  at any width** (owner, 2026-08-05, after trying it both ways: the buttons
+  over the mark's bottom, then the words over its top).
+- **`order`, not markup order.** The mark is lifted to the top of the phone
+  layout with `order: -1` rather than by moving it in the HTML, because the
+  markup order is the one a screen reader follows and the words should still
+  come first there. It costs nothing: the art is `aria-hidden` and is not in
+  the accessibility tree at all.
+- **One breakpoint for the whole hero, and it is 46rem because that is where
+  `.hero-actions` stops spanning the column.** Split them and there is a band
+  where the mark is centred and the buttons are not.
+- **The art's phone-only `order` and spacing are cancelled for the two-column
+  layout in a media query that sits AFTER the base rule**, not in the earlier
+  hero block. Same specificity, so only source order wins; cancelling it
+  earlier silently does nothing.
+- **`.hero-art`'s overlap margin is cancelled for the two-column layout in a
+  media query that sits AFTER the base rule**, not in the earlier hero block.
+  Same specificity, so only source order wins; cancelling it earlier silently
+  does nothing and the mark hangs 24px low on a laptop.
+- **Section and card icons** are line icons in chips, `aria-hidden`, with the
+  heading beside each one carrying the meaning. The "what counts as selling"
+  cards use the warning tint; everything else uses the accent.
+- **Every section head is a 2×2 grid** (owner, 2026-08-05):
+
+  |  |  |
+  |---|---|
+  | *icon* | **Where the fees go** |
+  | THE SPLIT | Every trade on pump.fun pays a creator fee… |
+
+  The label sharing a row with the sentence is what closed the dead space the
+  old layout left — the heading stack was taller than the sentence beside it,
+  so every section ended with a column of nothing. `.section-title` wraps the
+  icon and the heading so they hold one line on a phone, and is dissolved with
+  **`display: contents`** above 46rem so its two children become items of the
+  section-head grid; that is what puts the icon in the label column and the
+  heading on the same left edge as the sentence. The wrapper carries no role,
+  label or semantics, so dissolving it removes nothing from the accessibility
+  tree. The label column is a **fixed 10rem, not `max-content`** — with
+  `max-content` each section's rail is its own longest label and the page loses
+  its left edge; the longest label today ("your wallet") measures ~8.7rem.
+- **The section label renders at 1.0625rem, not the 11px `.eyebrow` size**,
+  because `.section-head p` beats `.eyebrow` on specificity. That is now
+  deliberate and commented: a section label is a heading-scale thing. The
+  hero's eyebrow, which is not inside a section head, keeps the 11px.
+- **The glows** behind the hero are the accent and info colours at low opacity.
+  The overhang is eaten by `overflow-x: clip` on `body` — clip, not hidden,
+  because clip cannot create a scroll container.
+- **The hero mark moves**, and the `prefers-reduced-motion` block disables all
+  of it along with every transition. Three things, all sped up on the owner's
+  ask (2026-08-05): the coins bob (2.2s), the sparks twinkle on opacity (1.5s),
+  and the orbits **march their dash pattern** (1.6s and 1.1s, one reversed).
+  The orbits travel rather than rotate for a reason — the outer ellipse has
+  210 units of radius about a centre 210 units down a 400-unit viewBox, so a
+  quarter turn puts it outside the viewport and an SVG clips to its viewport by
+  default. The dash offset is a whole number of the 12-unit dash period so the
+  loop has no seam.
+- **Nothing in the artwork may animate `transform` while it is positioned by a
+  `transform` attribute.** A CSS transform *replaces* the attribute rather than
+  composing with it. The three sparks are placed with `transform="translate(…)"`
+  and were briefly given the coins' `translateY` float — which collapsed all
+  three onto the origin, where they rendered as one stray green mark in the
+  corner of the mark. They animate opacity only now. If a spark ever needs to
+  move, wrap it in a `<g>` that carries the placement and animate the inner
+  path.
+- **`--on-pumpfun` is the one colour not read out of pump.fun's stylesheets.**
+  It is text *on* their decorative orange, which they never do; the values are
+  the darkest and lightest stops (orange-950 / orange-50) of the same Tailwind
+  ramp their orange comes from, noted inline in `app.css`.
+
+### The contract strip and the trade button (added 2026-08-05)
+
+The mint sits in a strip directly under the top bar with its copy button and an
+explorer link, and the hero carries the **Trade on pump.fun** button. The page
+already warns that address confusion is how people lose money during a launch;
+the strip is that warning acted on — the address people copy comes from the
+same resolved config, and later the same on-chain Config, as every other number
+here.
+
+- Both surfaces are rendered by **one function** (`renderTrade` in
+  `js/app.js`), at the same two moments `mint-address` in the fold is
+  rendered: from config on load, from the chain's own mint once it is read.
+  They can never disagree with each other or with the fold.
+- **Before launch the button is a disabled chip** and the address slot says
+  `not launched yet` with no copy button, because there is nothing to copy —
+  §7.4 applied to a link, exactly like the top-bar social links. The strip
+  does not appear at launch from nowhere; the slot it fills is always visible.
+- **The mint-mismatch state disables trading.** If `config.local.js` and the
+  on-chain Config disagree, the page stops offering the trade link rather than
+  inviting a buy of an address it just said it cannot vouch for.
+- The strip is **not sticky**: with the bar and the nav it would be three
+  stacked sticky rows on a phone.
+- The button wears pump.fun's decorative orange — the colour that already
+  means "pump.fun" in the source badges — with `--on-pumpfun` for the label.
+
+**The strip held a second trade button for a few hours and the owner removed
+it** (2026-08-05). Two controls on one narrow row is what pushed the button
+onto a second line on a phone, and the strip has one job: carry the address and
+let it be copied. So `.ca-row` is `flex-wrap: nowrap` and **the address is the
+only thing that shrinks** — `min-width: 0` down the chain lets it ellipsise, so
+a desktop shows all 44 characters, a phone shows the leading run people check
+against the pinned post, and the label and the copy button hold their line at
+every width down to 320px. Do not put a second control back in this row; the
+hero is where an action belongs.
+
 ## The rules this page is under
 
 These are not style preferences. Each one is a ruling, and relaxing one

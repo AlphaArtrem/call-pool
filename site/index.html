@@ -68,7 +68,15 @@
     <!-- ── the top bar ─────────────────────────────────────────────────── -->
     <div class="topbar">
       <div class="wrap brandline">
-        <a class="logo" href="#top">CALL<b>POOL</b></a>
+        <a class="logo" href="#top">
+          <!-- The favicon's mark, inline, so the wordmark and the tab carry the
+               same shape. Colour comes from CSS (`currentColor`), so it follows
+               the theme instead of the favicon's own media query. -->
+          <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <path d="M21.74 7.81 A10 10 0 1 0 21.74 24.19" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/>
+            <circle cx="25.6" cy="16" r="3.4" fill="currentColor"/>
+          </svg>
+          CALL<b>POOL</b></a>
 
         <!-- Same order as the page. A nav that lists sections in a different
              order than they appear is a nav that makes people scroll twice. -->
@@ -120,13 +128,83 @@
       </div>
     </div>
 
+    <!--
+      The contract address, where a buyer looks for it. The page itself warns
+      that address confusion is how people lose money during a launch, so the
+      address is not only in a fold — it is the first line under the bar, with
+      its copy button.
+
+      One job, and only one: carry the address and let it be copied. The trade
+      button that briefly sat here was moved out on 2026-08-05 — two controls
+      competing on one narrow row is what forced the wrap on a phone, and the
+      hero already asks for the trade.
+
+      The slot is filled by js/app.js from config and then from the program's
+      own on-chain Config — never typed here. Before launch it says "not
+      launched yet" and there is no copy button, because there is nothing to
+      copy.
+    -->
+    <div class="ca-strip">
+      <div class="wrap ca-row">
+        <span class="ca-label">contract</span>
+        <span id="ca-address" class="ca-address"></span>
+      </div>
+    </div>
+
     <header class="wrap hero" id="top">
-      <p class="eyebrow">solana · pump.fun</p>
-      <h1>Hold it, call it out, get paid.</h1>
-      <p class="lede">
-        90% of this coin’s creator fees are shared out every day among the people who called it
-        out and held their position. <strong>Nothing to claim, and no wallet to connect.</strong>
-      </p>
+      <!--
+        Three siblings, not two, and the source order is the phone's order:
+        words, then the mark, then the buttons sitting over it. On a laptop the
+        grid puts the first and third in the left half and spans the mark down
+        the right, so the same markup reads correctly both ways round.
+      -->
+      <div class="hero-copy">
+        <p class="eyebrow">solana · pump.fun</p>
+        <h1>Hold it, call it out, get paid.</h1>
+        <p class="lede">
+          90% of this coin’s creator fees are shared out every day among the people who called it
+          out and held their position. <strong>Nothing to claim, and no wallet to connect.</strong>
+        </p>
+      </div>
+
+      <!--
+        Decorative, and only decorative. The favicon's mark blown up — the open
+        C as the pool, the drop as one call landing in it — with coins on
+        orbits around it. It is line art in the page's own CSS variables so it
+        follows the theme, it is aria-hidden because it says nothing the
+        headline does not, and it plots no data: rules 1 and 9 apply to charts,
+        and this is deliberately not one.
+      -->
+      <div class="hero-art" aria-hidden="true">
+        <svg viewBox="0 0 460 400" focusable="false">
+          <ellipse class="art-orbit" cx="235" cy="210" rx="210" ry="80" transform="rotate(-12 235 210)"/>
+          <ellipse class="art-orbit art-orbit-2" cx="235" cy="205" rx="158" ry="58" transform="rotate(-12 235 205)"/>
+
+          <path class="art-ring" d="M304.5 122.2 A95 95 0 1 0 304.5 277.8"/>
+          <circle class="art-drop" cx="341" cy="200" r="32"/>
+
+          <g class="art-coin">
+            <circle cx="62" cy="146" r="18"/>
+            <circle cx="62" cy="146" r="11"/>
+          </g>
+          <g class="art-coin">
+            <circle cx="415" cy="118" r="13"/>
+            <circle cx="415" cy="118" r="7"/>
+          </g>
+          <g class="art-coin">
+            <circle cx="392" cy="304" r="15"/>
+            <circle cx="392" cy="304" r="8.5"/>
+          </g>
+
+          <circle class="art-dot" cx="150" cy="330" r="4"/>
+          <circle class="art-dot" cx="30" cy="230" r="3"/>
+          <circle class="art-dot" cx="245" cy="52" r="3.5"/>
+
+          <path class="art-spark" transform="translate(120 62)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
+          <path class="art-spark" transform="translate(336 40) scale(0.7)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
+          <path class="art-spark" transform="translate(56 306) scale(0.85)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
+        </svg>
+      </div>
 
       <!--
         The countdown leads, because "when does this pay" is the question the
@@ -134,6 +212,9 @@
         window by app.js — never from the visitor's calendar, and never a
         number typed into the markup. Its label changes with the state of the
         day, so it cannot say "ends in" while the day is being settled.
+
+        The trade button's href is set by app.js from the same mint the rest
+        of the page uses, and is a disabled chip until the coin exists.
       -->
       <div class="hero-actions">
         <div class="countdown-strip">
@@ -141,6 +222,12 @@
           <span id="hero-countdown" class="countdown-value"></span>
         </div>
         <div class="hero-buttons">
+          <a class="button trade trade-hero" id="trade-hero">
+            <svg class="pill-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="3.5" y="8.75" width="17" height="7.5" rx="3.75" transform="rotate(-40 12 12.5)" fill="none" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M9.1 10.4l5.8 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            Trade on pump.fun</a>
           <a class="button primary" href="#position">Check your wallet</a>
           <a class="button" href="#how">How it works</a>
         </div>
@@ -151,11 +238,20 @@
       <!-- ── 1. the basics ────────────────────────────────────────────── -->
       <section id="how" class="wrap section" aria-labelledby="how-heading">
         <div class="section-head">
-          <div>
-            <p class="eyebrow">the basics</p>
+          <div class="section-title">
+            <!-- Section icons are decorative — every one is aria-hidden and the
+                 heading beside it carries the meaning. Stroke is currentColor,
+                 so they follow the theme like every other line on the page. -->
+            <span class="section-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5Z"/>
+              </svg>
+            </span>
             <h2 id="how-heading">How it works</h2>
           </div>
-          <p>
+          <p class="eyebrow">the basics</p>
+          <p class="section-lede">
             Three things. Do all three on a given day and you are in that day’s split; miss one
             and you are not.
           </p>
@@ -163,7 +259,16 @@
 
         <ol class="cards steps">
           <li class="card step">
-            <span class="step-no">1</span>
+            <div class="step-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 10v4h4l6 4.5v-13L8 10H4Z"/>
+                  <path d="M17.5 9.5a4 4 0 0 1 0 5"/>
+                  <path d="M19.8 7.2a7.2 7.2 0 0 1 0 9.6"/>
+                </svg>
+              </span>
+              <span class="step-no">1</span>
+            </div>
             <h3>Call it out</h3>
             <p>
               Post a callout for this coin on pump.fun. Each day counts on its own — one callout
@@ -171,7 +276,16 @@
             </p>
           </li>
           <li class="card step">
-            <span class="step-no">2</span>
+            <div class="step-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3 5 9l7 12 7-12-7-6Z"/>
+                  <path d="M5 9h14"/>
+                  <path d="M12 3 9.5 9 12 21l2.5-12L12 3Z"/>
+                </svg>
+              </span>
+              <span class="step-no">2</span>
+            </div>
             <h3>Hold <span id="floor-tokens" class="mono"></span></h3>
             <p>
               All day, without dipping below it. What counts is your <em>lowest</em> balance
@@ -179,7 +293,16 @@
             </p>
           </li>
           <li class="card step">
-            <span class="step-no">3</span>
+            <div class="step-top">
+              <span class="card-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <ellipse cx="12" cy="6.5" rx="7" ry="3"/>
+                  <path d="M5 6.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>
+                  <path d="M5 11.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>
+                </svg>
+              </span>
+              <span class="step-no">3</span>
+            </div>
             <h3>Get paid</h3>
             <p>
               Your share is worked out at 00:00&nbsp;UTC and sent to you. You never claim
@@ -196,6 +319,12 @@
         <h3 class="subhead">What counts as selling</h3>
         <div class="cards">
           <div class="card">
+            <span class="card-icon is-warn" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7l7.5 7.5 4-4L21 17"/>
+                <path d="M15 17h6v-6"/>
+              </svg>
+            </span>
             <h3>Any decrease, however small</h3>
             <p>
               Sending tokens to another wallet you own counts. There is no netting, no summing
@@ -204,6 +333,12 @@
             </p>
           </div>
           <div class="card">
+            <span class="card-icon is-warn" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="6.5" width="18" height="12.5" rx="2.5"/>
+                <path d="M15.5 12.75h2.5"/>
+              </svg>
+            </span>
             <h3>Only your main token account counts</h3>
             <p>
               Tokens parked in any other token account earn nothing. The daily settlement and the
@@ -211,6 +346,12 @@
             </p>
           </div>
           <div class="card">
+            <span class="card-icon is-warn" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="8.5"/>
+                <path d="M6.4 6.4 17.6 17.6"/>
+              </svg>
+            </span>
             <h3>Sell out entirely and you cannot be paid</h3>
             <p>
               The payout checks that you still hold the coin. Because rewards go out daily rather
@@ -303,11 +444,18 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
       <!-- ── 2. the split ─────────────────────────────────────────────── -->
       <section id="fees" class="wrap section" aria-labelledby="fees-heading">
         <div class="section-head">
-          <div>
-            <p class="eyebrow">the split</p>
+          <div class="section-title">
+            <span class="section-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v6"/>
+                <path d="M12 9c0 4.5-6.5 4.5-6.5 12"/>
+                <path d="M12 9c0 4.5 6.5 4.5 6.5 12"/>
+              </svg>
+            </span>
             <h2 id="fees-heading">Where the fees go</h2>
           </div>
-          <p>
+          <p class="eyebrow">the split</p>
+          <p class="section-lede">
             Every trade on pump.fun pays a creator fee. Ours splits two ways, and the split was
             fixed before the coin ever traded.
           </p>
@@ -378,11 +526,17 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
       <!-- ── 3. your wallet ───────────────────────────────────────────── -->
       <section id="position" class="wrap section" aria-labelledby="position-heading">
         <div class="section-head">
-          <div>
-            <p class="eyebrow">your wallet</p>
+          <div class="section-title">
+            <span class="section-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="6.5"/>
+                <path d="m16 16 5 5"/>
+              </svg>
+            </span>
             <h2 id="position-heading">Check your wallet</h2>
           </div>
-          <p>
+          <p class="eyebrow">your wallet</p>
+          <p class="section-lede">
             Paste any address to see where it stands today — a public address is all this needs,
             and <strong>you do not connect anything</strong>. It is worked out in your browser and
             never sent to us: only to a Solana node and to pump.fun, straight from your machine.
@@ -414,11 +568,17 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
       <!-- ── 4. timing ────────────────────────────────────────────────── -->
       <section id="payouts" class="wrap section" aria-labelledby="payouts-heading">
         <div class="section-head">
-          <div>
-            <p class="eyebrow">timing</p>
+          <div class="section-title">
+            <span class="section-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="8.5"/>
+                <path d="M12 7.5V12l3 2"/>
+              </svg>
+            </span>
             <h2 id="payouts-heading">When you get paid</h2>
           </div>
-          <p>
+          <p class="eyebrow">timing</p>
+          <p class="section-lede">
             Once a day, at 00:00&nbsp;UTC. There is also an hourly estimate — it is useful, and it
             is <strong>not</strong> your payout.
           </p>
@@ -451,11 +611,16 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
       <!-- ── 5. live data ─────────────────────────────────────────────── -->
       <section id="pool" class="wrap section" aria-labelledby="pool-heading">
         <div class="section-head">
-          <div>
-            <p class="eyebrow">live</p>
+          <div class="section-title">
+            <span class="section-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3.5s6.5 7 6.5 10.8a6.5 6.5 0 1 1-13 0C5.5 10.5 12 3.5 12 3.5Z"/>
+              </svg>
+            </span>
             <h2 id="pool-heading">The pool right now</h2>
           </div>
-          <p>
+          <p class="eyebrow">live</p>
+          <p class="section-lede">
             Read from Solana by your browser, and re-read every minute. Each figure says where it
             came from — hover a badge to see what that means.
           </p>
@@ -554,11 +719,19 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
       <!-- ── 6. the record ────────────────────────────────────────────── -->
       <section id="history" class="wrap section" aria-labelledby="history-heading">
         <div class="section-head">
-          <div>
-            <p class="eyebrow">the record</p>
+          <div class="section-title">
+            <span class="section-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8.5 6h12M8.5 12h12M8.5 18h12"/>
+                <circle cx="4" cy="6" r="0.9" fill="currentColor" stroke="none"/>
+                <circle cx="4" cy="12" r="0.9" fill="currentColor" stroke="none"/>
+                <circle cx="4" cy="18" r="0.9" fill="currentColor" stroke="none"/>
+              </svg>
+            </span>
             <h2 id="history-heading">Every day, on the record</h2>
           </div>
-          <p>
+          <p class="eyebrow">the record</p>
+          <p class="section-lede">
             One row per day, read from Solana. Every row links to the working behind it, so anyone
             can redo the sums and catch us if they do not add up.
           </p>
@@ -641,11 +814,18 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
       <!-- ── 7. risks ─────────────────────────────────────────────────── -->
       <section id="limits" class="wrap section" aria-labelledby="limits-heading">
         <div class="section-head">
-          <div>
-            <p class="eyebrow">risks</p>
+          <div class="section-title">
+            <span class="section-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 4 2.8 19.5h18.4L12 4Z"/>
+                <path d="M12 10v4.5"/>
+                <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none"/>
+              </svg>
+            </span>
             <h2 id="limits-heading">What this is not</h2>
           </div>
-          <p>
+          <p class="eyebrow">risks</p>
+          <p class="section-lede">
             The parts we would rather you read here than discover later. Open any of them.
           </p>
         </div>

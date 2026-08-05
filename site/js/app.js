@@ -225,6 +225,10 @@ async function main() {
   // is exactly the page someone lands on when the RPC is down.
   wireTopbar(config);
 
+  // Same reasoning for the contract strip: it renders a state on every path,
+  // including the unconfigured one, rather than sitting as an empty slot.
+  renderTrade(config, config.configured ? null : 'not set up on this page yet');
+
   // No cluster line in the body: the switch in the top bar already names it,
   // and saying it twice made the hero read like a status page.
   renderRules();
@@ -354,6 +358,41 @@ function pendingNode(text) {
 }
 
 /**
+ * The contract-address strip and the hero's trade button.
+ *
+ * One function for both, because they must never disagree: the address people
+ * copy and the coin the trade button opens have to be the same mint the rest
+ * of the page reads. Rendered from config on load and again from the program's
+ * own on-chain Config once that arrives — the same two moments `mint-address`
+ * in the fold is rendered.
+ *
+ * Before the coin exists there is nothing honest to link, so the address slot
+ * says why and the button is a disabled chip — §7.4 applied to a link, the
+ * same as the top-bar social links.
+ */
+function renderTrade(config, unavailableWhy = null) {
+  const slot = el('ca-address');
+  const button = el('trade-hero');
+  const mint = unavailableWhy == null ? (config?.mint ?? null) : null;
+
+  if (mint == null) {
+    const why = unavailableWhy ?? 'not launched yet';
+    slot.replaceChildren(pendingNode(why));
+    button.setAttribute('aria-disabled', 'true');
+    button.removeAttribute('href');
+    button.title = `There is nothing to trade yet — the coin is ${why}.`;
+    return;
+  }
+
+  slot.replaceChildren(addressNode(mint, { href: explorerUrl(config, 'address', mint) }));
+  button.href = `https://pump.fun/coin/${mint}`;
+  button.rel = 'noopener noreferrer';
+  button.target = '_blank';
+  button.removeAttribute('aria-disabled');
+  button.removeAttribute('title');
+}
+
+/**
  * The on-chain Config, and the floor identity check.
  *
  * Devnet proof 20 asserts the off-chain eligibility filter and the on-chain
@@ -392,6 +431,10 @@ async function loadChainConfig(config) {
       // most convincing wrong number on the page.
       state.chainConfig = null;
       state.unavailable = UNAVAILABLE.notSetUp;
+      // The strip rendered config's mint on load; with the chain disagreeing,
+      // a live "Trade" button would be an invitation to buy an address this
+      // page just said it cannot vouch for.
+      renderTrade(config, 'not checkable — this page is pointing at the wrong coin');
       failure(el('hero-status'), {
         what: 'This page is pointing at the wrong coin.',
         consequence:
@@ -405,6 +448,7 @@ async function loadChainConfig(config) {
     el('mint-address').replaceChildren(
       addressNode(chainConfig.mint, { href: explorerUrl(config, 'address', chainConfig.mint) }),
     );
+    renderTrade(config);
 
     const now = Math.floor(Date.now() / 1000);
     const epoch = epochAt(chainConfig.genesisTs, now, chainConfig.epochSeconds);

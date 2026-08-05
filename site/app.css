@@ -79,6 +79,10 @@
   --danger-bg: #450a0a;
   --info: #60a5fa;
   --pumpfun: #fb923c;
+  /* Text ON the pump.fun orange, for the trade buttons. orange-950 from the
+   * same Tailwind ramp pump.fun's decorative orange comes from — the ramp's
+   * darkest stop, 8.9:1 on #fb923c. */
+  --on-pumpfun: #431407;
 
   --source-chain: #86efac;
   --source-snapshot: #60a5fa;
@@ -123,6 +127,9 @@
     --danger-bg: color-mix(in srgb, #f87171 14%, #ffffff);
     --info: #1e3a8a;
     --pumpfun: #7c2d12;
+    /* orange-50, the light end of the same ramp — the light theme's --pumpfun
+     * is dark enough to carry light text. */
+    --on-pumpfun: #fff7ed;
 
     --source-chain: #15803d;
     --source-snapshot: #1e3a8a;
@@ -155,6 +162,7 @@
   --danger-bg: color-mix(in srgb, #f87171 14%, #ffffff);
   --info: #1e3a8a;
   --pumpfun: #7c2d12;
+  --on-pumpfun: #fff7ed;
 
   --source-chain: #15803d;
   --source-snapshot: #1e3a8a;
@@ -181,6 +189,7 @@ html {
   }
   * {
     transition: none !important;
+    animation: none !important;
   }
 }
 
@@ -191,6 +200,10 @@ body {
   font: 16px/1.6 var(--sans);
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
+  /* The hero's glow blobs deliberately overhang the layout. `clip`, not
+   * `hidden` — clip cannot create a scroll container, so nothing about
+   * scrolling or stickiness changes. */
+  overflow-x: clip;
 }
 
 .wrap {
@@ -219,6 +232,9 @@ body {
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   font-family: var(--mono);
   font-size: 1rem;
   letter-spacing: 0.16em;
@@ -226,6 +242,14 @@ body {
   color: var(--fg);
   text-decoration: none;
   white-space: nowrap;
+}
+
+/* The favicon's mark, inline beside the wordmark. */
+.logo-mark {
+  width: 1.05rem;
+  height: 1.05rem;
+  display: block;
+  color: var(--accent);
 }
 
 .logo b {
@@ -349,10 +373,95 @@ body {
   white-space: nowrap;
 }
 
+/* ── the contract strip ───────────────────────────────────────────────── */
+
+/* The coin's address, first thing under the bar, next to the one place it can
+ * be traded. The page already warns that address confusion is how people lose
+ * money during a launch; this is that warning acted on. Not sticky: three
+ * stacked sticky rows would eat a phone screen. */
+.ca-strip {
+  background: var(--band);
+  border-bottom: 1px solid var(--line);
+}
+
+/* ONE line, at every width — `nowrap`, not the usual `wrap`.
+ *
+ * A row that wraps puts the copy button on a line of its own on a phone, which
+ * reads as a second, unrelated control. Nothing here is allowed to wrap, so
+ * the address is the only flexible part and it is the part that gives way:
+ * `min-width: 0` on the chain below lets it shrink past its content and
+ * ellipsise, which is why the label and the button always survive.
+ *
+ * Longhands for the padding — .wrap owns the inline padding. */
+.ca-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: nowrap;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.ca-label {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  flex: none;
+}
+
+/* The address takes the rest of the row and is the only thing that shrinks. */
+.ca-address {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+
+/* `.address` is a wrapping inline-flex everywhere else on the page — inside
+ * this strip it spans the row and holds its line instead. */
+.ca-address .address {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+}
+
+/* As much of the address as the width allows, and an ellipsis for the rest —
+ * so a desktop shows all 44 characters and a phone shows the leading run
+ * people check against the pinned post. `break-all` is what the rest of the
+ * page wants from a .mono address and is exactly wrong here: it wraps.
+ * The full address is on the button's aria-label, in the element's title, and
+ * in the Addresses fold, and copy always copies the whole thing. */
+.ca-address .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  min-width: 0;
+}
+
+/* The strip's one control, pinned to the right end of the row — where the
+ * trade button used to be, and the reason it no longer has to compete for the
+ * width. `margin-left: auto` only bites when the address is short enough to
+ * leave slack; on a phone it is already hard against the edge. */
+.ca-row .copy {
+  flex: none;
+  margin-left: auto;
+  font-size: 0.6875rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  background: var(--raised);
+}
+
 /* ── type ─────────────────────────────────────────────────────────────── */
 
 h1 {
-  font-size: clamp(2rem, 5.5vw, 3rem);
+  /* Ceiling trimmed from 3rem when the hero went to two half-width columns —
+   * the headline lives in half the page now, not the whole of it. */
+  font-size: clamp(1.875rem, 5vw, 2.75rem);
   line-height: 1.1;
   letter-spacing: -0.02em;
   margin: 0.75rem 0 1rem;
@@ -452,26 +561,84 @@ pre code {
 .section-head {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 0.75rem;
+  gap: 0.5rem;
   margin-bottom: 2rem;
 }
 
-@media (min-width: 52rem) {
+/* The icon and the heading share a line at every width. */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/*
+ * Two rows, two columns:
+ *
+ *   [icon]        Where the fees go
+ *   THE SPLIT     Every trade on pump.fun pays a creator fee…
+ *
+ * The label and the sentence share a row, which is what closes the dead space
+ * the old layout left: the heading stack used to be taller than the sentence
+ * beside it, so every section ended with a column of nothing.
+ *
+ * `display: contents` dissolves `.section-title` so its two children become
+ * items of THIS grid — that is what puts the icon in the label column and the
+ * heading on the same left edge as the sentence under it. The wrapper is a
+ * plain div carrying no role, label or semantics, so dissolving it removes
+ * nothing from the accessibility tree; it exists only to hold the icon and the
+ * heading on one line at narrow widths, where this grid is a single column.
+ *
+ * The label column is a fixed 10rem rather than `max-content` so the headings
+ * and sentences start at the same x in every section — with `max-content` each
+ * section's rail is its own longest word and the page loses its left edge.
+ * The longest label today ("your wallet") measures ~8.7rem.
+ */
+@media (min-width: 46rem) {
   .section-head {
-    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
-    gap: 2.5rem;
+    grid-template-columns: 10rem minmax(0, 1fr);
+    column-gap: 1.25rem;
+    row-gap: 0.75rem;
     align-items: start;
+  }
+
+  .section-title {
+    display: contents;
   }
 }
 
+/* Both the label and the sentence. The label keeps its own mono, uppercase and
+ * letter-spacing from `.eyebrow`; only the size and colour come from here, and
+ * that is deliberate — a section label is a heading-scale thing, not the 11px
+ * the hero's eyebrow is. */
 .section-head p {
   color: var(--muted);
   margin: 0;
   font-size: 1.0625rem;
 }
 
-.section-head .eyebrow {
-  margin-bottom: 0.5rem;
+/* The icon chip beside each section heading. Decorative — every one is
+ * aria-hidden in the markup and the heading carries the meaning.
+ *
+ * `flex: none` matters: as a flex item next to a heading that wraps, it would
+ * otherwise be squeezed out of square on a narrow screen. */
+.section-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  border-radius: 10px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.section-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
 }
 
 /* ── cards, and the numbered steps built on them ──────────────────────── */
@@ -497,6 +664,65 @@ pre code {
   border-radius: 10px;
   padding: 1.25rem;
   min-width: 0;
+}
+
+/* A gentle lift on pointer devices. The global reduced-motion block disables
+ * the transition, and on touch there is no hover to trigger it. */
+.card,
+.graph-card,
+.split,
+.verification-card,
+.clock {
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+@media (hover: hover) {
+  .card:hover,
+  .graph-card:hover,
+  .split:hover,
+  .verification-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow);
+  }
+}
+
+/* The smaller icon chip inside a card. `is-warn` is for the cards describing
+ * the rule people lose money to. */
+.card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 8px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  margin-bottom: 0.875rem;
+}
+
+.card-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  display: block;
+}
+
+.card-icon.is-warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+}
+
+/* Icon left, number right, one row. */
+.step-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.step-top .card-icon {
+  margin-bottom: 0;
 }
 
 .card h3 {
@@ -634,6 +860,38 @@ button[type="submit"]:hover {
   filter: brightness(1.06);
 }
 
+/* The trade button wears pump.fun's orange — the same decorative token the
+ * source badge for their data uses, so the colour already means "pump.fun"
+ * everywhere it appears on this page. */
+.button.trade {
+  background: var(--pumpfun);
+  border-color: var(--pumpfun);
+  color: var(--on-pumpfun);
+}
+
+.button.trade:hover,
+.button.trade:focus-visible {
+  color: var(--on-pumpfun);
+  filter: brightness(1.06);
+}
+
+/* Unset is a state, not a blank — same rule as the top-bar social links. The
+ * chip stays visible so "trading exists, just not yet" is said where the
+ * button will be, rather than the button appearing from nowhere at launch. */
+.button.trade[aria-disabled="true"] {
+  background: var(--raised);
+  border-color: var(--line);
+  color: var(--faint);
+  cursor: not-allowed;
+  filter: none;
+}
+
+.pill-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
 input[type="text"]:focus-visible,
 button:focus-visible,
 select:focus-visible,
@@ -645,8 +903,239 @@ summary:focus-visible {
 
 /* ── hero ─────────────────────────────────────────────────────────────── */
 
+/*
+ * Three children — copy, art, actions.
+ *
+ * On a phone the mark leads and the words and buttons follow it as one block:
+ * `order: -1` lifts the art to the top without moving it in the markup, which
+ * matters because the markup order is the one a screen reader follows and the
+ * words should still come first there. (The art is `aria-hidden`, so it is not
+ * in the accessibility tree at all and reordering it visually costs nothing.)
+ *
+ * Nothing overlaps anything, at any width.
+ */
 .hero {
-  padding: 3rem 1rem 2.5rem;
+  padding: 2rem 1rem 2.25rem;
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* Half and half. The mark spans both rows on the LEFT; the copy and the
+ * buttons stack down the right.
+ *
+ * `end` then `start` on the two right-hand items is what keeps them together:
+ * the rows are stretched by whichever column is taller, and without it the
+ * spare height opens as a gap between the headline and the buttons. */
+/* 46rem, the same width at which `.hero-actions` stops spanning the column.
+ * One breakpoint for the whole hero on purpose: split them and there is a band
+ * where the mark is centred and the buttons are not, so they overlap down one
+ * edge only and the overlap reads as a collision rather than as a layer. */
+@media (min-width: 46rem) {
+  .hero {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 2.5rem;
+    row-gap: 1.25rem;
+    padding-top: 2.5rem;
+    padding-bottom: 2.75rem;
+  }
+
+  .hero-copy {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+  }
+
+  .hero-actions {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: start;
+  }
+
+  .hero-art {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    /* The phone's `order` and spacing are cancelled at this width further
+     * down, next to where they are set — same specificity as the base rule, so
+     * it has to come after it in source order to win. Cancelling it here would
+     * not work. */
+  }
+}
+
+/* The glow. Colour is the accent at low opacity, so it re-tints with the
+ * theme; z-index -1 with `isolation` keeps it behind the text but inside this
+ * stacking context, and the body's `overflow-x: clip` eats the overhang. */
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -10rem;
+  right: -8rem;
+  width: 32rem;
+  height: 32rem;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 15%, transparent), transparent 72%);
+  pointer-events: none;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  bottom: -10rem;
+  left: -14rem;
+  width: 30rem;
+  height: 30rem;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--info) 9%, transparent), transparent 72%);
+  pointer-events: none;
+}
+
+/* ── the hero illustration ────────────────────────────────────────────── */
+
+/* On a phone the mark leads, and the words and the buttons follow it as one
+ * block. `order` moves it visually without moving it in the markup — see the
+ * note on `.hero`. The extra margin below is what separates the mark from the
+ * pair, so the pair reads as belonging together. */
+.hero-art {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  order: -1;
+  margin-bottom: 0.75rem;
+}
+
+.hero-art svg {
+  width: 100%;
+  max-width: 15rem;
+  height: auto;
+  display: block;
+}
+
+/* Must stay AFTER the `.hero-art` rule above: the overlap margin is a base
+ * declaration of the same specificity, so only source order cancels it. */
+@media (min-width: 46rem) {
+  .hero-art {
+    /* Its own column, so neither the reorder nor the phone's spacing apply. */
+    order: 0;
+    margin-bottom: 0;
+  }
+
+  .hero-art svg {
+    max-width: 21rem;
+  }
+}
+
+.art-orbit {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 7;
+}
+
+.art-orbit-2 {
+  stroke: var(--line);
+}
+
+/* The favicon's proportions, kept: stroke ≈ 0.55 × radius is what makes the
+ * big mark and the tab icon read as the same shape. */
+.art-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 34;
+  stroke-linecap: round;
+}
+
+.art-drop {
+  fill: var(--accent);
+}
+
+.art-coin circle {
+  fill: var(--raised);
+  stroke: var(--faint);
+  stroke-width: 1.8;
+}
+
+.art-spark {
+  fill: var(--accent);
+}
+
+.art-dot {
+  fill: var(--faint);
+  opacity: 0.7;
+}
+
+/* The motion. The reduced-motion block near the top of this file switches all
+ * of it off.
+ *
+ * The orbits travel their own dashes rather than rotating. A rotation would
+ * read well and then clip: the outer ellipse is 210 units of radius about a
+ * centre 210 units down a 400-unit viewBox, so a quarter turn puts it outside
+ * the viewport and an SVG clips to its viewport by default. Marching the dash
+ * pattern around the path gives the same sense of orbit and never leaves the
+ * box. The offset is a whole number of dash periods (5 + 7 = 12) so the loop
+ * has no visible seam. */
+@keyframes art-orbit-travel {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+.art-orbit {
+  animation: art-orbit-travel 1.6s linear infinite;
+}
+
+.art-orbit-2 {
+  animation-duration: 1.1s;
+  animation-direction: reverse;
+}
+
+/* The coins bob. */
+@keyframes art-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-13px); }
+}
+
+.art-coin {
+  animation: art-float 2.2s ease-in-out infinite;
+}
+
+.art-coin:nth-of-type(2) {
+  animation-delay: -0.75s;
+}
+
+.art-coin:nth-of-type(3) {
+  animation-delay: -1.5s;
+}
+
+/*
+ * The sparks twinkle, and they animate OPACITY ONLY — never transform.
+ *
+ * Each spark is placed with a `transform` attribute in the markup, and a CSS
+ * transform on an SVG element replaces that attribute rather than composing
+ * with it. Animating `transform` here collapsed all three onto the origin,
+ * where they rendered as one stray green mark in the corner of the artwork.
+ * If a spark ever needs to move, wrap it in a `<g>` that carries the placement
+ * and animate the inner path.
+ */
+@keyframes art-twinkle {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.art-spark {
+  animation: art-twinkle 1.5s ease-in-out infinite;
+}
+
+.art-spark:nth-of-type(2) {
+  animation-delay: -0.5s;
+}
+
+.art-spark:nth-of-type(3) {
+  animation-delay: -1s;
 }
 
 /* The countdown sits ABOVE the two buttons at every width, and the block is
@@ -669,17 +1158,25 @@ summary:focus-visible {
   grid-template-columns: 1fr;
   align-items: stretch;
   gap: 0.75rem;
-  margin: 1.75rem 0 0;
+  /* No top margin: the hero's own row gap owns the spacing now, and a margin
+   * here would cancel the negative one that produces the overlap on a phone. */
+  margin: 0;
   width: fit-content;
   max-width: 100%;
 }
 
 /* 50/50, always. Two equal halves are both reachable with one thumb, and equal
- * widths mean neither label's length decides the layout. */
+ * widths mean neither label's length decides the layout. The trade button
+ * spans both columns above them — it is the loudest ask on the page, and a
+ * full-width row is how it stays the loudest without unbalancing the pair. */
 .hero-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
+}
+
+.hero-buttons .trade-hero {
+  grid-column: 1 / -1;
 }
 
 /* Both labels stay on one line at every width. "Check your wallet" wrapping to
