@@ -248,11 +248,18 @@ async function main() {
 
   if (config.programId == null) {
     resetLiveFields(UNAVAILABLE.notLaunched);
+    // No `error`, deliberately. Everywhere else the folded technical detail is
+    // an RPC message or a missing account — something a technical reader can
+    // check us on, which is why it is offered. This state is not a failure at
+    // all: it is the designed pre-launch page, and the only "detail" available
+    // is a line about our own config file. That answers no question a visitor
+    // has, cannot be verified by anyone, and puts a "Technical detail"
+    // disclosure under a sentence that is simply true — which reads as
+    // something being broken. `failure()` omits the fold when error is null.
     failure(el('hero-status'), {
       what: 'The coin has not launched yet.',
       consequence:
         'The rules on this page are final and you can read them now. The live numbers arrive the moment the coin does.',
-      error: 'programId is unset in config.local.js',
     });
     return;
   }
