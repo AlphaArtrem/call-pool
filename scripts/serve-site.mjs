@@ -15,10 +15,13 @@
 //   node scripts/serve-site.mjs            → http://127.0.0.1:8099/site/
 //   node scripts/serve-site.mjs --port 3000
 //
-//   CALLPOOL_RPC_URL='https://<provider>/<key>' node scripts/serve-site.mjs
-//     → /rpc forwards to that endpoint. The page is configured with
-//       `rpc: '/rpc'` and never sees the key. See lib/rpc-proxy.mjs for what
-//       is allowed through and why it is a narrow list rather than a forwarder.
+//   CALLPOOL_RPC_URL_MAINNET='https://<provider>/<key>' node scripts/serve-site.mjs
+//     → /rpc forwards to that endpoint, and /rpc/devnet to
+//       CALLPOOL_RPC_URL_DEVNET. One route and one key per cluster, so one
+//       exposure cannot burn both and the mainnet key is the only one a domain
+//       restriction has to reason about. The page is configured with
+//       `rpc: '/rpc'` and never sees either. See lib/rpc-proxy.mjs for what is
+//       allowed through and why it is a narrow list rather than a forwarder.
 //
 // **It binds 127.0.0.1 and speaks no TLS**, so in production it belongs behind
 // a reverse proxy that terminates HTTPS for callpool.fun and forwards to it —
@@ -35,7 +38,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
 import { REPO_ROOT } from './lib/store.mjs';
-import { createRateLimiter, handleRpc } from './lib/rpc-proxy.mjs';
+import { createRateLimiter, handleRpc, resolveUpstream } from './lib/rpc-proxy.mjs';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -70,15 +73,14 @@ function resolvePath(urlPath) {
 }
 
 /**
- * The RPC proxy, if this process was given a provider URL.
+ * The RPC proxy's shared state.
  *
- * Same origin as the page, so the browser needs no CORS and the key never
- * leaves this process. Unset `CALLPOOL_RPC_URL` and `/rpc` answers 503 with a
- * plain reason rather than 404 — a missing route and a missing configuration
- * look identical from the page, and only one of them is fixable by the person
- * reading the log.
+ * Same origin as the page, so the browser needs no CORS and neither key ever
+ * leaves this process. A route whose variable is unset answers 503 with a plain
+ * reason rather than 404 — a missing route and a missing configuration look
+ * identical from the page, and only one of them is fixable by the person
+ * reading the log. A production host is expected to leave the devnet one unset.
  */
-const upstream = process.env.CALLPOOL_RPC_URL ?? null;
 const trustProxy = process.env.CALLPOOL_TRUST_PROXY === '1';
 const limiter = createRateLimiter();
 // Buckets that have refilled are dropped, so a busy day cannot grow the map
@@ -88,9 +90,15 @@ setInterval(() => limiter.sweep(), 60_000).unref();
 const server = createServer(async (req, res) => {
   const route = (req.url ?? '/').split('?')[0];
 
-  if (route === '/rpc') {
+  // One route per cluster so each can hold its own provider key. Unknown
+  // `/rpc/...` paths are not routes and fall through to the 404 below.
+  const rpc = resolveUpstream(route);
+  if (rpc) {
     await handleRpc(req, res, {
-      upstream,
+      upstream: rpc.upstream,
+      cluster: rpc.cluster,
+      // One limiter across both routes, keyed on the client: alternating
+      // between them must not buy anyone a second budget.
       limiter,
       trustProxy,
       log: (line) => console.warn(line),
@@ -131,9 +139,15 @@ const server = createServer(async (req, res) => {
 server.listen(port, '127.0.0.1', () => {
   console.log(`serving ${REPO_ROOT}`);
   console.log(`  http://127.0.0.1:${port}/   → site/index.html`);
-  console.log(
-    upstream
-      ? `  /rpc → ${new URL(upstream).origin}   (key held here, never sent to the page)`
-      : '  /rpc → NOT CONFIGURED. Set CALLPOOL_RPC_URL to a provider endpoint.',
-  );
+  for (const [route, variable] of [
+    ['/rpc', 'CALLPOOL_RPC_URL_MAINNET'],
+    ['/rpc/devnet', 'CALLPOOL_RPC_URL_DEVNET'],
+  ]) {
+    const { upstream } = resolveUpstream(route);
+    console.log(
+      upstream
+        ? `  ${route.padEnd(11)} → ${new URL(upstream).origin}   (key held here, never sent to the page)`
+        : `  ${route.padEnd(11)} → not configured. Set ${variable}.`,
+    );
+  }
 });

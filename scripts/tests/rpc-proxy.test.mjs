@@ -15,6 +15,7 @@ import {
   createRateLimiter,
   handleRpc,
   MAX_BATCH,
+  resolveUpstream,
   screen,
 } from '../lib/rpc-proxy.mjs';
 
@@ -166,6 +167,76 @@ test('X-Forwarded-For is only believed when the operator says there is a proxy',
   // Default: a header anyone can set must not choose their own rate-limit key.
   assert.equal(clientKey(req), '127.0.0.1');
   assert.equal(clientKey(req, { trustProxy: true }), '9.9.9.9');
+});
+
+// ── one route, one key, per cluster ────────────────────────────────────────
+//
+// A single `/rpc` could not pick an upstream: the body is a JSON-RPC call and
+// says nothing about which chain it is for. So the cluster is in the path, and
+// each route reads its own variable — one exposure cannot burn both, and the
+// mainnet key is the only one a domain restriction has to reason about.
+
+test('each cluster resolves to its own key', () => {
+  const env = {
+    CALLPOOL_RPC_URL_MAINNET: 'https://provider.example/mainnet-key',
+    CALLPOOL_RPC_URL_DEVNET: 'https://provider.example/devnet-key',
+  };
+
+  assert.deepEqual(resolveUpstream('/rpc', env), {
+    cluster: 'mainnet',
+    upstream: 'https://provider.example/mainnet-key',
+  });
+  assert.deepEqual(resolveUpstream('/rpc/devnet', env), {
+    cluster: 'devnet',
+    upstream: 'https://provider.example/devnet-key',
+  });
+});
+
+test('CALLPOOL_RPC_URL still means mainnet, so a host configured before the split keeps working', () => {
+  const { cluster, upstream } = resolveUpstream('/rpc', { CALLPOOL_RPC_URL: 'https://provider.example/one-key' });
+  assert.equal(cluster, 'mainnet');
+  assert.equal(upstream, 'https://provider.example/one-key');
+
+  // The explicit variable wins when both are present.
+  assert.equal(
+    resolveUpstream('/rpc', {
+      CALLPOOL_RPC_URL: 'https://old.example/k',
+      CALLPOOL_RPC_URL_MAINNET: 'https://new.example/k',
+    }).upstream,
+    'https://new.example/k',
+  );
+});
+
+test('a production host leaves devnet unset, and that route then serves nothing', () => {
+  const env = { CALLPOOL_RPC_URL_MAINNET: 'https://provider.example/mainnet-key' };
+  assert.equal(resolveUpstream('/rpc/devnet', env).upstream, null);
+  assert.equal(resolveUpstream('/rpc', env).upstream, 'https://provider.example/mainnet-key');
+});
+
+test('the mainnet key is never reachable through the devnet route, or the reverse', () => {
+  const env = {
+    CALLPOOL_RPC_URL_MAINNET: 'https://provider.example/mainnet-key',
+    CALLPOOL_RPC_URL_DEVNET: 'https://provider.example/devnet-key',
+  };
+  assert.notEqual(resolveUpstream('/rpc', env).upstream, env.CALLPOOL_RPC_URL_DEVNET);
+  assert.notEqual(resolveUpstream('/rpc/devnet', env).upstream, env.CALLPOOL_RPC_URL_MAINNET);
+});
+
+test('anything else is not a route, so it cannot be made into one', () => {
+  for (const route of ['/rpc/mainnet', '/rpc/', '/rpc/devnet/x', '/rpcx', '/', '/site/', '/rpc/../rpc']) {
+    assert.equal(resolveUpstream(route, {}), null, `${route} must not route`);
+  }
+});
+
+test('the unconfigured log names the cluster, because the mistake is setting the other one', async () => {
+  const lines = [];
+  await handleRpc(fakeReq({ body: JSON.stringify(call('getBalance')) }), fakeRes(), {
+    upstream: null,
+    cluster: 'devnet',
+    limiter: createRateLimiter(),
+    log: (l) => lines.push(l),
+  });
+  assert.ok(lines.some((l) => l.includes('devnet') && l.includes('CALLPOOL_RPC_URL_DEVNET')), lines.join('|'));
 });
 
 // ── the handler ────────────────────────────────────────────────────────────

@@ -49,6 +49,37 @@ export const ALLOWED_METHODS = Object.freeze([
 const ALLOWED = new Set(ALLOWED_METHODS);
 
 /**
+ * One route per cluster, so one key per cluster.
+ *
+ * The page could not choose its upstream through a single `/rpc` — the request
+ * body is a JSON-RPC call and says nothing about which chain it is for — so the
+ * cluster is in the path instead. `site/config.local.js` sets `rpc: '/rpc'` for
+ * mainnet and `/rpc/devnet` for the rehearsal.
+ *
+ * Two keys rather than one because a key that serves both clusters means one
+ * exposure burns both, and because the mainnet key is the one that will carry a
+ * domain restriction — mixing the rehearsal's traffic through it would make
+ * that restriction impossible to reason about.
+ *
+ * `CALLPOOL_RPC_URL` stays as an alias for the mainnet one: a host that was
+ * configured before this split keeps working rather than silently serving a
+ * page with no chain behind it.
+ *
+ * A devnet URL that is simply not set is the normal state of a production host.
+ * The route then answers exactly as an unconfigured mainnet one does, and
+ * nothing internal is reachable through it.
+ */
+export function resolveUpstream(route, env = globalThis.process?.env ?? {}) {
+  if (route === '/rpc') {
+    return { cluster: 'mainnet', upstream: env.CALLPOOL_RPC_URL_MAINNET || env.CALLPOOL_RPC_URL || null };
+  }
+  if (route === '/rpc/devnet') {
+    return { cluster: 'devnet', upstream: env.CALLPOOL_RPC_URL_DEVNET || null };
+  }
+  return null;
+}
+
+/**
  * Longest batch the site can legitimately send.
  *
  * `balanceEventsFor` chunks `getParsedTransactions` at 25, which is the only
@@ -218,7 +249,7 @@ function readBody(req, limit) {
  * @param {typeof fetch} [options.fetchImpl]
  * @param {(line: string) => void} [options.log]
  */
-export async function handleRpc(req, res, { upstream, limiter, trustProxy = false, fetchImpl = fetch, log = () => {} }) {
+export async function handleRpc(req, res, { upstream, cluster = 'mainnet', limiter, trustProxy = false, fetchImpl = fetch, log = () => {} }) {
   if (req.method !== 'POST') {
     return jsonError(res, 405, 'this endpoint takes POST', { allow: 'POST' });
   }
@@ -253,8 +284,13 @@ export async function handleRpc(req, res, { upstream, limiter, trustProxy = fals
   // real web3.js client without a provider key anywhere near the test.
   if (!upstream) {
     // A configuration fault, said plainly: the page renders "can't reach
-    // Solana", and whoever deployed it needs to know why from the log.
-    log('rpc: CALLPOOL_RPC_URL is not set — refusing to proxy');
+    // Solana", and whoever deployed it needs to know why from the log — which
+    // names the variable AND the cluster, because with one per cluster the
+    // interesting mistake is having set the other one.
+    log(
+      `rpc: no upstream for ${cluster} — set ` +
+        (cluster === 'devnet' ? 'CALLPOOL_RPC_URL_DEVNET' : 'CALLPOOL_RPC_URL_MAINNET'),
+    );
     return jsonError(res, 503, 'the RPC endpoint is not configured on this server');
   }
 

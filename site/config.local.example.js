@@ -98,7 +98,8 @@ window.CALLPOOL_SITE_CONFIG = {
   // rehearsal deployment is looked at; `scripts/tools/deploy-devnet.mjs` prints
   // the block to paste here. Nothing published should ever resolve to it.
   devnet: {
-    rpc: '/rpc',
+    // Its own route and its own key — see CALLPOOL_RPC_URL_DEVNET.
+    rpc: '/rpc/devnet',
     mint: '',
     programId: 'ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7',
     snapshotsBase: '/epochs/devnet/snapshots',

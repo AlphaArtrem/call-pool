@@ -251,10 +251,19 @@ the 90/10 split, the risks — renders in full and is final.
   `access-control-allow-origin: *`, so the key is **not domain-locked** and
   anyone who lifts it off the page can spend the quota from anywhere.
 
-  **So the key is not in the page at all.** Both clusters are configured with
-  `rpc: '/rpc'`, a same-origin path, and `scripts/serve-site.mjs` forwards it
-  using the provider URL from `CALLPOOL_RPC_URL`. Nothing in `config.local.js`
-  is secret any more, which also retires the "never `scp` that file" hazard.
+  **So the key is not in the page at all.** Each cluster is configured with a
+  same-origin path — `/rpc` for mainnet, `/rpc/devnet` for the rehearsal — and
+  `scripts/serve-site.mjs` forwards each to its own provider URL,
+  `CALLPOOL_RPC_URL_MAINNET` and `CALLPOOL_RPC_URL_DEVNET`. Nothing in
+  `config.local.js` is secret any more, which also retires the "never `scp` that
+  file" hazard.
+
+  **One key per cluster, and one route each**, because a single key serving both
+  means one exposure burns both — and because the mainnet key is the one that
+  will carry a domain restriction, which is impossible to reason about if the
+  rehearsal's traffic also runs through it. A production host leaves
+  `CALLPOOL_RPC_URL_DEVNET` unset and that route then serves nothing.
+  (`CALLPOOL_RPC_URL` still works as an alias for the mainnet one.)
 
   A forwarder would only move the problem — anyone can `curl` an open one — so
   `scripts/lib/rpc-proxy.mjs` is a **narrow allowlist of the six read-only
@@ -274,10 +283,14 @@ the 90/10 split, the risks — renders in full and is final.
   batches / id-less notifications are refused, and every call the real vendored
   web3.js makes passes the allowlist.
 
-  A domain-locked provider key remains a fine alternative, or a second layer.
-  Today that endpoint answers `access-control-allow-origin: *`, so no such
-  restriction is in place — check the dashboard, and **use a separate key per
-  cluster** so one exposure cannot burn both.
+  **Still to do, owner's call 2026-08-05: restrict the mainnet key to
+  `callpool.fun` in the provider's dashboard**, at the same time as publishing
+  the site. That is a second layer rather than the load-bearing one — the proxy
+  already means the key is not in the page — but it is what stops a key that
+  leaks some other way from being usable. Today that endpoint answers
+  `access-control-allow-origin: *`, so no restriction is in place; verify from
+  another origin after setting it, because a restriction nobody tested is a
+  restriction nobody has.
 
   None of this applies to the crank. `snapshot.mjs`, `post-root.mjs`,
   `airdrop.mjs` and `verify-epoch.mjs` read `SOLANA_RPC_URL` from the
@@ -300,8 +313,11 @@ the 90/10 split, the risks — renders in full and is final.
    `/rpc → …` rather than `NOT CONFIGURED`:
 
    ```bash
-   CALLPOOL_TRUST_PROXY=1 CALLPOOL_RPC_URL='https://<provider>/<key>' node scripts/serve-site.mjs
+   CALLPOOL_TRUST_PROXY=1 CALLPOOL_RPC_URL_MAINNET='https://<provider>/<mainnet-key>' node scripts/serve-site.mjs
    ```
+
+   Leave `CALLPOOL_RPC_URL_DEVNET` unset in production — `/rpc/devnet` then
+   serves nothing, which is what it should do on a public host.
 
    It binds 127.0.0.1 and speaks no TLS, so it belongs behind whatever
    terminates HTTPS for callpool.fun. `CALLPOOL_TRUST_PROXY=1` is what makes the
