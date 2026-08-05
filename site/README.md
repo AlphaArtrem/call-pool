@@ -217,12 +217,43 @@ the 90/10 split, the risks — renders in full and is final.
 
 ### Blocking, before anything is published
 
-- **An RPC endpoint that works in a browser.** `api.mainnet-beta.solana.com`
-  answers a browser request with **`403 Access forbidden`** — measured
-  2026-08-05, and it is not a rate limit; Solana does not serve that endpoint to
-  browsers. A provider endpoint is required, **domain-locked and read-only
-  scoped**, because `config.local.js` is client-side (§7.3). This is O3 and it
-  is still open.
+- **An RPC endpoint that works in a browser, and a way to ship it safely.**
+  Both halves, and only the first is solved.
+
+  `api.mainnet-beta.solana.com` answers a browser request with **`403 Access
+  forbidden`** — measured 2026-08-05, and it is not a rate limit; Solana does
+  not serve that endpoint to browsers at all. So a provider is required, which
+  is O3.
+
+  A paid provider endpoint has been obtained and works from a browser. **It is
+  not in the mainnet config, on purpose.** The key is in the URL path, and
+  `config.local.js` is fetched by every visitor like any other script — being
+  gitignored keeps a key out of the repository and does nothing to keep it out
+  of a browser. Measured on the same day: that endpoint answers
+  `access-control-allow-origin: *`, so the key is **not domain-locked** and
+  anyone who lifts it off the page can spend the quota from anywhere.
+
+  One of these has to be true before the URL goes in:
+
+  1. **A proxy you control** — the page calls a same-origin path such as
+     `/rpc`, and the key lives server-side where a browser cannot reach it.
+     This is the option that does not depend on the provider offering anything.
+  2. **A key restricted to your domain** in the provider's dashboard, and
+     scoped read-only. The key is still visible; it just stops being usable by
+     anyone else. Verify the restriction by calling it from another origin
+     *before* trusting it.
+
+  Use a **separate key per cluster** either way. One key currently serves both
+  devnet and mainnet, so exposing the page's key would burn the rehearsal's too.
+
+  None of this applies to the crank. `snapshot.mjs`, `post-root.mjs`,
+  `airdrop.mjs` and `verify-epoch.mjs` read `SOLANA_RPC_URL` from the
+  environment and run on a machine you control, which is the right home for a
+  keyed URL:
+
+  ```bash
+  export SOLANA_RPC_URL='https://<provider>/<key>'
+  ```
 - **`links.x` and `links.github`.** `x` currently points at the owner's personal
   account; `github` is unset and renders as a disabled chip. Both are the first
   things anyone clicks.
@@ -231,9 +262,12 @@ the 90/10 split, the risks — renders in full and is final.
 
 1. Deploy the program and run `initialize`. Until this lands, nothing else here
    changes anything.
-2. Set **`programId`** to `declare_id!` from `programs/callpool`. This is the
-   single switch: the moment it is set, the page reads chain and the live
-   numbers appear. Everything below is refinement on top of a working page.
+2. Set **`rpc`** to the proxy path or the domain-locked key, and **`programId`**
+   to `declare_id!` from `programs/callpool`. These two go in together and in
+   that order — `programId` is the switch that starts the RPC calls, so setting
+   it while `rpc` is still the 403 endpoint turns the page from "not launched
+   yet" into "can't reach Solana", which is a worse thing to be showing on
+   launch day. Everything below is refinement on top of a working page.
 3. Set **`creatorVault`** to pump.fun's creator vault for the coin. Until it is
    set, the "fees not yet swept in" figure reads *not set on this page yet* and
    the pool-vs-accrued chart refuses to draw — deliberately, it is rule 9.
@@ -255,6 +289,10 @@ the 90/10 split, the risks — renders in full and is final.
 - **Do not put a keyed RPC URL in `config.local.js` and call it protected.** It
   is gitignored, which protects the repository, not the visitor — the file is
   fetched by every browser that loads the page.
+- **Do not copy the local `config.local.js` to the web host.** It carries the
+  paid devnet key for the dry run and is written for localhost. The host gets
+  its own, and the two are not the same file. This is the most likely way the
+  key actually leaks: not a mistake in the code, a `scp -r` of the directory.
 
 ## What is not built yet
 
