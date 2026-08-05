@@ -42,6 +42,26 @@ function orNull(value) {
 }
 
 /**
+ * Resolve a same-origin `rpc` path against the page.
+ *
+ * `rpc: '/rpc'` is the shape the config wants — it says "the proxy on this
+ * origin" without naming a host, so the same file works on localhost and on
+ * callpool.fun. web3.js will not take it: `Connection` parses its endpoint with
+ * `new URL()` and throws on a relative path, and because that happens inside
+ * `main()` the whole page falls through to "The page failed to load" rather
+ * than to any of its designed states.
+ *
+ * So the relative form is resolved here, once, at the same point
+ * `snapshotsBase` is normalised. Outside a browser — the test suite — there is
+ * nothing to resolve against, and the value is left as written.
+ */
+function absoluteRpc(value) {
+  if (value == null || /^[a-z][a-z0-9+.-]*:/i.test(value)) return value;
+  const base = globalThis.location?.href;
+  return base == null ? value : new URL(value, base).toString();
+}
+
+/**
  * Which cluster to read.
  *
  * **Mainnet is the default and the only one the public page ever shows.** The
@@ -92,7 +112,7 @@ export function siteConfig(root = globalThis.CALLPOOL_SITE_CONFIG, search) {
       x: orNull(root?.links?.x),
       github: orNull(root?.links?.github),
     },
-    rpc: orNull(forCluster.rpc),
+    rpc: absoluteRpc(orNull(forCluster.rpc)),
     mint: orNull(forCluster.mint),
     programId: orNull(forCluster.programId),
     // Trailing slash normalised once, here, so every call site can concatenate.

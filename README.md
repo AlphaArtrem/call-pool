@@ -259,6 +259,7 @@ How it is built, the rules it is under, and what is deliberately not built:
 | [`scripts/crank.mjs`](scripts/crank.mjs) | The four above, in order, for one epoch. |
 | [`scripts/verify.sh`](scripts/verify.sh) | Build, every test, and the structural assertions about the program's shape. |
 | [`site/`](site/) | The website. No build step, one pinned dependency — [`site/README.md`](site/README.md). |
+| [`scripts/serve-site.mjs`](scripts/serve-site.mjs) | Serves the site, and `/rpc` — the same-origin proxy that holds the RPC provider key so the page never carries one. Screening in [`scripts/lib/rpc-proxy.mjs`](scripts/lib/rpc-proxy.mjs): six read-only methods, rate limited, and no CORS. |
 | [`snapshots/`](snapshots/) | The audit trail. One directory per settled day, each reproducible by a stranger. |
 
 **The planning documents are not published.** Comments and commit messages

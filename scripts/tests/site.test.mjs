@@ -448,6 +448,41 @@ test('an unconfigured site resolves every field to null, never to a default', ()
   assert.equal(explorerUrl(config, 'address', null), null);
 });
 
+// `rpc: '/rpc'` is the shape the config wants — "the proxy on this origin",
+// with no host named, so one file works on localhost and on callpool.fun. It
+// has to become absolute before web3.js sees it: `Connection` parses its
+// endpoint with `new URL()` and throws on a relative path, and that throw
+// happens inside main(), so the page renders "The page failed to load" instead
+// of any state it was designed to show. Caught in a browser, not in review.
+test('a same-origin rpc path is resolved against the page before web3.js sees it', () => {
+  const withLocation = (href, fn) => {
+    const had = Object.prototype.hasOwnProperty.call(globalThis, 'location');
+    const previous = globalThis.location;
+    globalThis.location = { href, search: '' };
+    try {
+      return fn();
+    } finally {
+      if (had) globalThis.location = previous;
+      else delete globalThis.location;
+    }
+  };
+
+  const resolved = withLocation('https://callpool.fun/site/', () =>
+    siteConfig({ cluster: 'mainnet', mainnet: { rpc: '/rpc' } }, ''),
+  );
+  assert.equal(resolved.rpc, 'https://callpool.fun/rpc');
+  assert.doesNotThrow(() => new URL(resolved.rpc), 'web3.js will parse this');
+
+  // An absolute endpoint is left exactly as configured.
+  const absolute = withLocation('https://callpool.fun/site/', () =>
+    siteConfig({ cluster: 'mainnet', mainnet: { rpc: 'https://provider.example/key' } }, ''),
+  );
+  assert.equal(absolute.rpc, 'https://provider.example/key');
+
+  // And unset stays unset — never a default, never a guess.
+  assert.equal(siteConfig({ cluster: 'mainnet', mainnet: {} }, '').rpc, null);
+});
+
 test('blank strings in config are unset, not empty values', () => {
   const config = siteConfig({ cluster: 'devnet', devnet: { rpc: '   ', mint: '' } }, '');
   assert.equal(config.rpc, null);

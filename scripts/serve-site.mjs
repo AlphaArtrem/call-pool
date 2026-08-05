@@ -1,4 +1,5 @@
-// A static file server for local development. Not for production.
+// The site's server: static files, plus the `/rpc` proxy that holds the
+// provider key.
 //
 // The site needs one because ES modules cannot be loaded over `file://` — a
 // browser refuses the import for cross-origin reasons and the page silently
@@ -14,9 +15,19 @@
 //   node scripts/serve-site.mjs            → http://127.0.0.1:8099/site/
 //   node scripts/serve-site.mjs --port 3000
 //
+//   CALLPOOL_RPC_URL='https://<provider>/<key>' node scripts/serve-site.mjs
+//     → /rpc forwards to that endpoint. The page is configured with
+//       `rpc: '/rpc'` and never sees the key. See lib/rpc-proxy.mjs for what
+//       is allowed through and why it is a narrow list rather than a forwarder.
+//
+// **It binds 127.0.0.1 and speaks no TLS**, so in production it belongs behind
+// a reverse proxy that terminates HTTPS for callpool.fun and forwards to it —
+// set `CALLPOOL_TRUST_PROXY=1` there so the rate limiter reads the real client
+// address out of `X-Forwarded-For` rather than seeing every request as coming
+// from the proxy.
+//
 // Deliberately not a dependency and deliberately not clever: no directory
-// listings, no caching, no HTTPS, and it refuses any path that escapes the
-// repository.
+// listings, no caching, and it refuses any path that escapes the repository.
 
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -24,6 +35,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
 import { REPO_ROOT } from './lib/store.mjs';
+import { createRateLimiter, handleRpc } from './lib/rpc-proxy.mjs';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -57,10 +69,38 @@ function resolvePath(urlPath) {
   return full === REPO_ROOT || full.startsWith(REPO_ROOT + sep) ? full : null;
 }
 
+/**
+ * The RPC proxy, if this process was given a provider URL.
+ *
+ * Same origin as the page, so the browser needs no CORS and the key never
+ * leaves this process. Unset `CALLPOOL_RPC_URL` and `/rpc` answers 503 with a
+ * plain reason rather than 404 — a missing route and a missing configuration
+ * look identical from the page, and only one of them is fixable by the person
+ * reading the log.
+ */
+const upstream = process.env.CALLPOOL_RPC_URL ?? null;
+const trustProxy = process.env.CALLPOOL_TRUST_PROXY === '1';
+const limiter = createRateLimiter();
+// Buckets that have refilled are dropped, so a busy day cannot grow the map
+// without bound. `unref` so this timer never holds the process open.
+setInterval(() => limiter.sweep(), 60_000).unref();
+
 const server = createServer(async (req, res) => {
+  const route = (req.url ?? '/').split('?')[0];
+
+  if (route === '/rpc') {
+    await handleRpc(req, res, {
+      upstream,
+      limiter,
+      trustProxy,
+      log: (line) => console.warn(line),
+    });
+    return;
+  }
+
   // `/` redirects rather than serving the page in place: the page's assets are
   // root-absolute under /site/, and a production host does the same rewrite.
-  if ((req.url ?? '/').split('?')[0] === '/') {
+  if (route === '/') {
     res.writeHead(302, { location: '/site/' }).end();
     return;
   }
@@ -91,4 +131,9 @@ const server = createServer(async (req, res) => {
 server.listen(port, '127.0.0.1', () => {
   console.log(`serving ${REPO_ROOT}`);
   console.log(`  http://127.0.0.1:${port}/   → site/index.html`);
+  console.log(
+    upstream
+      ? `  /rpc → ${new URL(upstream).origin}   (key held here, never sent to the page)`
+      : '  /rpc → NOT CONFIGURED. Set CALLPOOL_RPC_URL to a provider endpoint.',
+  );
 });

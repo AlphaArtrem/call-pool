@@ -75,10 +75,14 @@ js/
   position.js    the address calculator
   epochs.js      the audit-trail table
   ui.js          render primitives: the source badge, and the charts
-  topbar.js      theme toggle, cluster switch, social links
+  topbar.js      theme toggle, cluster indicator, social links
 
 vendor/          pinned @solana/web3.js — see vendor/README.md
 ```
+
+Served by `scripts/serve-site.mjs`, which is also where `/rpc` lives — the
+same-origin proxy that holds the provider key so this directory never has to.
+Its screening is `scripts/lib/rpc-proxy.mjs`.
 
 `standing.js`, `clocks.js`, `graphs.js`, `program.js`, `base58.js` and
 `config.js` are pure and dependency-free on purpose:
@@ -231,7 +235,8 @@ the 90/10 split, the risks — renders in full and is final.
 ### Blocking, before anything is published
 
 - **An RPC endpoint that works in a browser, and a way to ship it safely.**
-  Both halves, and only the first is solved.
+  Both halves, and **both are now solved** — this needs configuring, not
+  building. Skip to "On launch day" unless you want the reasoning.
 
   `api.mainnet-beta.solana.com` answers a browser request with **`403 Access
   forbidden`** — measured 2026-08-05, and it is not a rate limit; Solana does
@@ -246,19 +251,33 @@ the 90/10 split, the risks — renders in full and is final.
   `access-control-allow-origin: *`, so the key is **not domain-locked** and
   anyone who lifts it off the page can spend the quota from anywhere.
 
-  One of these has to be true before the URL goes in:
+  **So the key is not in the page at all.** Both clusters are configured with
+  `rpc: '/rpc'`, a same-origin path, and `scripts/serve-site.mjs` forwards it
+  using the provider URL from `CALLPOOL_RPC_URL`. Nothing in `config.local.js`
+  is secret any more, which also retires the "never `scp` that file" hazard.
 
-  1. **A proxy you control** — the page calls `https://callpool.fun/rpc` and the
-     key lives server-side where a browser cannot reach it. `rpc: '/rpc'` in the
-     config, same-origin, no CORS involved. This is the option that does not
-     depend on the provider offering anything.
-  2. **A key restricted to `callpool.fun`** in the provider's dashboard, scoped
-     read-only. The key is still visible; it just stops being usable by anyone
-     else. Verify the restriction by calling it from another origin *before*
-     trusting it — today that call returns `*`, so the restriction is not on.
+  A forwarder would only move the problem — anyone can `curl` an open one — so
+  `scripts/lib/rpc-proxy.mjs` is a **narrow allowlist of the six read-only
+  methods this site calls**, derived from `site/js/` and the vendored web3.js
+  rather than guessed:
 
-  Use a **separate key per cluster** either way. One key currently serves both
-  devnet and mainnet, so exposing the page's key would burn the rehearsal's too.
+  | | |
+  |---|---|
+  | Allowed | `getAccountInfo`, `getMultipleAccounts`, `getBalance`, `getSignaturesForAddress`, `getTransaction`, `getTokenAccountsByOwner` |
+  | Refused | everything else, notably `sendTransaction` (a spam relay we pay for) and `getProgramAccounts` (the scan providers bill hardest for) |
+  | Bounded | batches ≤ 32, bodies ≤ 64 KB, upstream timeout 15 s |
+  | Limited | a token bucket per client — 60 requests, refilling at 1/s |
+  | Quiet | no `access-control-allow-origin`, so no other site's browser can use it; refusal reasons go to the log, never to the caller; the provider's error body is never passed through, because it can name the endpoint |
+
+  Verified against the live provider: all six methods return 200 through it,
+  `sendTransaction` / `getProgramAccounts` / `requestAirdrop` / oversized
+  batches / id-less notifications are refused, and every call the real vendored
+  web3.js makes passes the allowlist.
+
+  A domain-locked provider key remains a fine alternative, or a second layer.
+  Today that endpoint answers `access-control-allow-origin: *`, so no such
+  restriction is in place — check the dashboard, and **use a separate key per
+  cluster** so one exposure cannot burn both.
 
   None of this applies to the crank. `snapshot.mjs`, `post-root.mjs`,
   `airdrop.mjs` and `verify-epoch.mjs` read `SOLANA_RPC_URL` from the
@@ -277,22 +296,35 @@ the 90/10 split, the risks — renders in full and is final.
 
 1. Deploy the program and run `initialize`. Until this lands, nothing else here
    changes anything.
-2. Set **`rpc`** to the proxy path or the domain-locked key, and **`programId`**
-   to `declare_id!` from `programs/callpool`. These two go in together and in
-   that order — `programId` is the switch that starts the RPC calls, so setting
-   it while `rpc` is still the 403 endpoint turns the page from "not launched
+2. **Start the server with the provider URL**, and confirm the boot line says
+   `/rpc → …` rather than `NOT CONFIGURED`:
+
+   ```bash
+   CALLPOOL_TRUST_PROXY=1 CALLPOOL_RPC_URL='https://<provider>/<key>' node scripts/serve-site.mjs
+   ```
+
+   It binds 127.0.0.1 and speaks no TLS, so it belongs behind whatever
+   terminates HTTPS for callpool.fun. `CALLPOOL_TRUST_PROXY=1` is what makes the
+   rate limiter read the real client from `X-Forwarded-For`; without it every
+   visitor shares one bucket. Do not set it if nothing trustworthy is in front,
+   because then the caller picks their own limiter key.
+
+3. Set **`programId`** to `declare_id!` from `programs/callpool`. This is the
+   switch: the moment it is set the page reads chain and the live numbers
+   appear. Do it *after* step 2 — `programId` is what starts the RPC calls, so
+   setting it against a proxy with no upstream turns the page from "not launched
    yet" into "can't reach Solana", which is a worse thing to be showing on
    launch day. Everything below is refinement on top of a working page.
-3. Set **`creatorVault`** to pump.fun's creator vault for the coin. Until it is
+4. Set **`creatorVault`** to pump.fun's creator vault for the coin. Until it is
    set, the "fees not yet swept in" figure reads *not set on this page yet* and
    the pool-vs-accrued chart refuses to draw — deliberately, it is rule 9.
-4. Set **`calloutApiKey`** (Phase 02 §2.9). Without it the wallet check's
+5. Set **`calloutApiKey`** (Phase 02 §2.9). Without it the wallet check's
    callout row reads *could not check*; every chain-sourced number still works.
-5. Set **`feeShareTx`** once the fee-share transaction exists. Until then the
+6. Set **`feeShareTx`** once the fee-share transaction exists. Until then the
    90/10 split is marked **unverified**, which is correct rather than cautious —
    the split is set by pump.fun's instruction and the browser cannot read it
    back from an account.
-6. Leave **`mint`** empty unless you want the cross-check. It is read from the
+7. Leave **`mint`** empty unless you want the cross-check. It is read from the
    program's own Config; if the two disagree the page stops rather than render
    another coin's history under this one's name.
 

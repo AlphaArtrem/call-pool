@@ -34,15 +34,23 @@ window.CALLPOOL_SITE_CONFIG = {
   },
 
   mainnet: {
-    // Read-only RPC.
+    // Same-origin, and that is the whole point.
     //
-    // ⚠️ **`api.mainnet-beta.solana.com` cannot serve this page.** Measured
-    // 2026-08-05: it answers a browser request with `403 Access forbidden`. It
-    // is not a rate limit and it does not depend on traffic — Solana does not
-    // serve that endpoint to browsers at all. **A provider endpoint is required
-    // before launch** (O3, still open), and it must be domain-locked and
-    // read-only scoped, because this file is client-side (§7.3).
-    rpc: 'https://api.mainnet-beta.solana.com',
+    // A provider endpoint is mandatory — `api.mainnet-beta.solana.com` answers
+    // a browser with `403 Access forbidden`, measured 2026-08-05, and that is
+    // not a rate limit — and a provider endpoint carries a key in its URL.
+    // This file is fetched by every visitor, so a keyed URL here is a published
+    // key.
+    //
+    // So the page calls `/rpc` on its own origin, `scripts/serve-site.mjs`
+    // forwards it, and the key lives in `CALLPOOL_RPC_URL` on the server. That
+    // proxy is a narrow allowlist of the six read-only methods this site uses
+    // rather than a forwarder — see scripts/lib/rpc-proxy.mjs, because an open
+    // forwarder is exactly as abusable as a leaked key.
+    //
+    // A full provider URL still works here if you would rather point straight
+    // at one. Only do that with a key restricted to your domain.
+    rpc: '/rpc',
 
     // The deployed program. **Leave empty until `initialize` has landed.**
     //
@@ -90,7 +98,7 @@ window.CALLPOOL_SITE_CONFIG = {
   // rehearsal deployment is looked at; `scripts/tools/deploy-devnet.mjs` prints
   // the block to paste here. Nothing published should ever resolve to it.
   devnet: {
-    rpc: 'https://api.devnet.solana.com',
+    rpc: '/rpc',
     mint: '',
     programId: 'ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7',
     snapshotsBase: '/epochs/devnet/snapshots',
