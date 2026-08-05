@@ -25,6 +25,24 @@ ExecStart=/usr/bin/node scripts/serve-site.mjs
 # The port Caddy proxies to. serve-site.mjs binds 127.0.0.1 itself.
 Environment=PORT=8099
 
+# Pin the upstream connection to IPv4, so the provider always sees one address
+# and it is the box's own IPv4.
+#
+# Not cosmetic. On a dual-stack host Node's fetch uses Happy Eyeballs and will
+# take IPv6 whenever the provider's hostname has an AAAA record — measured on
+# this box, which egressed from its IPv6 by default. An IP allowlist containing
+# only the IPv4 would then refuse every request, the page would say it cannot
+# reach Solana, and the dashboard would look correct throughout.
+#
+# The alternative is authorising both addresses, which means two things to keep
+# true instead of one — and if a provider's form takes an IPv6 *prefix* rather
+# than a single address, it can authorise a range wider than this box.
+#
+# Scoped to this service on purpose. Disabling IPv6 host-wide would reach apt,
+# DNS and anything binding ::1, and the provider's network config may put it
+# back at reboot; the problem lives in one process, so the fix does too.
+Environment=NODE_OPTIONS=--dns-result-order=ipv4first --no-network-family-autoselection
+
 # Without this the rate limiter sees every request as coming from Caddy and
 # the whole internet shares one token bucket — 60 requests for everyone at
 # once. With it, the limiter reads the real client from X-Forwarded-For.
