@@ -65,10 +65,11 @@ export const EPOCH_SECONDS = 86_400;
 /**
  * A balance decrease locks the wallet out of the next 7 epochs (Decision 23).
  *
- * Precision, settled in HANDOFF §13 against §9.6: a sale on day D costs day D
- * itself — the minimum collapses, no special case needed — *plus* days
- * D+1 through D+7. So when judging day d we look for decreases in the 7 whole
- * epochs immediately before d.
+ * Precision, and it is the part that is easy to get wrong by one day: a sale on
+ * day D costs day D itself — the minimum collapses, no special case needed —
+ * *plus* days D+1 through D+7. So when judging day d we look for decreases in
+ * the 7 whole epochs immediately before d, and **not** in d itself, which would
+ * make the penalty 8 days rather than 7.
  */
 export const LOCKOUT_EPOCHS = 7;
 

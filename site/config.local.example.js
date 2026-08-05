@@ -30,7 +30,7 @@ window.CALLPOOL_SITE_CONFIG = {
   // an empty slot.
   links: {
     x: '',
-    github: '',
+    github: 'https://github.com/AlphaArtrem/call-pool',
   },
 
   mainnet: {
@@ -69,9 +69,9 @@ window.CALLPOOL_SITE_CONFIG = {
     // pump.fun's public client key, for the in-browser by-wallet callout
     // lookup (§7.8). Not a secret — it ships in pump.fun's own bundle — but it
     // is theirs and it rotates. Extract it by loading pump.fun/callouts and
-    // grepping the same-origin scripts for "coin-communities"; see
-    // docs/phase-02 §2.9. Without it the callout row reads "cannot check"
-    // instead of guessing, and every chain-sourced number still works.
+    // grepping the same-origin scripts for "coin-communities". Without it the
+    // callout row reads "cannot check" instead of guessing, and every
+    // chain-sourced number still works.
     calloutApiKey: '',
 
     // The transaction that set the 90/10 fee split, for §7.7. Until it is

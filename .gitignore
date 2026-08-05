@@ -73,6 +73,12 @@ test-ledger/
 .ledger/
 *.log
 
+# Claude Code's local permission state. Machine-specific, and it records
+# absolute paths from whoever ran it — including directories that have nothing
+# to do with this project. `.claude/launch.json` IS committed: it is generic and
+# it is how the dev server gets started.
+.claude/settings.local.json
+
 # ─────────────────────────────────────────────────────────────
 # Editor and OS noise
 # ─────────────────────────────────────────────────────────────

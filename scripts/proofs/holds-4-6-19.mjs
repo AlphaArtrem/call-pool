@@ -213,7 +213,7 @@ async function main() {
 
   // The sale inside the epoch is paid for by the minimum collapsing, so it
   // must not *also* set the lockout for that same epoch — that would make the
-  // penalty 8 days rather than 7 (HANDOFF §13 against §9.6).
+  // penalty 8 days rather than 7. See LOCKOUT_EPOCHS in lib/config.mjs.
   check(19, 'locked for the epoch containing the sale', r19.locked, false);
 
   const later = { start: window19.start + EPOCH_SECONDS, end: window19.start + 2 * EPOCH_SECONDS };

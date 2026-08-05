@@ -55,7 +55,7 @@ export function apiKeyFromEnv(env = globalThis.process?.env ?? {}) {
     throw new CalloutError(
       'CALLOUT_API_KEY is not set. It is the public x-api-key from pump.fun\'s own ' +
         'bundle — load pump.fun/callouts and grep the same-origin scripts for ' +
-        '"coin-communities". See docs/phase-02 §2.9.',
+        '"coin-communities".',
     );
   }
   return key;

@@ -1,4 +1,4 @@
-# callpool
+# Callpool
 
 A pump.fun coin that routes 90% of its creator fee to the holders who call it
 out — settled **daily, paid in SOL**, sized by what they held continuously
@@ -40,9 +40,12 @@ including to another wallet you own — there is no netting and no exemption for
 housekeeping. **A first-time buyer is not penalised**: hold through one full day
 and you are paid, which is roughly 24 hours from your first buy.
 
-**Status: nothing is built, nothing is deployed, nothing is proven.** This repo
-currently contains a plan and this file. Treat every number in it as a
-placeholder until a devnet transaction says otherwise.
+**Status: built, tested, and deployed nowhere.** The program, the settlement
+crank, the verifier and the website are all here and all pass their tests. **No
+transaction has been signed on any public cluster, and no coin exists.** Every
+parameter above is still a one-line edit until `initialize` is called, and it is
+immutable the moment it is. Treat every number here as a statement of intent
+until a mainnet transaction says otherwise.
 
 ---
 
@@ -66,9 +69,11 @@ week rather than a day.
 | Buy an hour before the day closes | The minimum includes every hour you held nothing. Weight is zero. |
 | Wash-trade to inflate the fee pool | You pay the full pump.fun trading fee to recover a fraction of the creator fee. It loses money by construction. |
 
-The full derivation, the worked examples, and the attacks this **does not**
-stop — including what splitting a bag across wallets *does* buy you — are in
-[`docs/phase-01-mechanic-spec.md`](docs/phase-01-mechanic-spec.md).
+Every row above is asserted, not argued: the rules are implemented in
+[`scripts/lib/timeline.mjs`](scripts/lib/timeline.mjs) and
+[`scripts/lib/epoch-build.mjs`](scripts/lib/epoch-build.mjs), and
+[`scripts/tests/`](scripts/tests/) holds each one to it — including linearity,
+which is the property that makes splitting a bag across wallets pointless.
 
 ---
 
@@ -104,11 +109,15 @@ trust — and keeping that list at exactly one item is the whole game.
 **Said plainly, because the alternative is worse:** if that key were stolen, the
 thief could take the pool and future fees, because there is no key rotation and
 no admin path to stop them. What they could never do is touch your tokens or
-change the rules. The full bound, with nothing rounded in our favour, is in
-[`docs/phase-05-epoch-oracle-audit.md`](docs/phase-05-epoch-oracle-audit.md).
+change the rules. That bound is not rounded in our favour: it is a repeatable
+capability, not a one-off, for as long as the key is out.
 
-The callout feed **has been read** and every record carries the caller's Solana
-address — see [`docs/phase-02-callout-data-source.md`](docs/phase-02-callout-data-source.md).
+The callout feed **has been read**, and every record it returns carries the
+caller's Solana address — which is what makes the caller list checkable per
+wallet rather than only in aggregate. The client is
+[`scripts/lib/callouts.mjs`](scripts/lib/callouts.mjs), and it is deliberately
+the smallest thing in the repository: fetch, merge, and say plainly when the
+answer is incomplete.
 
 ---
 
@@ -178,8 +187,9 @@ liveness dependency and never a trust one: if our crank stops, the fees sit
 safely in pump's vault until any holder moves them. That property is inherited
 from pump.fun, not invented here.
 
-Details and the ordering constraints in
-[`docs/phase-03-fee-routing.md`](docs/phase-03-fee-routing.md).
+The pool address is derived from a constant rather than from the mint —
+[`poolPda`](scripts/lib/program.mjs) — precisely so it exists before the coin
+does and can be named at creation time.
 
 ---
 
@@ -215,7 +225,10 @@ set the pool size, which is computed on chain from the pool's own balance.
 There are no user accounts and no user rent. Nothing to opt into, nothing to
 exit.
 
-Full spec in [`docs/phase-04-program.md`](docs/phase-04-program.md).
+The program is [`programs/callpool/src/lib.rs`](programs/callpool/src/lib.rs) —
+six instructions, no admin path, no token authority. `scripts/verify.sh`
+asserts all three of those structurally, so a seventh instruction or a
+`set_anything` fails the build rather than a review.
 
 ---
 
@@ -227,31 +240,33 @@ trusting us, that the epoch they were paid for was computed the way this page
 says it was. Every number it shows is either read from an RPC or recomputed
 locally from a published snapshot — never served as a fact.
 
-Spec in [`docs/phase-07-website.md`](docs/phase-07-website.md).
+How it is built, the rules it is under, and what is deliberately not built:
+[`site/README.md`](site/README.md).
 
 ---
 
-## Plan
+## What is in here
 
-| # | Phase | Doc |
-|---|---|---|
-| — | **Locked decisions — read before changing the mechanic** | [`DECISIONS-LOCKED`](docs/DECISIONS-LOCKED.md) |
-| 01 | Mechanic & anti-gaming spec | [`phase-01`](docs/phase-01-mechanic-spec.md) |
-| 02 | Callout data source — ✅ resolved | [`phase-02`](docs/phase-02-callout-data-source.md) |
-| 03 | Fee routing & the permanent split | [`phase-03`](docs/phase-03-fee-routing.md) |
-| 04 | The program | [`phase-04`](docs/phase-04-program.md) |
-| 05 | Epochs, snapshots, and the audit trail | [`phase-05`](docs/phase-05-epoch-oracle-audit.md) |
-| 06 | Devnet proofs | [`phase-06`](docs/phase-06-devnet-proofs.md) |
-| 07 | Website | [`phase-07`](docs/phase-07-website.md) |
-| 08 | Launch runbook | [`phase-08`](docs/phase-08-launch-runbook.md) |
-| 09 | Post-launch & keeping the crank alive | [`phase-09`](docs/phase-09-post-launch.md) |
+| Path | What it is |
+|---|---|
+| [`programs/callpool/`](programs/callpool/) | The program. Six instructions, and the merkle verifier. |
+| [`programs/callpool/tests/`](programs/callpool/tests/) | 49 Rust tests against the real binary, including property tests for the invariants. |
+| [`scripts/holds.mjs`](scripts/holds.mjs) | `hold(w, d)` and `locked(w, d)` for one wallet, from chain history. The whole mechanic reduces to this. |
+| [`scripts/snapshot.mjs`](scripts/snapshot.mjs) | One epoch's inputs, weights and merkle tree → `snapshots/epoch-N/`. Touches no key. |
+| [`scripts/post-root.mjs`](scripts/post-root.mjs) | The only script that signs anything. |
+| [`scripts/airdrop.mjs`](scripts/airdrop.mjs) | Pays every leaf. Anyone can run it — the destination is inside the leaf. |
+| [`scripts/verify-epoch.mjs`](scripts/verify-epoch.mjs) | **The reproducer.** Recompute any published epoch, offline or against an RPC. |
+| [`scripts/crank.mjs`](scripts/crank.mjs) | The four above, in order, for one epoch. |
+| [`scripts/verify.sh`](scripts/verify.sh) | Build, every test, and the structural assertions about the program's shape. |
+| [`site/`](site/) | The website. No build step, one pinned dependency — [`site/README.md`](site/README.md). |
+| [`snapshots/`](snapshots/) | The audit trail. One directory per settled day, each reproducible by a stranger. |
 
-Status, findings, and open decisions: [`docs/00-TRACKER.md`](docs/00-TRACKER.md).
-
-> `docs/` is gitignored as private working material, matching the reference
-> project's convention. The audit trail holders read is the website and the
-> published epoch snapshots — not this plan. Remove the `docs/` line from
-> `.gitignore` if you want the plan public too.
+**The planning documents are not published.** Comments and commit messages
+refer to them in shorthand — *Phase 05 §5.3*, *L12*, *D7* — and those are
+pointers into private working material, not files in this repository. Nothing
+in them is needed to check the system: the audit trail is `snapshots/` and the
+code that recomputes it, and both are here in full. Where a comment says *why*,
+the reasoning is in the comment itself.
 
 ---
 

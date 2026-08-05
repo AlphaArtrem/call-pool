@@ -6,7 +6,7 @@
 // scripts/tests/) and then confirmed against real devnet history (proofs 4, 6
 // and 19) without the two sharing any code path that could hide a bug.
 //
-// The rule it implements, per DECISIONS-LOCKED.md L6:
+// The rule it implements, and it is settled — not a knob:
 //
 //   hold(w, d) = the MINIMUM balance of w's associated token account for the
 //                mint at any point during day d.
