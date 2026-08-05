@@ -13,7 +13,7 @@
 //      "devnet" in it, and a mainnet endpoint need not say so either.
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 import { Keypair } from '@solana/web3.js';
 
@@ -73,6 +73,55 @@ export async function assertNotMainnet(connection, what) {
   return genesis;
 }
 
+/**
+ * Every place the manifest names a keypair file.
+ *
+ * `payer` is here too, but it is the one that usually sits OUTSIDE the
+ * repository — a funded key belongs in `~/.config/solana` or `/etc`, not in a
+ * working tree. So it stays absolute and does not travel; `--payer` overrides
+ * it, which is how the loop is pointed at a different machine's copy.
+ */
+function keypairFields(manifest) {
+  return [
+    manifest.payer,
+    manifest.snapshotKey,
+    manifest.creatorVault,
+    ...(manifest.cast ?? []),
+  ].filter((entry) => entry != null && typeof entry.keypair === 'string');
+}
+
+/**
+ * Store repo-internal key paths relative to the repository root.
+ *
+ * The manifest used to record absolute paths, which made a deployment
+ * non-portable in a way that only shows up once you move it: on 2026-08-05 the
+ * dry run was moved from a laptop to the signer box and every tool failed with
+ * `ENOENT /Users/…`, because six of the seven paths named a machine that was no
+ * longer involved. The cure is not to remember to rewrite them — it is to not
+ * write them that way.
+ *
+ * Anything outside the repository is left absolute, because there is nothing
+ * portable to say about it.
+ */
+function toPortablePaths(manifest) {
+  const copy = structuredClone(manifest);
+  for (const entry of keypairFields(copy)) {
+    const absolute = resolve(entry.keypair);
+    if (absolute.startsWith(REPO_ROOT + sep)) {
+      entry.keypair = relative(REPO_ROOT, absolute);
+    }
+  }
+  return copy;
+}
+
+/** The inverse: a relative path in the manifest is relative to the repo root. */
+function fromPortablePaths(manifest) {
+  for (const entry of keypairFields(manifest)) {
+    if (!isAbsolute(entry.keypair)) entry.keypair = resolve(REPO_ROOT, entry.keypair);
+  }
+  return manifest;
+}
+
 export function readManifest(path = MANIFEST_PATH) {
   const manifest = readJson(path, null);
   if (manifest == null) {
@@ -81,11 +130,11 @@ export function readManifest(path = MANIFEST_PATH) {
         'every tool in the dry run reads its addresses from that file.',
     );
   }
-  return manifest;
+  return fromPortablePaths(manifest);
 }
 
 export function writeManifest(manifest, path = MANIFEST_PATH) {
-  writeJson(path, manifest);
+  writeJson(path, toPortablePaths(manifest));
 }
 
 /** A Solana CLI keypair file — a JSON array of secret-key bytes. */
