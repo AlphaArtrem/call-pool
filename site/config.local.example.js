@@ -17,6 +17,19 @@ window.CALLPOOL_SITE_CONFIG = {
   // Default stays devnet until the mainnet deploy (Phase 07 §7.5).
   cluster: 'devnet',
 
+  // The two icon links in the top bar. Cluster-independent: an account and a
+  // repository do not move between devnet and mainnet.
+  //
+  // Omit either one and it renders as a disabled chip saying it is not
+  // published yet, which is the §7.4 rule applied to a link: a URL typed into
+  // the markup ahead of time is a URL nobody checked, and a dead link in the
+  // header of a page whose whole claim is "check everything" costs more than
+  // an empty slot.
+  links: {
+    x: '',
+    github: '',
+  },
+
   devnet: {
     // Read-only RPC. Public endpoints rate-limit and WILL fail under launch
     // traffic (Decision 11) — the page degrades to "can't reach chain" rather

@@ -1,59 +1,187 @@
-/* CALLPOOL — plain, dense, legible, receipts-first.
+/* CALLPOOL — receipts first, wearing pump.fun's skin.
  *
- * Phase 07 §7.6: resist the instinct to make it look like a launchpad. The
- * differentiator is that the numbers are checkable, and a page that looks like
- * every other memecoin site invites the assumption that it is one.
+ * Phase 07 §7.6 says: resist the instinct to make it look like a launchpad,
+ * because a page that looks like every other memecoin site invites the
+ * assumption that it is one. The owner asked for pump.fun's palette, a top
+ * bar, a theme toggle and card charts.
  *
- * System fonts, one accent, tables rather than cards, monospace for every
- * address and hash. Mobile first, because callouts are a mobile-app feature and
- * most traffic arrives from a phone.
+ * Those reconcile as: BORROW THE SKIN, KEEP THE SUBSTANCE. The colours, the
+ * bar, the nav, the toggle and the cards come from the launchpad. Its habits
+ * do not — there is no hero number without a source badge, no chart of
+ * anything we cannot point at, and no marketing block standing where a
+ * receipts table used to. If a change would make the page prettier by making a
+ * number less checkable, that is the one trade that is not available.
+ *
+ * ── Where the colours come from ───────────────────────────────────────────
+ *
+ * Every dark-theme value below is a literal pump.fun design token, read out of
+ * the stylesheets they serve (`/_next/static/chunks/*.css`) on 2026-08-05, not
+ * remembered and not eyeballed from a screenshot:
+ *
+ *   --bg            #111113   --color-bg-primary
+ *   --band          #18191b   --color-bg-secondary
+ *   --raised        #212225   --color-bg-muted
+ *   --raised-high   #272a2d   --color-bg-muted-secondary
+ *   --line          #272a2d   --color-border-tertiary
+ *   --fg            #fafafa   --color-text-primary
+ *   --muted         #a1a1aa   --color-text-tertiary
+ *   --faint         #8a8a8f   --advanced-icon-default
+ *   --accent        #86efac   --color-text-accent  (green-300)
+ *   --accent-strong #22c55e   --color-border-accent (green-500)
+ *   --on-accent     #052e16   --color-text-on-accent (green-950)
+ *   --ok            #5ddf6c   --color-text-success (sprout-500)
+ *   --warn          #eab308   --color-text-warning
+ *   --warn-bg       #422006   --color-bg-warning-inverse
+ *   --danger        #f87171   --color-text-error
+ *   --danger-bg     #450a0a   --color-bg-error-inverse
+ *   --info          #60a5fa   --color-bg-info
+ *   --pumpfun       #fb923c   --color-bg-decorative-orange
+ *
+ * pump.fun ships no light theme, so the light values are taken from the same
+ * ramps rather than invented: their neutral scale (#fafafa / #e4e4e7 /
+ * #b7b7ba / #4b4c52 / #363a3f), the dark end of their green scale (green-700
+ * #15803d, green-800 #166534) so the accent survives on paper, and the
+ * `-muted` and `-inverse` variants they already publish for warn, error and
+ * info.
+ *
+ * Where a token would have failed WCAG AA on the background it sits on, the
+ * next value on the same pump.fun ramp is used instead and the swap is noted
+ * inline. Contrast is not a place to be faithful to somebody else's palette.
+ *
+ * Dark is the default, because pump.fun is dark-first and most visitors arrive
+ * from it. Light is opt-in through the toggle or the OS preference.
  */
 
 :root {
-  --bg: #fbfbf9;
-  --fg: #16161a;
-  --muted: #5c5c66;
-  --line: #d9d9d2;
-  --raised: #ffffff;
-  --accent: #1f5f3f;
-  --warn: #8a4b00;
-  --warn-bg: #fdf3e3;
-  --danger: #8f1d1d;
-  --danger-bg: #fdeaea;
-  --ok: #1f5f3f;
+  /* ── pump.fun, dark ─────────────────────────────────────────────────── */
+  --bg: #111113;
+  --band: #18191b;
+  --raised: #212225;
+  --raised-high: #272a2d;
+  --line: #272a2d;
+  --line-strong: #43484e;
+  --fg: #fafafa;
+  --muted: #a1a1aa;
+  /* pump.fun's --advanced-icon-default, not their --advanced-text-disabled
+   * (#74757a). The disabled grey lands at 4.1:1 on this background and every
+   * use of --faint here is small text — badge labels, table headings, the
+   * pending states. 4.1 fails; this is 5.5. */
+  --faint: #8a8a8f;
 
-  --source-chain: #1f5f3f;
-  --source-snapshot: #3a4a8a;
-  --source-pumpfun: #8a4b00;
-  --source-derived: #5c5c66;
+  --accent: #86efac;
+  --accent-strong: #22c55e;
+  --on-accent: #052e16;
+  --ok: #5ddf6c;
 
+  --warn: #eab308;
+  --warn-bg: #422006;
+  --danger: #f87171;
+  --danger-bg: #450a0a;
+  --info: #60a5fa;
+  --pumpfun: #fb923c;
+
+  --source-chain: #86efac;
+  --source-snapshot: #60a5fa;
+  --source-pumpfun: #fb923c;
+  --source-derived: #a1a1aa;
+
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+
+  /* Inter is pump.fun's typeface. It is NAMED, never fetched: a webfont link
+   * is a third-party request on every page load, and this page's whole claim
+   * is that nothing it renders passed through anyone else's server. Visitors
+   * with Inter installed get it; everyone else gets their system sans. */
+  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121214;
-    --fg: #e8e8e4;
-    --muted: #9a9aa4;
-    --line: #2e2e34;
-    --raised: #1a1a1e;
-    --accent: #6fd39b;
-    --warn: #e0a458;
-    --warn-bg: #2a2116;
-    --danger: #f08a8a;
-    --danger-bg: #2c1717;
-    --ok: #6fd39b;
+/* The two light blocks below are identical on purpose and must stay in sync.
+ * The media query is the OS preference and loses to an explicit choice; the
+ * attribute rule is the toggle. Both are needed, in both directions: a page
+ * themed only through `prefers-color-scheme` has a toggle that appears to do
+ * nothing for half its visitors. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #fafafa;
+    --band: #f0fdf4;
+    --raised: #ffffff;
+    --raised-high: #ffffff;
+    --line: #e4e4e7;
+    --line-strong: #b7b7ba;
+    --fg: #111113;
+    --muted: #363a3f;
+    --faint: #4b4c52;
 
-    --source-chain: #6fd39b;
-    --source-snapshot: #8fa4e8;
-    --source-pumpfun: #e0a458;
-    --source-derived: #9a9aa4;
+    --accent: #15803d;
+    --accent-strong: #166534;
+    --on-accent: #f0fdf4;
+    --ok: #16a34a;
+
+    --warn: #713f12;
+    --warn-bg: color-mix(in srgb, #facc15 16%, #ffffff);
+    --danger: #7f1d1d;
+    --danger-bg: color-mix(in srgb, #f87171 14%, #ffffff);
+    --info: #1e3a8a;
+    --pumpfun: #7c2d12;
+
+    --source-chain: #15803d;
+    --source-snapshot: #1e3a8a;
+    --source-pumpfun: #7c2d12;
+    --source-derived: #4b4c52;
+
+    --shadow: 0 18px 48px rgba(17, 17, 19, 0.08);
   }
+}
+
+:root[data-theme="light"] {
+  --bg: #fafafa;
+  --band: #f0fdf4;
+  --raised: #ffffff;
+  --raised-high: #ffffff;
+  --line: #e4e4e7;
+  --line-strong: #b7b7ba;
+  --fg: #111113;
+  --muted: #363a3f;
+  --faint: #4b4c52;
+
+  --accent: #15803d;
+  --accent-strong: #166534;
+  --on-accent: #f0fdf4;
+  --ok: #16a34a;
+
+  --warn: #713f12;
+  --warn-bg: color-mix(in srgb, #facc15 16%, #ffffff);
+  --danger: #7f1d1d;
+  --danger-bg: color-mix(in srgb, #f87171 14%, #ffffff);
+  --info: #1e3a8a;
+  --pumpfun: #7c2d12;
+
+  --source-chain: #15803d;
+  --source-snapshot: #1e3a8a;
+  --source-pumpfun: #7c2d12;
+  --source-derived: #4b4c52;
+
+  --shadow: 0 18px 48px rgba(17, 17, 19, 0.08);
 }
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* The sticky bar would otherwise cover the heading of whatever a nav link
+   * jumps to. */
+  scroll-padding-top: 4.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  * {
+    transition: none !important;
+  }
 }
 
 body {
@@ -62,25 +190,181 @@ body {
   color: var(--fg);
   font: 16px/1.6 var(--sans);
   -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
 }
 
 .wrap {
-  max-width: 56rem;
+  max-width: 64rem;
   margin: 0 auto;
-  padding: 1.5rem 1rem;
+  padding: 0 1rem;
 }
 
+/* ── the top bar ──────────────────────────────────────────────────────── */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+.brandline {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 3.5rem;
+  flex-wrap: wrap;
+}
+
+.logo {
+  font-family: var(--mono);
+  font-size: 1rem;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.logo b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav a {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid transparent;
+}
+
+.nav a:hover,
+.nav a:focus-visible {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* Below a laptop the seven nav links and the controls will not share a line.
+ * The controls stay on the brand row and the nav drops beneath them, scrolling
+ * sideways, rather than the controls wrapping into a half-empty second row. */
+@media (max-width: 60rem) {
+  .brandline {
+    /* padding-block only — the inline padding belongs to .wrap, and a
+     * shorthand here silently takes it away and puts the logo on the edge. */
+    padding-block: 0.5rem;
+    row-gap: 0.5rem;
+  }
+
+  .nav {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
+.social-links {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.icon-link {
+  width: 2rem;
+  height: 2rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.icon-link:hover,
+.icon-link:focus-visible {
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+
+.icon-link svg {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+}
+
+/* An unset link is a state, not a blank. §7.4 applies to a link the same way
+ * it applies to a number: better to say "not published yet" than to ship a URL
+ * that 404s or, worse, one nobody checked. */
+.icon-link[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cluster-control select {
+  appearance: none;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.375rem 1.75rem 0.375rem 0.625rem;
+  border-radius: 6px;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 0.875rem) 50%, calc(100% - 0.575rem) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.cluster-control select:hover,
+.cluster-control select:focus-visible {
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+
+/* ── type ─────────────────────────────────────────────────────────────── */
+
 h1 {
-  font-size: 1.75rem;
-  letter-spacing: 0.08em;
-  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 5.5vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0.75rem 0 1rem;
 }
 
 h2 {
-  font-size: 1.25rem;
-  margin: 2.5rem 0 0.75rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
+  font-size: clamp(1.375rem, 3vw, 1.875rem);
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  margin: 0;
 }
 
 h3 {
@@ -106,7 +390,7 @@ code,
 pre {
   background: var(--raised);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 0.75rem;
   overflow-x: auto;
   margin: 0 0 0.75rem;
@@ -117,9 +401,23 @@ pre code {
   white-space: pre;
 }
 
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0;
+}
+
 .lede {
-  font-size: 1.05rem;
-  max-width: 46rem;
+  font-size: 1.0625rem;
+  max-width: 44rem;
+  color: var(--muted);
+}
+
+.lede strong {
+  color: var(--fg);
 }
 
 .note {
@@ -129,7 +427,7 @@ pre code {
 }
 
 .cluster-note {
-  color: var(--muted);
+  color: var(--faint);
   font-size: 0.8125rem;
 }
 
@@ -143,14 +441,107 @@ pre code {
   white-space: nowrap;
 }
 
+/* ── sections ─────────────────────────────────────────────────────────── */
+
+main > section {
+  padding: 3rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.section-head {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (min-width: 52rem) {
+  .section-head {
+    grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+    gap: 2.5rem;
+    align-items: start;
+  }
+}
+
+.section-head p {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ── buttons ──────────────────────────────────────────────────────────── */
+
+.button,
+button[type="submit"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: 0.6rem 1.15rem;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--raised);
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button:hover,
+.button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.button.primary,
+button[type="submit"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.button.primary:hover,
+.button.primary:focus-visible,
+button[type="submit"]:hover {
+  color: var(--on-accent);
+  filter: brightness(1.06);
+}
+
+input[type="text"]:focus-visible,
+button:focus-visible,
+select:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+}
+
+/* ── hero ─────────────────────────────────────────────────────────────── */
+
+.hero {
+  padding: 3rem 1rem 2.5rem;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1.25rem 0 1rem;
+}
+
 /* ── metrics ──────────────────────────────────────────────────────────── */
 
 .metrics {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1rem;
+  gap: 1px;
   margin: 1rem 0;
   padding: 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 @media (min-width: 40rem) {
@@ -159,27 +550,33 @@ pre code {
   }
 }
 
+@media (min-width: 64rem) {
+  .metrics {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
 .metric {
   background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.75rem 0.875rem;
+  padding: 1rem 1rem 1.125rem;
+  min-width: 0;
 }
 
 .metric dt {
-  font-size: 0.8125rem;
-  color: var(--muted);
+  font-size: 0.6875rem;
+  color: var(--faint);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
+  font-family: var(--mono);
 }
 
 .metric dd {
-  margin: 0.25rem 0 0;
+  margin: 0.5rem 0 0;
 }
 
 .big {
   font-family: var(--mono);
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   line-height: 1.3;
 }
 
@@ -192,11 +589,11 @@ pre code {
 .source {
   display: inline-block;
   font-family: var(--sans);
-  font-size: 0.6875rem;
-  font-weight: 600;
+  font-size: 0.625rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 0.05rem 0.35rem;
+  letter-spacing: 0.08em;
+  padding: 0.1rem 0.4rem;
   border: 1px solid currentColor;
   border-radius: 999px;
   vertical-align: middle;
@@ -211,7 +608,7 @@ pre code {
 
 .pending,
 .unavailable {
-  color: var(--muted);
+  color: var(--faint);
   font-style: italic;
   font-size: 0.9375rem;
   font-family: var(--sans);
@@ -219,6 +616,289 @@ pre code {
 
 .unavailable {
   color: var(--warn);
+}
+
+/* ── card charts ──────────────────────────────────────────────────────── */
+
+.graph-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 46rem) {
+  .graph-grid {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+}
+
+.graph-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.125rem 1.125rem;
+  min-width: 0;
+}
+
+.graph-title {
+  font-size: 0.6875rem;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+.graph-value {
+  font-family: var(--mono);
+  font-size: 1.125rem;
+  line-height: 1.35;
+  margin-top: 0.375rem;
+  display: block;
+}
+
+.graph-value .value {
+  font-weight: 600;
+}
+
+.graph-copy {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: auto 0 0;
+}
+
+/* A chart that has nothing to draw says so. It never renders an empty axis or
+ * a zeroed bar, because a zeroed bar reads as "the number is zero". */
+.chart-state {
+  font-size: 0.875rem;
+  font-style: italic;
+  color: var(--faint);
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  padding: 0.625rem 0.75rem;
+}
+
+.chart-state.is-unavailable {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.bar-stack {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.625rem;
+  align-items: center;
+}
+
+.bar-label {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.bar-track {
+  height: 0.625rem;
+  border-radius: 999px;
+  background: var(--band);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.bar-fill.is-secondary {
+  background: var(--muted);
+}
+
+.bar-value {
+  grid-column: 2;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: -0.25rem;
+}
+
+.sparkline {
+  width: 100%;
+  height: 4rem;
+  display: block;
+  color: var(--accent);
+  overflow: visible;
+}
+
+.sparkline path.line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sparkline path.area {
+  fill: color-mix(in srgb, var(--accent) 16%, transparent);
+  stroke: none;
+}
+
+.sparkline circle {
+  fill: currentColor;
+}
+
+.rail {
+  height: 0.625rem;
+  border-radius: 999px;
+  background: var(--band);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  display: flex;
+}
+
+.rail span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.rail span.is-secondary {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.rail-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: var(--faint);
+  margin-top: 0.5rem;
+}
+
+/* ── expandable tiles ─────────────────────────────────────────────────── */
+
+details.tech,
+.aside {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  margin: 1rem 0;
+}
+
+details.tech > summary,
+.aside > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.875rem 2.5rem 0.875rem 1rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  position: relative;
+}
+
+details.tech > summary::-webkit-details-marker,
+.aside > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.tech > summary::after,
+.aside > summary::after {
+  content: "+";
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  color: var(--accent);
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+details.tech[open] > summary::after,
+.aside[open] > summary::after {
+  content: "–";
+}
+
+details.tech > summary:hover,
+.aside > summary:hover {
+  color: var(--accent);
+}
+
+.detail-body {
+  border-top: 1px solid var(--line);
+  padding: 1rem;
+}
+
+.detail-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.detail-body p,
+.aside p {
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+
+.detail-body strong,
+.aside strong {
+  color: var(--fg);
+}
+
+.aside p {
+  padding: 0 1rem;
+}
+
+.aside p:last-child {
+  padding-bottom: 1rem;
+}
+
+/* ── verification cards ───────────────────────────────────────────────── */
+
+.verify-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 52rem) {
+  .verify-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.verification-card {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.125rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.verification-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.9375rem;
+}
+
+.verification-card pre {
+  background: var(--band);
+  font-size: 0.8125rem;
+}
+
+.verification-card .note {
+  margin-bottom: 0;
 }
 
 /* ── tables ───────────────────────────────────────────────────────────── */
@@ -233,7 +913,7 @@ table {
 .facts td {
   text-align: left;
   vertical-align: top;
-  padding: 0.5rem 0.5rem 0.5rem 0;
+  padding: 0.625rem 0.5rem 0.625rem 0;
   border-bottom: 1px solid var(--line);
   font-weight: 400;
 }
@@ -255,17 +935,19 @@ table {
 .attacks td {
   text-align: left;
   vertical-align: top;
-  padding: 0.5rem 0.75rem 0.5rem 0;
+  padding: 0.625rem 0.75rem 0.625rem 0;
   border-bottom: 1px solid var(--line);
 }
 
 .epochs thead th,
 .attacks thead th {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
+  font-family: var(--mono);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  letter-spacing: 0.1em;
+  color: var(--faint);
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .epochs .num {
@@ -298,13 +980,14 @@ table {
 
 .copy {
   font: inherit;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  letter-spacing: 0.08em;
+  color: var(--faint);
   background: none;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 0.05rem 0.35rem;
   cursor: pointer;
 }
@@ -312,7 +995,7 @@ table {
 .copy:hover,
 .copy:focus-visible {
   color: var(--fg);
-  border-color: var(--fg);
+  border-color: var(--line-strong);
 }
 
 /* ── the calculator ───────────────────────────────────────────────────── */
@@ -336,42 +1019,29 @@ input[type="text"] {
   font-family: var(--mono);
   font-size: 1rem;
   padding: 0.6rem 0.7rem;
-  background: var(--raised);
+  background: var(--band);
   color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
 }
 
-input[type="text"]:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-button[type="submit"] {
-  font: inherit;
-  font-weight: 600;
-  padding: 0.6rem 1.25rem;
-  background: var(--accent);
-  color: var(--bg);
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+input[type="text"]::placeholder {
+  color: var(--faint);
 }
 
 .standing {
   margin: 1rem 0;
-  padding: 0.875rem 1rem;
+  padding: 1rem 1.125rem;
   border: 1px solid var(--line);
   border-left-width: 4px;
-  border-radius: 4px;
+  border-radius: 10px;
   background: var(--raised);
 }
 
 .standing-ok { border-left-color: var(--ok); }
 .standing-action { border-left-color: var(--warn); }
 .standing-blocked { border-left-color: var(--danger); }
-.standing-pending { border-left-color: var(--line); }
+.standing-pending { border-left-color: var(--line-strong); }
 
 .standing-headline {
   font-size: 1.0625rem;
@@ -398,9 +1068,9 @@ button[type="submit"] {
 /* ── banners and failures ─────────────────────────────────────────────── */
 
 .banner {
-  padding: 0.875rem 1rem;
+  padding: 1rem 1.125rem;
   border: 1px solid;
-  border-radius: 4px;
+  border-radius: 10px;
   margin: 1rem 0;
 }
 
@@ -423,8 +1093,8 @@ button[type="submit"] {
 .failed {
   border-left: 4px solid var(--warn);
   background: var(--warn-bg);
-  padding: 0.875rem 1rem;
-  border-radius: 4px;
+  padding: 1rem 1.125rem;
+  border-radius: 10px;
   margin: 1rem 0;
 }
 
@@ -463,18 +1133,19 @@ button[type="submit"] {
 }
 
 .clock {
-  padding: 0.875rem 1rem;
+  padding: 1rem 1.125rem;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 10px;
   background: var(--raised);
 }
 
 .clock h3 {
   margin: 0 0 0.5rem;
-  font-size: 0.8125rem;
+  font-size: 0.6875rem;
+  font-family: var(--mono);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  letter-spacing: 0.1em;
+  color: var(--faint);
 }
 
 .clock-hourly {
@@ -493,12 +1164,12 @@ button[type="submit"] {
 
 .badge {
   display: inline-block;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 0.1rem 0.45rem;
-  border-radius: 3px;
+  border-radius: 4px;
   margin: 0 0 0.5rem;
 }
 
@@ -508,10 +1179,29 @@ button[type="submit"] {
   border: 1px solid var(--warn);
 }
 
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.status-pill {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
 .explanation {
   font-size: 0.9375rem;
   color: var(--muted);
-  border-left: 2px solid var(--line);
+  border-left: 2px solid var(--line-strong);
   padding-left: 0.75rem;
 }
 
@@ -519,25 +1209,8 @@ button[type="submit"] {
   font-size: 0.8125rem;
 }
 
-.aside {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.75rem 1rem;
-  margin: 1rem 0;
-  background: var(--raised);
-}
-
-.aside summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.aside p {
-  margin-top: 0.75rem;
-  font-size: 0.9375rem;
-}
-
 footer {
   border-top: 1px solid var(--line);
   margin-top: 2rem;
+  padding: 2rem 1rem 3rem;
 }

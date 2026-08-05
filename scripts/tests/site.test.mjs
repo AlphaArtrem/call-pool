@@ -39,6 +39,7 @@ import { standingFor, formatSol, formatTokens, countdown } from '../../site/js/s
 import * as clocksModule from '../../site/js/clocks.js';
 import { dailyState, epochAt, hourlyState, windowFor } from '../../site/js/clocks.js';
 import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
+import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 
@@ -494,4 +495,98 @@ test('the epoch boundary is described from the window, not asserted as midnight'
   // A rehearsal deployment on 60-second epochs must not announce a midnight
   // boundary every minute. It says the actual time instead.
   assert.equal(boundaryLabel({ start: 1_767_225_600, end: 1_767_225_660 }), '2026-01-01 00:01 UTC');
+});
+
+// ── the card charts refuse rather than draw ────────────────────────────────
+//
+// §7.4 says never render a number that cannot be sourced. A chart is a number:
+// an empty axis is a claim that we looked and found nothing, and a bar drawn
+// at zero because the balance never loaded is a claim that the balance is
+// zero. Every function in site/js/graphs.js returns null instead, and the
+// helpers in ui.js turn null into a sentence. These tests hold that line,
+// because it is the one a redesign drops first.
+
+test('a bar chart refuses to draw when any value is missing', () => {
+  const partial = barSeries([
+    { label: 'Pool', value: 5_000_000n, display: '0.005 SOL' },
+    { label: 'Accrued', value: null, display: 'not read' },
+  ]);
+  assert.equal(partial, null);
+});
+
+test('a bar chart refuses when everything is zero, rather than drawing empty tracks', () => {
+  // Three empty tracks look identical to three tracks that failed to load.
+  assert.equal(
+    barSeries([
+      { label: 'Pool', value: 0n, display: '0 SOL' },
+      { label: 'Accrued', value: 0n, display: '0 SOL' },
+    ]),
+    null,
+  );
+});
+
+test('bars are scaled against the largest value in the set, from BigInt lamports', () => {
+  const rows = barSeries([
+    { label: 'Pool', value: 4_000_000_000n, display: '4 SOL' },
+    { label: 'Accrued', value: 1_000_000_000n, display: '1 SOL', secondary: true },
+  ]);
+  assert.equal(rows[0].ratio, 1);
+  assert.equal(rows[1].ratio, 0.25);
+  assert.equal(rows[1].secondary, true);
+  // The display string is carried through untouched — the bar never invents
+  // its own formatting of a number formatted elsewhere.
+  assert.equal(rows[0].display, '4 SOL');
+});
+
+test('a sparkline refuses below two points, because one point is not a trend', () => {
+  assert.equal(sparkPath([]), null);
+  assert.equal(sparkPath([42n]), null);
+  assert.notEqual(sparkPath([42n, 43n]), null);
+});
+
+test('a sparkline refuses a series with a hole in it', () => {
+  assert.equal(sparkPath([1n, null, 3n]), null);
+});
+
+test('a flat series is drawn at its own level, not pinned to a floor', () => {
+  // Three identical epochs are a real shape and must not read as "zero".
+  const flat = sparkPath([2n, 2n, 2n], { width: 220, height: 56, pad: 4 });
+  assert.match(flat.line, /^M4 4 L110 4 L216 4$/);
+});
+
+test('a sparkline spans the box it is given, oldest point first', () => {
+  const path = sparkPath([0n, 10n], { width: 100, height: 50, pad: 5 });
+  // Lowest value at the bottom of the usable box, highest at the top.
+  assert.match(path.line, /^M5 45 L95 5$/);
+  assert.equal(path.last.x, 95);
+  // The area closes to the bottom edge so the fill cannot float.
+  assert.match(path.area, /L5 50 Z$/);
+});
+
+test('epoch progress refuses until the on-chain window has been read', () => {
+  assert.equal(epochProgress({ window: null, now: 1_767_225_600 }), null);
+  assert.equal(epochProgress({ window: WINDOW, now: Number.NaN }), null);
+});
+
+test('epoch progress is measured against the window length, not against a day', () => {
+  // A rehearsal deployment on 60-second epochs is 50% through after 30
+  // seconds. Measuring against 86,400 would draw a bar that never moves.
+  const short = { start: 1_767_225_600, end: 1_767_225_660, epoch: 3 };
+  assert.equal(epochProgress({ window: short, now: short.start + 30 }).elapsed, 0.5);
+});
+
+test('a closed epoch shows a full bar, never an overflowing one', () => {
+  const past = epochProgress({ window: WINDOW, now: WINDOW.end + 99_999 });
+  assert.equal(past.elapsed, 1);
+  assert.equal(past.remaining, 0);
+});
+
+test('the challenge window is drawn relative to the epoch it follows', () => {
+  const progress = epochProgress({
+    window: WINDOW,
+    now: WINDOW.start,
+    challengeSeconds: 86_400,
+  });
+  assert.equal(progress.challengeShare, 1);
+  assert.equal(epochProgress({ window: WINDOW, now: WINDOW.start }).challengeShare, 0);
 });

@@ -6,6 +6,15 @@
 // page goes through `field()`, and `field()` cannot be called without naming
 // where the number came from. That is the whole reason this module exists;
 // the rest is convenience.
+//
+// The chart helpers at the bottom are here rather than in a module of their
+// own for the same reason: a chart is a number. It carries a badge like any
+// other number — rendered by `field()` into the card's value slot — and it
+// refuses to draw when there is nothing to draw, because an empty axis is a
+// claim about the data. The refusing is done by the pure functions in
+// graphs.js; these helpers only turn a refusal into a sentence.
+
+import { barSeries, epochProgress, sparkPath } from './graphs.js';
 
 /**
  * Where a number came from. The order is the order of trust.
@@ -129,6 +138,140 @@ export function addressNode(address, { href = null, truncate = false } = {}) {
 
   wrap.append(text, copy);
   return wrap;
+}
+
+// ── charts ──────────────────────────────────────────────────────────────
+//
+// Every one of these takes an `empty` sentence and renders it, visibly, when
+// the underlying function refuses. The sentence is required rather than
+// optional: the moment it is optional, some future card renders nothing at all
+// and nobody notices for a week.
+
+/** What a chart shows instead of a chart. Never a blank, never a zeroed axis. */
+export function chartState(node, message, { unavailable = false } = {}) {
+  node.replaceChildren();
+  const state = document.createElement('p');
+  state.className = unavailable ? 'chart-state is-unavailable' : 'chart-state';
+  state.textContent = message;
+  node.append(state);
+  return false;
+}
+
+function svg(name, attrs = {}) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
+  return node;
+}
+
+/**
+ * Labelled bars, scaled against the largest value in the set.
+ *
+ * Each bar carries its own value as text underneath. A bar without its number
+ * beside it is a shape the reader has to trust; this page does not ask for
+ * that anywhere else and will not start here.
+ */
+export function bars(node, { series, empty, unavailable = false }) {
+  const rows = barSeries(series);
+  if (rows == null) return chartState(node, empty, { unavailable });
+
+  node.replaceChildren();
+  const stack = document.createElement('div');
+  stack.className = 'bar-stack';
+
+  for (const bar of rows) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+
+    const label = document.createElement('span');
+    label.className = 'bar-label';
+    label.textContent = bar.label;
+
+    const track = document.createElement('span');
+    track.className = 'bar-track';
+    const fill = document.createElement('span');
+    fill.className = bar.secondary ? 'bar-fill is-secondary' : 'bar-fill';
+    fill.style.width = `${(bar.ratio * 100).toFixed(1)}%`;
+    track.append(fill);
+
+    const value = document.createElement('span');
+    value.className = 'bar-value';
+    value.textContent = bar.display;
+
+    row.append(label, track, value);
+    stack.append(row);
+  }
+
+  node.append(stack);
+  return true;
+}
+
+/**
+ * A sparkline over a series, oldest first.
+ *
+ * `label` becomes the accessible name, because an <svg role="img"> with no
+ * name is invisible to a screen reader and the shape is the whole point.
+ */
+export function sparkline(node, { values, label, empty, unavailable = false }) {
+  const path = sparkPath(values);
+  if (path == null) return chartState(node, empty, { unavailable });
+
+  node.replaceChildren();
+  const chart = svg('svg', {
+    class: 'sparkline',
+    viewBox: '0 0 220 56',
+    preserveAspectRatio: 'none',
+    role: 'img',
+    'aria-label': label,
+  });
+  chart.append(
+    svg('path', { class: 'area', d: path.area }),
+    svg('path', { class: 'line', d: path.line }),
+    svg('circle', { cx: path.last.x, cy: path.last.y, r: 3 }),
+  );
+  node.append(chart);
+  return true;
+}
+
+/**
+ * The epoch clock as a rail: elapsed, then the challenge window that follows.
+ *
+ * Drawn from the on-chain window rather than the visitor's calendar, so a
+ * rehearsal deployment running short epochs draws short epochs.
+ */
+export function progressRail(node, { window: w, now, challengeSeconds, empty, unavailable = false }) {
+  const progress = epochProgress({ window: w, now, challengeSeconds });
+  if (progress == null) return chartState(node, empty, { unavailable });
+
+  node.replaceChildren();
+  const rail = document.createElement('div');
+  rail.className = 'rail';
+  rail.setAttribute('role', 'img');
+  rail.setAttribute(
+    'aria-label',
+    `Epoch ${w.epoch} is ${Math.round(progress.elapsed * 100)}% elapsed.`,
+  );
+
+  const elapsed = document.createElement('span');
+  elapsed.style.width = `${(progress.elapsed * 100).toFixed(1)}%`;
+  rail.append(elapsed);
+
+  if (progress.challengeShare > 0) {
+    const challenge = document.createElement('span');
+    challenge.className = 'is-secondary';
+    challenge.style.width = `${(Math.min(1, progress.challengeShare) * 100).toFixed(1)}%`;
+    rail.append(challenge);
+  }
+
+  const legend = document.createElement('div');
+  legend.className = 'rail-legend';
+  const left = document.createElement('span');
+  left.textContent = `${Math.round(progress.elapsed * 100)}% elapsed`;
+  const right = document.createElement('span');
+  right.textContent = progress.challengeShare > 0 ? 'then the challenge window' : 'epoch';
+  legend.append(left, right);
+
+  node.append(rail, legend);
+  return true;
 }
 
 /** One row of a definition-style table. */

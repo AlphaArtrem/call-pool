@@ -19,8 +19,9 @@ import { explorerUrl, FLOOR_PERCENT_LABEL, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
 import { decodeConfig } from './program.js';
 import { loadPosition, looksLikeAddress, renderPosition, renderPositionFailure } from './position.js';
-import { formatSol, formatTokens } from './standing.js';
-import { addressNode, el, failure, field, SOURCES } from './ui.js';
+import { countdown, formatSol, formatTokens } from './standing.js';
+import { wireTopbar } from './topbar.js';
+import { addressNode, bars, chartState, el, failure, field, progressRail, sparkline, SOURCES } from './ui.js';
 
 const state = {
   config: null,
@@ -48,17 +49,40 @@ function resetLiveFields(message = null) {
     field(el(id), { value: null, unavailable: message });
   }
 
-  // The clocks and the history are regions rather than single values, so they
-  // get the same treatment in their own shape.
+  // The clocks, the cards and the history are regions rather than single
+  // values, so they get the same treatment in their own shape.
   const clockText = message ?? 'reading…';
   el('hourly-clock').textContent = clockText;
   el('daily-clock').textContent = clockText;
+
+  for (const [valueId, chartId] of CARDS) {
+    field(el(valueId), { value: null, unavailable: message });
+    chartState(el(chartId), message ?? 'reading…', { unavailable: message != null });
+  }
+
   if (message != null) renderEpochs(el('epoch-rows'), [], state.config ?? {});
+}
+
+/** The three card charts, as [value slot, chart slot]. */
+const CARDS = [
+  ['card-pool-value', 'card-pool-chart'],
+  ['card-history-value', 'card-history-chart'],
+  ['card-clock-value', 'card-clock-chart'],
+];
+
+/** `formatSol` that survives a balance which never loaded. */
+function sol(lamports) {
+  return lamports == null ? 'not read' : `${formatSol(lamports)} SOL`;
 }
 
 async function main() {
   const config = siteConfig();
   state.config = config;
+
+  // Before the configured check: the theme toggle, the cluster switch and the
+  // social links must work on a page that cannot read a single number, which
+  // is exactly the page someone lands on when the RPC is down.
+  wireTopbar(config);
 
   el('cluster-label').textContent = config.cluster;
   resetLiveFields();
@@ -90,6 +114,8 @@ async function main() {
   }
 
   await loadChainConfig(config);
+  if (state.window == null) clocksWithoutAWindow();
+
   await Promise.allSettled([loadPool(config), loadHistory(config)]);
   wireCalculator(config);
 }
@@ -230,6 +256,118 @@ async function loadChainConfig(config) {
   }
 }
 
+/**
+ * What the clocks say when the program's config never loaded.
+ *
+ * `loadChainConfig` has four ways out — no account, a mint mismatch, a decode
+ * failure, an RPC failure — and every one of them leaves the epoch window
+ * unknown. Rather than remembering to say so at each `return`, the caller
+ * checks once: if there is no window, nothing that depends on one is left
+ * sitting on "reading…" pretending it is still trying.
+ */
+function clocksWithoutAWindow() {
+  const now = Math.floor(Date.now() / 1000);
+
+  el('daily-clock').textContent =
+    'Unknown — when this epoch closes comes from the program’s config, which was not read.';
+
+  // The hourly clock is not downstream of the chain config at all: it reports
+  // whether provisional standings have been published, and the honest answer
+  // to that is the same whether or not an RPC answered.
+  el('hourly-clock').textContent = hourlyState({ now, lastSampleAt: null }).label;
+
+  renderClockCard(null, now);
+}
+
+/**
+ * The pool card: what can be divided now, against what is still accruing.
+ *
+ * The two bars are the same two numbers as the first two metrics above, drawn
+ * against each other because "the pool is small but a sweep is due" and "the
+ * pool is small and nothing is coming" are the same two figures and completely
+ * different situations. Both are chain reads, so the card carries the chain
+ * badge; if either failed the chart says which, rather than drawing one bar
+ * and letting the missing one read as zero.
+ */
+function renderPoolCard(config, poolLamports, vaultLamports) {
+  field(el('card-pool-value'), {
+    value: poolLamports == null ? null : sol(poolLamports),
+    source: SOURCES.chain,
+    unavailable: poolLamports == null ? 'the pool balance could not be read' : null,
+  });
+
+  const missing =
+    config.creatorVault == null
+      ? 'The creator vault is not configured, so there is nothing to compare the pool against.'
+      : 'Both balances have to load before they can be compared. One of them did not.';
+
+  bars(el('card-pool-chart'), {
+    series: [
+      { label: 'Pool', value: poolLamports, display: sol(poolLamports) },
+      { label: 'Accrued', value: vaultLamports, display: sol(vaultLamports), secondary: true },
+    ],
+    empty:
+      poolLamports == null || vaultLamports == null
+        ? missing
+        : 'Both accounts are empty. Nothing has accrued to split yet.',
+    unavailable: poolLamports == null || vaultLamports == null,
+  });
+}
+
+/**
+ * The history card: one point per settled epoch, oldest first.
+ *
+ * Deliberately counts *settled* epochs rather than epochs elapsed. An epoch
+ * that was never posted has no distribution to plot, and quietly plotting it
+ * as zero would hide the gap that section 4 goes out of its way to show.
+ */
+function renderHistoryCard(epochs) {
+  const settled = epochs.filter((e) => e.posted).reverse();
+
+  field(el('card-history-value'), {
+    value: `${settled.length} settled`,
+    source: SOURCES.chain,
+  });
+
+  sparkline(el('card-history-chart'), {
+    values: settled.map((e) => e.claimedLamports),
+    label: `Distributed per epoch across ${settled.length} settled epochs, oldest first.`,
+    empty:
+      settled.length === 0
+        ? 'No epoch has settled yet. The first settles at the first 00:00 UTC after launch.'
+        : 'One epoch has settled. A single point is not a trend, so nothing is drawn yet.',
+  });
+}
+
+/**
+ * The clock card: how far through the current epoch we are.
+ *
+ * Sized from the on-chain window, so a rehearsal deployment running 60-second
+ * epochs draws 60-second epochs rather than a day that never advances.
+ */
+function renderClockCard(chainConfig, now) {
+  const running = state.window != null && now < state.window.end;
+
+  field(el('card-clock-value'), {
+    value:
+      state.window == null
+        ? null
+        : running
+          ? `${countdown(state.window.end - now)} left`
+          : 'closed',
+    source: SOURCES.derived,
+    unavailable: state.window == null ? 'the epoch window is not known yet' : null,
+  });
+
+  progressRail(el('card-clock-chart'), {
+    window: state.window,
+    now,
+    challengeSeconds: chainConfig?.challengeSeconds ?? null,
+    empty: 'The epoch window comes from the program’s config, which has not been read.',
+    unavailable: true,
+  });
+}
+
 function renderClocks(chainConfig, now) {
   const daily = dailyState({
     now,
@@ -246,6 +384,8 @@ function renderClocks(chainConfig, now) {
   const hourlyNode = el('hourly-clock');
   hourlyNode.textContent = hourly.label;
   hourlyNode.classList.toggle('warn', hourly.stale);
+
+  renderClockCard(chainConfig, now);
 }
 
 /**
@@ -256,11 +396,14 @@ function renderClocks(chainConfig, now) {
  * showing only the pool would understate what is coming.
  */
 async function loadPool(config) {
+  let poolLamports = null;
+  let vaultLamports = null;
+
   const node = el('pool-balance');
   try {
     const pool = poolPda(config.programId);
-    const lamports = await lamportsOf(state.connection, pool);
-    field(node, { value: `${formatSol(lamports)} SOL`, source: SOURCES.chain });
+    poolLamports = await lamportsOf(state.connection, pool);
+    field(node, { value: `${formatSol(poolLamports)} SOL`, source: SOURCES.chain });
   } catch (error) {
     field(node, { value: null, unavailable: 'can’t reach chain' });
     console.error('pool balance', error);
@@ -269,28 +412,45 @@ async function loadPool(config) {
   const vaultNode = el('vault-balance');
   if (config.creatorVault == null) {
     field(vaultNode, { value: null, unavailable: 'creator vault not configured' });
-    return;
+  } else {
+    try {
+      vaultLamports = await lamportsOf(state.connection, config.creatorVault);
+      field(vaultNode, { value: `${formatSol(vaultLamports)} SOL`, source: SOURCES.chain });
+    } catch (error) {
+      field(vaultNode, { value: null, unavailable: 'can’t reach chain' });
+      console.error('creator vault balance', error);
+    }
   }
-  try {
-    const lamports = await lamportsOf(state.connection, config.creatorVault);
-    field(vaultNode, { value: `${formatSol(lamports)} SOL`, source: SOURCES.chain });
-  } catch (error) {
-    field(vaultNode, { value: null, unavailable: 'can’t reach chain' });
-    console.error('creator vault balance', error);
-  }
+
+  renderPoolCard(config, poolLamports, vaultLamports);
 }
 
 async function loadHistory(config) {
-  if (state.window == null) return;
+  // No window means the program's config never loaded, and the epoch index is
+  // derived from it. Say so in both places rather than leaving the table and
+  // the card sitting on "reading…" forever.
+  if (state.window == null) {
+    field(el('card-history-value'), { value: null, unavailable: 'the current epoch is not known' });
+    chartState(el('card-history-chart'), 'Which epochs to read comes from the program’s config, which has not been read.', {
+      unavailable: true,
+    });
+    return;
+  }
+
   try {
     const epochs = await loadEpochs(state.connection, config, state.window.epoch);
     renderEpochs(el('epoch-rows'), epochs, config);
     renderTotals(el('total-distributed'), epochs);
+    renderHistoryCard(epochs);
   } catch (error) {
     failure(el('history-status'), {
       what: 'Could not read the epoch history.',
       consequence: 'The table below may be incomplete. Every epoch is still readable on chain directly.',
       error,
+    });
+    field(el('card-history-value'), { value: null, unavailable: 'the epoch accounts could not be read' });
+    chartState(el('card-history-chart'), 'The epoch history could not be read, so there is nothing to plot.', {
+      unavailable: true,
     });
   }
 }

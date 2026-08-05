@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
     <title>CALLPOOL — every reward, checkable</title>
     <meta
       name="description"
@@ -18,6 +19,24 @@
     <link rel="stylesheet" href="/site/app.css" />
 
     <!--
+      The theme, before first paint. Inline and blocking on purpose: read from
+      localStorage after the stylesheet has already applied and every visitor
+      who chose light gets a black flash on every navigation. Three lines in
+      the head is the standard price of not doing that. It touches nothing but
+      one attribute — js/topbar.js owns the toggle itself.
+    -->
+    <script>
+      try {
+        const saved = localStorage.getItem('callpool.theme');
+        if (saved === 'dark' || saved === 'light') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch {
+        /* Private browsing refuses storage; the OS preference still applies. */
+      }
+    </script>
+
+    <!--
       config.local.js is gitignored and may not exist. `onerror` keeps a missing
       file from being a silent failure: app.js checks for the global and renders
       an explicit "not configured" state rather than defaulting to anything.
@@ -26,22 +45,83 @@
   </head>
 
   <body>
-    <header class="wrap">
-      <h1>CALLPOOL</h1>
+    <!-- ── the top bar ─────────────────────────────────────────────────── -->
+    <div class="topbar">
+      <div class="wrap brandline">
+        <a class="logo" href="#top">CALL<b>POOL</b></a>
+
+        <nav class="nav" aria-label="Page sections">
+          <a href="#position">Your position</a>
+          <a href="#this-epoch">This epoch</a>
+          <a href="#history">Every epoch</a>
+          <a href="#fees">Fees</a>
+          <a href="#rule">The rule</a>
+          <a href="#verify">Verify</a>
+          <a href="#limits">Limits</a>
+        </nav>
+
+        <div class="bar-tools">
+          <div class="social-links">
+            <!--
+              href is set by js/topbar.js from config. Absent here on purpose:
+              a URL typed into the markup is a URL nobody checked, and this page
+              does not ship unchecked things. Unset renders as a disabled chip
+              that says the account is not published yet.
+            -->
+            <a class="icon-link" id="link-x" aria-label="CALLPOOL on X">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M17.8 3h3.1l-6.8 7.8 8 10.2h-6.3l-4.9-6.3L5.2 21H2.1l7.3-8.4L1.8 3h6.5l4.4 5.7L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z"/>
+              </svg>
+            </a>
+            <a class="icon-link" id="link-github" aria-label="CALLPOOL source on GitHub">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M12 .9a11 11 0 0 0-3.5 21.4c.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.2-1.6-1.2-1.6-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 .1.6 2.1 2.9 1.5.1-.7.4-1.2.7-1.5-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.6.1-3.1 0 0 1-.3 3.3 1.2a11.3 11.3 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.5.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.4c0 .3.2.7.8.6A11 11 0 0 0 12 .9Z"/>
+              </svg>
+            </a>
+            <button class="icon-link" id="theme-toggle" type="button" aria-label="Switch theme"></button>
+          </div>
+
+          <label class="cluster-control">
+            <span class="visually-hidden">Cluster</span>
+            <select id="cluster-select">
+              <option value="devnet">Devnet</option>
+              <option value="mainnet">Mainnet</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <header class="wrap hero" id="top">
+      <p class="eyebrow">solana · pump.fun · creator fees, split daily</p>
+      <h1>Every reward, checkable.</h1>
       <p class="lede">
         90% of this coin’s creator fees go to the people who called it out and held
         their position through the day. Rewards are sent automatically, every day.
         <strong>Nothing to claim, and no wallet to connect.</strong>
       </p>
+      <div class="hero-actions">
+        <a class="button primary" href="#position">Check a wallet</a>
+        <a class="button" href="#verify">Verify it yourself</a>
+      </div>
       <p class="cluster-note">
         Reading <span id="cluster-label" class="mono">devnet</span>.
       </p>
     </header>
 
     <!-- ── 1. hero ─────────────────────────────────────────────────────── -->
-    <main class="wrap">
-      <section id="hero" aria-labelledby="hero-heading">
-        <h2 id="hero-heading" class="visually-hidden">Live numbers</h2>
+    <main>
+      <section id="hero" class="wrap" aria-labelledby="hero-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">live numbers</p>
+            <h2 id="hero-heading">Read from chain, in your browser</h2>
+          </div>
+          <p>
+            Each figure carries a badge naming where it came from. Nothing below passed
+            through a server of ours on its way to you.
+          </p>
+        </div>
 
         <div id="floor-mismatch" class="banner banner-danger" hidden></div>
         <div id="hero-status"></div>
@@ -72,6 +152,50 @@
           </div>
         </dl>
 
+        <!--
+          The card charts. Each one is a chart OF a number already on this page,
+          with the same badge that number carries, and each refuses to draw
+          rather than showing an empty axis — an empty axis is a claim that we
+          looked and found nothing. See js/graphs.js.
+        -->
+        <div class="graph-grid">
+          <article class="graph-card">
+            <div class="graph-head">
+              <div class="graph-title">Pool vs. accrued</div>
+              <span id="card-pool-value" class="graph-value"></span>
+            </div>
+            <div id="card-pool-chart"></div>
+            <p class="graph-copy">
+              What the next epoch can divide, against what is still sitting in pump.fun’s
+              creator vault waiting to be swept.
+            </p>
+          </article>
+
+          <article class="graph-card">
+            <div class="graph-head">
+              <div class="graph-title">Distributed per epoch</div>
+              <span id="card-history-value" class="graph-value"></span>
+            </div>
+            <div id="card-history-chart"></div>
+            <p class="graph-copy">
+              One point per settled epoch, oldest first, read from the same on-chain accounts
+              as the table below.
+            </p>
+          </article>
+
+          <article class="graph-card">
+            <div class="graph-head">
+              <div class="graph-title">This epoch</div>
+              <span id="card-clock-value" class="graph-value"></span>
+            </div>
+            <div id="card-clock-chart"></div>
+            <p class="graph-copy">
+              Measured from the genesis timestamp in the program’s own config, not from your
+              computer’s calendar.
+            </p>
+          </article>
+        </div>
+
         <table class="facts">
           <caption class="visually-hidden">Addresses</caption>
           <tbody>
@@ -91,14 +215,19 @@
       </section>
 
       <!-- ── 2. the address calculator ─────────────────────────────────── -->
-      <section id="position" aria-labelledby="position-heading">
-        <h2 id="position-heading">Your position</h2>
-        <p>
-          Paste any address. Everything below is derived in your browser from that wallet’s
-          transaction history and pump.fun’s own callout record.
-          <strong>No wallet connection is needed here or anywhere on this site</strong> — and
-          rewards arrive without one.
-        </p>
+      <section id="position" class="wrap" aria-labelledby="position-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">holder view</p>
+            <h2 id="position-heading">Your position</h2>
+          </div>
+          <p>
+            Paste any address. Everything below is derived in your browser from that wallet’s
+            transaction history and pump.fun’s own callout record.
+            <strong>No wallet connection is needed here or anywhere on this site</strong> — and
+            rewards arrive without one.
+          </p>
+        </div>
 
         <form id="position-form" autocomplete="off">
           <label for="position-input">Wallet address</label>
@@ -148,8 +277,18 @@
       </section>
 
       <!-- ── 3. this epoch, and the two clocks ─────────────────────────── -->
-      <section id="this-epoch" aria-labelledby="this-epoch-heading">
-        <h2 id="this-epoch-heading">This epoch</h2>
+      <section id="this-epoch" class="wrap" aria-labelledby="this-epoch-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">two clocks</p>
+            <h2 id="this-epoch-heading">This epoch</h2>
+          </div>
+          <p>
+            One of these is a data refresh and the other decides money. They are never shown in
+            the same style, because a visitor who reads the estimate as their payout will be
+            angry when the exact replay moves it.
+          </p>
+        </div>
 
         <div class="clocks">
           <div class="clock clock-hourly">
@@ -174,13 +313,18 @@
       </section>
 
       <!-- ── 4. epoch history / the audit trail ────────────────────────── -->
-      <section id="history" aria-labelledby="history-heading">
-        <h2 id="history-heading">Every epoch</h2>
-        <p>
-          One row per day, read from the chain. The snapshot link beside each row is everything
-          needed to reproduce that row from scratch: the callouts, the balances, the tree, and
-          the carry ledger.
-        </p>
+      <section id="history" class="wrap" aria-labelledby="history-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">audit trail</p>
+            <h2 id="history-heading">Every epoch</h2>
+          </div>
+          <p>
+            One row per day, read from the chain. The snapshot link beside each row is everything
+            needed to reproduce that row from scratch: the callouts, the balances, the tree, and
+            the carry ledger.
+          </p>
+        </div>
         <div id="history-status"></div>
 
         <div class="scroll-x">
@@ -206,14 +350,27 @@
       </section>
 
       <!-- ── 5. where the fees go ──────────────────────────────────────── -->
-      <section id="fees" aria-labelledby="fees-heading">
-        <h2 id="fees-heading">Where the fees go</h2>
+      <section id="fees" class="wrap" aria-labelledby="fees-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">the split</p>
+            <h2 id="fees-heading">Where the fees go</h2>
+          </div>
+          <p>
+            Every trade on pump.fun pays a creator fee. Ours is split two ways, and the split was
+            fixed before the coin ever traded.
+          </p>
+        </div>
 
-        <p>
-          Every trade on pump.fun pays a creator fee. Ours is split two ways, and the split was
-          fixed before the coin ever traded:
-        </p>
-
+        <!--
+          No donut here, deliberately. A 90/10 ring would be the prettiest
+          object on this page and the only one with nothing behind it: the
+          split is set by pump.fun's instruction, not by our program, so the
+          browser cannot read it back from an account the way it reads the
+          floor. Until `feeShareTx` names the transaction that set it, the
+          honest rendering of this number is the sentence below and the
+          "unverified" row underneath — not a chart of a claim.
+        -->
         <p>
           <strong>90% → the caller pool.</strong> Distributed every epoch to holders who called
           the coin out and held their position through it.
@@ -229,20 +386,33 @@
         </p>
 
         <p>
-          <strong>It is not a founder’s fee, and here is how you can tell.</strong> It only pays
-          anything if the coin trades. At $1M of weekly volume after graduation the whole
-          creator fee is about $500 — roughly $450 to callers and $50 to infrastructure. If this
-          coin does nothing, that line earns nothing and the job gets paid for out of pocket
-          anyway, because the alternative is the settlement quietly stopping and nobody getting
-          paid at all.
-        </p>
-
-        <p>
           <strong>Neither number can be changed.</strong> Not by us. pump.fun’s fee-sharing
           instruction sets the split and revokes its own authority in the same transaction — in
           their documentation, <em>“this instruction can only effectively be used once.”</em> We
           wrote 90/10 once, and that was the only chance anyone had to write anything.
         </p>
+
+        <details class="tech">
+          <summary>It is not a founder’s fee, and here is how you can tell</summary>
+          <div class="detail-body">
+            <p>
+              It only pays anything if the coin trades. At $1M of weekly volume after graduation
+              the whole creator fee is about $500 — roughly $450 to callers and $50 to
+              infrastructure. If this coin does nothing, that line earns nothing and the job gets
+              paid for out of pocket anyway, because the alternative is the settlement quietly
+              stopping and nobody getting paid at all.
+            </p>
+            <p>
+              <strong>What we do still control, and what we don’t.</strong> We hold the key that
+              posts each epoch’s results, and what that key can and cannot do is spelled out in
+              <a href="#limits">what this is not</a>. We do not hold any authority over this split.
+              pump.fun retains the same platform-level powers over this coin that they retain over
+              every coin they host, including the ability to reassign a coin’s fee recipient — that
+              is real, we cannot prevent it, and we would rather you read it here than discover it
+              later.
+            </p>
+          </div>
+        </details>
 
         <table class="facts">
           <tbody>
@@ -252,21 +422,20 @@
             </tr>
           </tbody>
         </table>
-
-        <p>
-          <strong>What we do still control, and what we don’t.</strong> We hold the key that
-          posts each epoch’s results, and what that key can and cannot do is spelled out in
-          <a href="#limits">what this is not</a>. We do not hold any authority over this split.
-          pump.fun retains the same platform-level powers over this coin that they retain over
-          every coin they host, including the ability to reassign a coin’s fee recipient — that
-          is real, we cannot prevent it, and we would rather you read it here than discover it
-          later.
-        </p>
       </section>
 
       <!-- ── 6. the rule ───────────────────────────────────────────────── -->
-      <section id="rule" aria-labelledby="rule-heading">
-        <h2 id="rule-heading">The rule</h2>
+      <section id="rule" class="wrap" aria-labelledby="rule-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">the mechanic</p>
+            <h2 id="rule-heading">The rule</h2>
+          </div>
+          <p>
+            Four lines, fixed on chain before the coin traded. Everything this page computes is
+            these four lines applied to public history.
+          </p>
+        </div>
 
         <pre class="formula"><code>eligible(w, d)  =  called_out(w, d)
                    AND  hold(w, d) >= <span id="floor-tokens"></span>
@@ -297,92 +466,124 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
           </tbody>
         </table>
 
-        <h3>What each rule is for</h3>
-        <div class="scroll-x">
-          <table class="attacks">
-            <thead>
-              <tr>
-                <th scope="col">Try this</th>
-                <th scope="col">What happens</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Buy at 23:58, call out, sell at 00:02</td>
-                <td>
-                  <code>hold</code> is the <em>minimum</em> across the day, so it is whatever
-                  you held at the low point — near zero. Buying late earns nothing.
-                </td>
-              </tr>
-              <tr>
-                <td>Call out once, then stop</td>
-                <td>Calls do not carry over. Each epoch needs a callout or a callout update.</td>
-              </tr>
-              <tr>
-                <td>Sell after being paid, then buy back</td>
-                <td>7 epochs of nothing. Buying back does not shorten it.</td>
-              </tr>
-              <tr>
-                <td>Move tokens to a second wallet you own</td>
-                <td>Counts as a sale on the sending wallet. There is no netting.</td>
-              </tr>
-              <tr>
-                <td>Split a bag across many wallets</td>
-                <td>
-                  Changes nothing about what you earn — weight is linear. It does let you exit in
-                  increments, and that is a deliberate, known property, not an oversight.
-                </td>
-              </tr>
-              <tr>
-                <td>Push the price down at 23:59 to lower the floor</td>
-                <td>
-                  The floor is a fixed token count, not a dollar value. There is no price oracle
-                  to move.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <details class="tech" open>
+          <summary>What each rule is for — six things people try</summary>
+          <div class="detail-body">
+            <div class="scroll-x">
+              <table class="attacks">
+                <thead>
+                  <tr>
+                    <th scope="col">Try this</th>
+                    <th scope="col">What happens</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Buy at 23:58, call out, sell at 00:02</td>
+                    <td>
+                      <code>hold</code> is the <em>minimum</em> across the day, so it is whatever
+                      you held at the low point — near zero. Buying late earns nothing.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Call out once, then stop</td>
+                    <td>Calls do not carry over. Each epoch needs a callout or a callout update.</td>
+                  </tr>
+                  <tr>
+                    <td>Sell after being paid, then buy back</td>
+                    <td>7 epochs of nothing. Buying back does not shorten it.</td>
+                  </tr>
+                  <tr>
+                    <td>Move tokens to a second wallet you own</td>
+                    <td>Counts as a sale on the sending wallet. There is no netting.</td>
+                  </tr>
+                  <tr>
+                    <td>Split a bag across many wallets</td>
+                    <td>
+                      Changes nothing about what you earn — weight is linear. It does let you exit in
+                      increments, and that is a deliberate, known property, not an oversight.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Push the price down at 23:59 to lower the floor</td>
+                    <td>
+                      The floor is a fixed token count, not a dollar value. There is no price oracle
+                      to move.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
       </section>
 
       <!-- ── 7. verify it yourself ─────────────────────────────────────── -->
-      <section id="verify" aria-labelledby="verify-heading">
-        <h2 id="verify-heading">Verify it yourself</h2>
-        <p>
-          These are the commands that would catch us if any number on this page were wrong.
-          They need no key and no permission from us.
-        </p>
+      <section id="verify" class="wrap" aria-labelledby="verify-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">receipts</p>
+            <h2 id="verify-heading">Verify it yourself</h2>
+          </div>
+          <p>
+            These are the commands that would catch us if any number on this page were wrong.
+            They need no key and no permission from us.
+          </p>
+        </div>
 
-        <h3>The pool balance, straight from an RPC</h3>
-        <pre><code>solana balance &lt;pool address&gt; --url devnet</code></pre>
+        <div class="verify-grid">
+          <article class="verification-card">
+            <h3>The pool balance, straight from an RPC</h3>
+            <pre><code>solana balance &lt;pool address&gt; --url devnet</code></pre>
+            <p class="note">
+              The same account the number at the top of this page is read from. No part of this
+              command talks to us.
+            </p>
+          </article>
 
-        <h3>Reproduce an epoch’s root from its published directory</h3>
-        <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --offline</code></pre>
-        <p class="note">
-          Reads only the files in <code>snapshots/epoch-&lt;n&gt;/</code> and rebuilds the merkle
-          root. If it does not match the root posted on chain, we published a number we cannot
-          justify.
-        </p>
+          <article class="verification-card">
+            <h3>Reproduce an epoch’s root from its published directory</h3>
+            <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --offline</code></pre>
+            <p class="note">
+              Reads only the files in <code>snapshots/epoch-&lt;n&gt;/</code> and rebuilds the merkle
+              root. If it does not match the root posted on chain, we published a number we cannot
+              justify.
+            </p>
+          </article>
 
-        <h3>Re-derive it from chain instead of trusting the directory</h3>
-        <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --recheck-chain</code></pre>
-        <p class="note">
-          Replays every caller’s transfer history from an RPC and recomputes every
-          <code>hold</code>. This is the check that does not take our word for anything except
-          the callout list.
-        </p>
+          <article class="verification-card">
+            <h3>Re-derive it from chain instead of trusting the directory</h3>
+            <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --recheck-chain</code></pre>
+            <p class="note">
+              Replays every caller’s transfer history from an RPC and recomputes every
+              <code>hold</code>. This is the check that does not take our word for anything except
+              the callout list.
+            </p>
+          </article>
 
-        <h3>Confirm your own callout exists, without us</h3>
-        <pre><code>curl -H "x-api-key: &lt;pump.fun's public key&gt;" \
+          <article class="verification-card">
+            <h3>Confirm your own callout exists, without us</h3>
+            <pre><code>curl -H "x-api-key: &lt;pump.fun's public key&gt;" \
   https://api.coin-communities.xyz/api/v1/users/by-wallet/&lt;address&gt;/callouts</code></pre>
-        <p class="note">
-          The same request this page makes from your browser. It is pump.fun’s record, not ours.
-        </p>
+            <p class="note">
+              The same request this page makes from your browser. It is pump.fun’s record, not ours.
+            </p>
+          </article>
+        </div>
       </section>
 
       <!-- ── 8. what this is not ───────────────────────────────────────── -->
-      <section id="limits" aria-labelledby="limits-heading">
-        <h2 id="limits-heading">What this is not</h2>
+      <section id="limits" class="wrap" aria-labelledby="limits-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">limits</p>
+            <h2 id="limits-heading">What this is not</h2>
+          </div>
+          <p>
+            Nothing in this section is collapsed, abbreviated, or moved below anything else. If a
+            redesign ever hides it, the redesign is wrong.
+          </p>
+        </div>
 
         <div class="banner banner-warn">
           <h3>The snapshot key, stated precisely</h3>

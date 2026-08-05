@@ -71,6 +71,13 @@ export function siteConfig(root = globalThis.CALLPOOL_SITE_CONFIG, search) {
   return {
     cluster,
     configured: root != null,
+    // Cluster-independent, because a repository and an account do not move
+    // between devnet and mainnet. Unset renders as a stated "not published
+    // yet" chip in the top bar rather than a link nobody has checked.
+    links: {
+      x: orNull(root?.links?.x),
+      github: orNull(root?.links?.github),
+    },
     rpc: orNull(forCluster.rpc),
     mint: orNull(forCluster.mint),
     programId: orNull(forCluster.programId),
