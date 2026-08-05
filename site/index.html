@@ -19,13 +19,24 @@
     <link rel="stylesheet" href="/site/app.css" />
 
     <!--
-      One SVG, no .ico. Every browser that can run this page takes an SVG
-      favicon, and the mark is two shapes — a raster set would be four more
-      files to keep in step with the accent colour for nothing. It carries its
-      own prefers-color-scheme switch, so the tab follows the theme the way the
-      page does.
+      Two icons, and the second one is not belt-and-braces. The SVG is the real
+      mark: scalable, and it carries a prefers-color-scheme switch so the tab
+      follows the theme the way the page does. But an SVG icon is still refused
+      or mis-rasterised by enough browsers that "no icon at all" is a live
+      outcome, and the failure is silent — a tab just shows the default page
+      glyph and nobody reports it.
+
+      So favicon.ico is a raster mirror of the same mark at 16/32/48. Browsers
+      that take the SVG use it; the rest fall back, rather than falling through.
+      `sizes="any"` on the SVG is what stops a browser preferring a cached .ico
+      over it.
+
+      The edge also serves this file at the ROOT /favicon.ico, because a browser
+      that has not read this markup yet probes there by default — and a 404 can
+      stick in the icon cache long after the file exists.
     -->
     <link rel="icon" href="/site/favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="icon" href="/site/favicon.ico" sizes="48x48 32x32 16x16" />
 
     <!--
       The theme, before first paint. Inline and blocking on purpose: read from

@@ -69,6 +69,18 @@ callpool.fun, www.callpool.fun {
 		file_server
 	}
 
+	# Browsers probe /favicon.ico at the root before they have read any markup,
+	# and a 404 there can stick in the icon cache long after the file exists —
+	# which is a slow, silent way to have no favicon. The file itself stays in
+	# site/ with the rest of the page's assets; only the well-known path is
+	# mapped onto it.
+	handle /favicon.ico {
+		rewrite * /site/favicon.ico
+		root * /srv/callpool
+		file_server
+		header Cache-Control "public, max-age=300"
+	}
+
 	# The page imports `../../scripts/lib/*.mjs` directly — timeline.mjs,
 	# config.mjs, epoch.mjs, callouts.mjs — so a visitor's browser runs the
 	# same arithmetic the settlement job runs, which is the whole reason the
