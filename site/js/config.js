@@ -44,15 +44,24 @@ function orNull(value) {
 /**
  * Which cluster to read.
  *
- * `?cluster=devnet` wins over the local file so a rehearsal deployment can be
- * linked directly (§7.5). Anything unrecognised falls back to the configured
- * cluster rather than silently reading mainnet.
+ * **Mainnet is the default and the only one the public page ever shows.** The
+ * cluster switch was removed from the top bar on 2026-08-05: a devnet page
+ * renders real chain reads of activity we generated ourselves, and that is the
+ * most convincing wrong impression this site can give, so it is not something a
+ * visitor should be able to reach by accident or by a pasted link.
+ *
+ * `?cluster=devnet` still works, and is now an **internal tool** — it is how we
+ * point the page at a rehearsal deployment. Anything unrecognised falls back to
+ * mainnet, which is the safe direction: the worst case is a page saying the
+ * coin has not launched.
  */
-export function resolveCluster(search = globalThis.location?.search ?? '') {
+export function resolveCluster(
+  search = globalThis.location?.search ?? '',
+  root = globalThis.CALLPOOL_SITE_CONFIG,
+) {
   const requested = new URLSearchParams(search).get('cluster');
-  const configured = globalThis.CALLPOOL_SITE_CONFIG?.cluster;
-  const candidate = requested ?? configured ?? 'devnet';
-  return candidate === 'mainnet' || candidate === 'devnet' ? candidate : 'devnet';
+  const candidate = requested ?? root?.cluster ?? 'mainnet';
+  return candidate === 'mainnet' || candidate === 'devnet' ? candidate : 'mainnet';
 }
 
 /**
@@ -63,7 +72,12 @@ export function resolveCluster(search = globalThis.location?.search ?? '') {
  * value on this page is a lie with a plausible shape.
  */
 export function siteConfig(root = globalThis.CALLPOOL_SITE_CONFIG, search) {
-  const cluster = resolveCluster(search);
+  // `root`, not the global: this function honoured the object it was handed for
+  // every field except the one naming the cluster, which read the global
+  // instead. In a browser they are the same object so it never showed — but it
+  // meant the cluster a caller asked for could be silently overridden by
+  // whatever the page happened to have loaded.
+  const cluster = resolveCluster(search, root);
   const forCluster = root?.[cluster] ?? {};
 
   const snapshotsBase = orNull(forCluster.snapshotsBase);

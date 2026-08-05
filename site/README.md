@@ -79,18 +79,24 @@ answers its question in plain words before any machinery appears:
 
 | | |
 |---|---|
-| **Check your wallet** | the calculator, first, because it is what people came for |
-| **When you get paid** | the two clocks, and why they are not the same thing |
-| **The pool right now** | the live figures and the three card charts |
 | **How it works** | three steps, the minimum, the lockout, what counts as selling |
 | **Where the fees go** | 90/10 |
+| **Check your wallet** | the calculator |
+| **When you get paid** | the two clocks, and why they are not the same thing |
+| **The pool right now** | the live figures and the three card charts |
 | **Every day, on the record** | the audit trail |
 | **What this is not** | the risks |
 
-The order is the owner's, set 2026-08-05. It puts the two things a visitor
-arrived for — *where do I stand* and *when do I get paid* — above the
-explanation of the mechanic, on the reasoning that someone who wants the
-mechanic will scroll and someone who wants their answer will not.
+**The order is the owner's, revised 2026-08-05**, and it replaces an earlier
+one from the same day that led with the calculator. Explanation first now: a
+visitor arriving before launch cannot check a wallet or read a live figure at
+all, so leading with either meant leading with "not launched yet" three times
+over. What the page can always do is explain the deal and say where the money
+comes from, and those are now the first two sections.
+
+Both orderings are the owner's call rather than a default, so neither is a
+thing to "restore" on instinct. The nav lists sections in page order and must
+keep doing so.
 
 The technical layer sits inside `<details class="tech">` tiles — the exact
 rule and the attack table, the addresses, the four verification commands, the
@@ -182,6 +188,73 @@ quietly is the failure mode.
     are not moving. The sentence is `freshnessNote` in `clocks.js` — pure, and
     tested — and the one refresh path is `refresh()` in `app.js`, which the
     minute timer and the day rollover both go through.
+12. **Anything published is mainnet.** Set 2026-08-05. A devnet page renders
+    *real chain reads of activity we generated ourselves* — the figures are true
+    about devnet and mean nothing about money — and "4.19 SOL paid out so far"
+    is read as a track record whatever a chip in the corner says. So the cluster
+    switch is gone from the top bar, `resolveCluster` defaults **and falls back**
+    to mainnet, and a typo or an empty query string lands on mainnet rather than
+    on a rehearsal. `?cluster=devnet` still resolves and is now an internal tool
+    for looking at a rehearsal deployment; whenever it is in use the top bar
+    carries a `devnet · internal` chip, because internal or not, nobody should
+    have to read a URL to know which chain they are looking at.
+
+## Before launch, and on launch day
+
+Set 2026-08-05, when the page was pointed at mainnet only. **Nothing in this
+list is a code change** — the page is finished; this is configuration and the
+order it has to happen in.
+
+### What the page does right now
+
+`programId` is unset, so the page takes the "has not launched" branch and says
+so in every live slot: the pool, the vault, the day number, the total paid, the
+floor read from chain, the countdown, all three cards, and the epoch table. **It
+makes no RPC call at all in this state**, which is what keeps it honest while
+there is no working endpoint (see below). Everything that does not depend on a
+chain — the three steps, the exact rule, the lockout, what counts as selling,
+the 90/10 split, the risks — renders in full and is final.
+
+### Blocking, before anything is published
+
+- **An RPC endpoint that works in a browser.** `api.mainnet-beta.solana.com`
+  answers a browser request with **`403 Access forbidden`** — measured
+  2026-08-05, and it is not a rate limit; Solana does not serve that endpoint to
+  browsers. A provider endpoint is required, **domain-locked and read-only
+  scoped**, because `config.local.js` is client-side (§7.3). This is O3 and it
+  is still open.
+- **`links.x` and `links.github`.** `x` currently points at the owner's personal
+  account; `github` is unset and renders as a disabled chip. Both are the first
+  things anyone clicks.
+
+### On launch day, in this order
+
+1. Deploy the program and run `initialize`. Until this lands, nothing else here
+   changes anything.
+2. Set **`programId`** to `declare_id!` from `programs/callpool`. This is the
+   single switch: the moment it is set, the page reads chain and the live
+   numbers appear. Everything below is refinement on top of a working page.
+3. Set **`creatorVault`** to pump.fun's creator vault for the coin. Until it is
+   set, the "fees not yet swept in" figure reads *not set on this page yet* and
+   the pool-vs-accrued chart refuses to draw — deliberately, it is rule 9.
+4. Set **`calloutApiKey`** (Phase 02 §2.9). Without it the wallet check's
+   callout row reads *could not check*; every chain-sourced number still works.
+5. Set **`feeShareTx`** once the fee-share transaction exists. Until then the
+   90/10 split is marked **unverified**, which is correct rather than cautious —
+   the split is set by pump.fun's instruction and the browser cannot read it
+   back from an account.
+6. Leave **`mint`** empty unless you want the cross-check. It is read from the
+   program's own Config; if the two disagree the page stops rather than render
+   another coin's history under this one's name.
+
+### What must not happen
+
+- **Do not publish anything that resolves to devnet.** The cluster switch was
+  removed from the top bar for this reason and `?cluster=devnet` is internal.
+  See rule 12.
+- **Do not put a keyed RPC URL in `config.local.js` and call it protected.** It
+  is gitignored, which protects the repository, not the visitor — the file is
+  fetched by every browser that loads the page.
 
 ## What is not built yet
 

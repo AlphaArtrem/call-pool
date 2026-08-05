@@ -61,23 +61,30 @@ function wireTheme() {
 }
 
 /**
- * The cluster switch.
+ * The cluster indicator — a label now, not a switch.
  *
- * It reloads with `?cluster=` set rather than storing the choice, and that is
- * deliberate: `resolveCluster()` reads the query string, so the URL after a
- * switch describes exactly what the page is showing. Someone who pastes that
- * link into a chat is sharing the devnet view, not their own local preference
- * applied to somebody else's browser. It is one number in a URL against a
- * whole class of "it looks different on my screen".
+ * The `<select>` was removed on 2026-08-05 along with the decision that the
+ * public page is mainnet only. A devnet page renders real chain reads of
+ * activity we generated ourselves, and a control offering that to a visitor is
+ * a way to arrive at it by accident or by a pasted link.
+ *
+ * `?cluster=devnet` still resolves — it is how a rehearsal deployment gets
+ * looked at — so this says which cluster is on screen whenever that is not
+ * mainnet. On mainnet it renders nothing at all: naming the normal case in the
+ * header would make the page read like a status board, and there is nothing to
+ * warn about.
  */
 function wireCluster(config) {
-  const select = el('cluster-select');
-  select.value = config.cluster;
-  select.addEventListener('change', () => {
-    const url = new URL(location.href);
-    url.searchParams.set('cluster', select.value);
-    location.href = url.toString();
-  });
+  const chip = el('cluster-chip');
+  const internal = config.cluster !== 'mainnet';
+
+  chip.hidden = !internal;
+  if (!internal) return;
+
+  chip.textContent = `${config.cluster} · internal`;
+  chip.title =
+    `This page is reading ${config.cluster}, not mainnet. The figures are real reads of a ` +
+    'rehearsal deployment and are not money.';
 }
 
 /**

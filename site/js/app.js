@@ -292,15 +292,27 @@ function renderRules() {
 }
 
 /**
- * The addresses, which do need a configured program id.
+ * The addresses.
+ *
+ * The program id is allowed to be unset — that is the pre-launch page — and
+ * both addresses derived from it then render the pending state instead. This
+ * used to throw: `poolPda(null)` reaches `new PublicKey(null)`, and because
+ * this runs *before* the "has not launched" branch below it took the whole page
+ * down to "The page failed to load" for a configuration the code has an
+ * explicit, deliberate state for.
  */
 function renderStaticFacts(config) {
-  const pool = poolPda(config.programId);
+  const pool = config.programId == null ? null : poolPda(config.programId).toBase58();
+
   el('pool-address').replaceChildren(
-    addressNode(pool.toBase58(), { href: explorerUrl(config, 'address', pool.toBase58()) }),
+    pool == null
+      ? pendingNode('not launched yet')
+      : addressNode(pool, { href: explorerUrl(config, 'address', pool) }),
   );
   el('program-address').replaceChildren(
-    addressNode(config.programId, { href: explorerUrl(config, 'address', config.programId) }),
+    config.programId == null
+      ? pendingNode('not launched yet')
+      : addressNode(config.programId, { href: explorerUrl(config, 'address', config.programId) }),
   );
   el('mint-address').replaceChildren(
     config.mint

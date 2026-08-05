@@ -13,9 +13,12 @@
 // Anything omitted renders as "not configured" rather than as a number from
 // somewhere else. That is the §7.4 rule and it is enforced in js/config.js.
 window.CALLPOOL_SITE_CONFIG = {
-  // "devnet" | "mainnet". Overridable per-visit with ?cluster=devnet.
-  // Default stays devnet until the mainnet deploy (Phase 07 §7.5).
-  cluster: 'devnet',
+  // **Mainnet, always, on anything published.** The cluster switch was taken
+  // out of the top bar on 2026-08-05: a devnet page shows real chain reads of
+  // activity we generated ourselves, which is the most convincing wrong
+  // impression this site can give. `?cluster=devnet` still works and is now an
+  // internal tool for pointing the page at a rehearsal deployment.
+  cluster: 'mainnet',
 
   // The two icon links in the top bar. Cluster-independent: an account and a
   // repository do not move between devnet and mainnet.
@@ -30,22 +33,37 @@ window.CALLPOOL_SITE_CONFIG = {
     github: '',
   },
 
-  devnet: {
-    // Read-only RPC. Public endpoints rate-limit and WILL fail under launch
-    // traffic (Decision 11) — the page degrades to "can't reach chain" rather
-    // than showing a stale number, but that is a bad launch day.
-    rpc: 'https://api.devnet.solana.com',
+  mainnet: {
+    // Read-only RPC.
+    //
+    // ⚠️ **`api.mainnet-beta.solana.com` cannot serve this page.** Measured
+    // 2026-08-05: it answers a browser request with `403 Access forbidden`. It
+    // is not a rate limit and it does not depend on traffic — Solana does not
+    // serve that endpoint to browsers at all. **A provider endpoint is required
+    // before launch** (O3, still open), and it must be domain-locked and
+    // read-only scoped, because this file is client-side (§7.3).
+    rpc: 'https://api.mainnet-beta.solana.com',
 
-    // The coin. Until it exists, leave empty: every number that depends on it
-    // renders as pending, and the page says why.
+    // The deployed program. **Leave empty until `initialize` has landed.**
+    //
+    // Empty is what makes the pre-launch page say "the coin has not launched
+    // yet" — and it says it without calling an RPC at all, which is the
+    // property that matters while there is no working endpoint above. Setting
+    // it early would instead make the page try to read a program that is not
+    // there and report whatever the RPC said, which pre-launch is noise.
+    //
+    // At launch: paste `declare_id!` from programs/callpool here. Nothing else
+    // on this page has to change for the live numbers to appear.
+    programId: '',
+
+    // The coin. Read from the program's own Config account, so this is only a
+    // cross-check: if the two disagree the page stops rather than render
+    // another coin's history. Safe to leave empty.
     mint: '',
 
-    // Deployed program id. Must match `declare_id!` in programs/callpool.
-    programId: 'ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7',
-
     // Where the published epoch directories live — the audit trail linked from
-    // section 4. A path on this host, or an absolute URL. Trailing slash
-    // optional. Each epoch is <snapshotsBase>/epoch-<n>/.
+    // the record section. A path on this host, or an absolute URL. Trailing
+    // slash optional. Each epoch is <snapshotsBase>/epoch-<n>/.
     snapshotsBase: '/snapshots',
 
     // pump.fun's public client key, for the in-browser by-wallet callout
@@ -63,14 +81,19 @@ window.CALLPOOL_SITE_CONFIG = {
 
     // pump.fun's creator vault for this coin. Fees accrue here between epoch
     // runs, and §7.3 requires it be shown NEXT TO the pool, not folded in.
+    // Only knowable once the coin exists.
     creatorVault: '',
   },
 
-  mainnet: {
-    rpc: 'https://api.mainnet-beta.solana.com',
+  // ── internal only ────────────────────────────────────────────────────────
+  // Reached with ?cluster=devnet and never linked from the page. This is how a
+  // rehearsal deployment is looked at; `scripts/tools/deploy-devnet.mjs` prints
+  // the block to paste here. Nothing published should ever resolve to it.
+  devnet: {
+    rpc: 'https://api.devnet.solana.com',
     mint: '',
     programId: 'ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7',
-    snapshotsBase: '/snapshots',
+    snapshotsBase: '/epochs/devnet/snapshots',
     calloutApiKey: '',
     feeShareTx: '',
     creatorVault: '',

@@ -454,11 +454,23 @@ test('blank strings in config are unset, not empty values', () => {
   assert.equal(config.mint, null);
 });
 
-test('?cluster= overrides the file, and anything unrecognised falls back to devnet', () => {
+// Mainnet is the default and the fallback, as of 2026-08-05. A devnet page is
+// real chain reads of activity we generated ourselves, so it is reachable only
+// by asking for it explicitly — never by a typo, an empty query string or a
+// missing config file. The failure direction is a page saying the coin has not
+// launched, which is safe; the other direction is a rehearsal read as a record.
+test('?cluster= is the only way to leave mainnet, and anything unrecognised stays on it', () => {
+  assert.equal(resolveCluster('?cluster=devnet'), 'devnet', 'asked for explicitly');
   assert.equal(resolveCluster('?cluster=mainnet'), 'mainnet');
-  assert.equal(resolveCluster('?cluster=devnet'), 'devnet');
-  assert.equal(resolveCluster('?cluster=pretend'), 'devnet');
-  assert.equal(resolveCluster(''), 'devnet');
+  assert.equal(resolveCluster('?cluster=pretend'), 'mainnet', 'a typo must not reach devnet');
+  assert.equal(resolveCluster('?cluster='), 'mainnet');
+  assert.equal(resolveCluster(''), 'mainnet');
+});
+
+test('an unconfigured page resolves to mainnet, not to whatever was last built', () => {
+  // No config.local.js at all — the state a fresh checkout and a misdeployed
+  // host are both in.
+  assert.equal(siteConfig(undefined, '').cluster, 'mainnet');
 });
 
 test('snapshot links land on the epoch directory regardless of trailing slashes', () => {

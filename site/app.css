@@ -327,28 +327,26 @@ body {
   cursor: not-allowed;
 }
 
-.cluster-control select {
-  appearance: none;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  font: inherit;
+/*
+ * The cluster chip: a label, not a switch.
+ *
+ * The <select> that lived here was removed on 2026-08-05 — the public page is
+ * mainnet and offering a devnet view to a visitor is a way to reach real chain
+ * reads of activity we generated ourselves. This renders only when the page is
+ * NOT on mainnet, which is an internal state, and it is styled as a warning
+ * rather than as a control for that reason.
+ */
+.cluster-chip {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  color: var(--warn);
   font-size: 0.8125rem;
   font-weight: 600;
-  padding: 0.375rem 1.75rem 0.375rem 0.625rem;
+  padding: 0.375rem 0.625rem;
   border-radius: 6px;
-  cursor: pointer;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 0.875rem) 50%, calc(100% - 0.575rem) 50%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-}
-
-.cluster-control select:hover,
-.cluster-control select:focus-visible {
-  color: var(--fg);
-  border-color: var(--line-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 /* ── type ─────────────────────────────────────────────────────────────── */

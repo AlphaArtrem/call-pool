@@ -50,12 +50,14 @@
       <div class="wrap brandline">
         <a class="logo" href="#top">CALL<b>POOL</b></a>
 
+        <!-- Same order as the page. A nav that lists sections in a different
+             order than they appear is a nav that makes people scroll twice. -->
         <nav class="nav" aria-label="Page sections">
+          <a href="#how">How it works</a>
+          <a href="#fees">Fees</a>
           <a href="#position">Check your wallet</a>
           <a href="#payouts">Payouts</a>
           <a href="#pool">The pool</a>
-          <a href="#how">How it works</a>
-          <a href="#fees">Fees</a>
           <a href="#history">History</a>
           <a href="#limits">Risks</a>
         </nav>
@@ -81,13 +83,19 @@
             <button class="icon-link" id="theme-toggle" type="button" aria-label="Switch theme"></button>
           </div>
 
-          <label class="cluster-control">
-            <span class="visually-hidden">Cluster</span>
-            <select id="cluster-select">
-              <option value="devnet">Devnet</option>
-              <option value="mainnet">Mainnet</option>
-            </select>
-          </label>
+          <!--
+            The cluster switch used to sit here and was removed on 2026-08-05.
+            The public page is mainnet, always: a devnet view is real chain
+            reads of activity we generated ourselves, and a control that offers
+            it to a visitor is a way to reach that by accident.
+
+            `?cluster=devnet` still resolves, and is now internal — it is how a
+            rehearsal deployment gets looked at. When the page is on a cluster
+            other than mainnet it says so, in the chip below, because internal
+            or not nobody should have to check a URL to know what they are
+            reading.
+          -->
+          <span id="cluster-chip" class="cluster-chip" hidden></span>
         </div>
       </div>
     </div>
@@ -120,183 +128,7 @@
     </header>
 
     <main>
-      <!-- ── 1. your wallet ───────────────────────────────────────────── -->
-      <section id="position" class="wrap section" aria-labelledby="position-heading">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">your wallet</p>
-            <h2 id="position-heading">Check your wallet</h2>
-          </div>
-          <p>
-            Paste any address to see where it stands today — a public address is all this needs,
-            and <strong>you do not connect anything</strong>. It is worked out in your browser and
-            never sent to us: only to a Solana node and to pump.fun, straight from your machine.
-          </p>
-        </div>
-
-        <form id="position-form" autocomplete="off">
-          <label for="position-input">Wallet address</label>
-          <div class="input-row">
-            <input
-              id="position-input"
-              name="address"
-              type="text"
-              inputmode="text"
-              spellcheck="false"
-              placeholder="Paste a Solana address"
-            />
-            <button type="submit">Check</button>
-          </div>
-        </form>
-
-        <div id="position-result" class="standing" hidden>
-          <p id="position-headline" class="standing-headline"></p>
-          <ul id="position-detail" class="standing-detail"></ul>
-          <table class="facts"><tbody id="position-facts"></tbody></table>
-        </div>
-      </section>
-
-      <!-- ── 2. timing ────────────────────────────────────────────────── -->
-      <section id="payouts" class="wrap section" aria-labelledby="payouts-heading">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">timing</p>
-            <h2 id="payouts-heading">When you get paid</h2>
-          </div>
-          <p>
-            Once a day, at 00:00&nbsp;UTC. There is also an hourly estimate — it is useful, and it
-            is <strong>not</strong> your payout.
-          </p>
-        </div>
-
-        <div class="clocks">
-          <div class="clock clock-daily">
-            <h3>The payout — this is the real one</h3>
-            <p id="daily-clock" class="clock-label"></p>
-            <p class="note">
-              Every transfer of the day is replayed exactly, then the money goes out.
-            </p>
-          </div>
-          <div class="clock clock-hourly">
-            <h3>The hourly estimate</h3>
-            <p id="hourly-clock" class="clock-label"></p>
-            <p class="badge badge-provisional">estimate</p>
-            <p class="note">A rough check-in from balance samples. Not a payout.</p>
-          </div>
-        </div>
-
-        <details class="tech">
-          <summary>Why the estimate and the payout can differ</summary>
-          <div class="detail-body">
-            <p id="provisional-explanation"></p>
-          </div>
-        </details>
-      </section>
-
-      <!-- ── 3. live data ─────────────────────────────────────────────── -->
-      <section id="pool" class="wrap section" aria-labelledby="pool-heading">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">live</p>
-            <h2 id="pool-heading">The pool right now</h2>
-          </div>
-          <p>
-            Read from Solana by your browser, and re-read every minute. Each figure says where it
-            came from — hover a badge to see what that means.
-          </p>
-        </div>
-
-        <div id="floor-mismatch" class="banner banner-danger" hidden></div>
-        <div id="hero-status"></div>
-        <!--
-          Staleness, said out loud. A refresh that fails leaves the last figures
-          that were actually read on the page rather than blanking them — but a
-          number that has stopped updating and does not say so is the one kind of
-          wrong this page cannot allow, so this line names the time it was read.
-        -->
-        <p id="live-status" class="live-status" hidden></p>
-
-        <dl class="metrics">
-          <div class="metric">
-            <dt>Caller pool</dt>
-            <dd id="pool-balance" class="big"></dd>
-            <p class="note">What today’s split divides.</p>
-          </div>
-          <div class="metric">
-            <dt>Fees not yet swept in</dt>
-            <dd id="vault-balance" class="big"></dd>
-            <p class="note">
-              Sitting in pump.fun’s creator vault. On its way, but not part of today’s split yet.
-            </p>
-          </div>
-          <div class="metric">
-            <dt>Day number</dt>
-            <dd id="current-epoch" class="big"></dd>
-            <p class="note">Counted from launch. One day runs 00:00 to 00:00 UTC.</p>
-          </div>
-          <div class="metric">
-            <dt>Paid out so far</dt>
-            <dd id="total-distributed" class="big"></dd>
-            <p class="note">Added up from every past day, in your browser.</p>
-          </div>
-        </dl>
-
-        <!--
-          The card charts. Each one is a chart OF a number already on this page,
-          with the same badge that number carries, and each refuses to draw
-          rather than showing an empty axis — an empty axis is a claim that we
-          looked and found nothing. See js/graphs.js.
-        -->
-        <div class="graph-grid">
-          <article class="graph-card">
-            <div class="graph-head">
-              <div class="graph-title">Pool vs. fees waiting</div>
-              <span id="card-pool-value" class="graph-value"></span>
-            </div>
-            <div id="card-pool-chart"></div>
-            <p class="graph-copy">What can be split today, against what is still waiting to come in.</p>
-          </article>
-
-          <article class="graph-card">
-            <div class="graph-head">
-              <div class="graph-title">Paid out per day</div>
-              <span id="card-history-value" class="graph-value"></span>
-            </div>
-            <div id="card-history-chart"></div>
-            <p class="graph-copy">One point per day settled so far, oldest first.</p>
-          </article>
-
-          <article class="graph-card">
-            <div class="graph-head">
-              <div class="graph-title">Today</div>
-              <span id="card-clock-value" class="graph-value"></span>
-            </div>
-            <div id="card-clock-chart"></div>
-            <p class="graph-copy">How far through today’s round we are, and the checking window after it.</p>
-          </article>
-        </div>
-
-        <details class="tech">
-          <summary>Addresses</summary>
-          <div class="detail-body">
-            <table class="facts">
-              <caption class="visually-hidden">Addresses</caption>
-              <tbody>
-                <tr><th scope="row">Coin</th><td id="mint-address"></td></tr>
-                <tr><th scope="row">Pool</th><td id="pool-address"></td></tr>
-                <tr><th scope="row">Program</th><td id="program-address"></td></tr>
-                <tr><th scope="row">Snapshot key</th><td id="snapshot-key"></td></tr>
-              </tbody>
-            </table>
-            <p class="note">
-              Check the coin address against the pinned post before you buy anything. Address
-              confusion is how people lose money during a launch.
-            </p>
-          </div>
-        </details>
-      </section>
-
-      <!-- ── 4. the basics ────────────────────────────────────────────── -->
+      <!-- ── 1. the basics ────────────────────────────────────────────── -->
       <section id="how" class="wrap section" aria-labelledby="how-heading">
         <div class="section-head">
           <div>
@@ -448,7 +280,7 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
         </details>
       </section>
 
-      <!-- ── 5. the split ─────────────────────────────────────────────── -->
+      <!-- ── 2. the split ─────────────────────────────────────────────── -->
       <section id="fees" class="wrap section" aria-labelledby="fees-heading">
         <div class="section-head">
           <div>
@@ -519,6 +351,182 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
                 </tr>
               </tbody>
             </table>
+          </div>
+        </details>
+      </section>
+
+      <!-- ── 3. your wallet ───────────────────────────────────────────── -->
+      <section id="position" class="wrap section" aria-labelledby="position-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">your wallet</p>
+            <h2 id="position-heading">Check your wallet</h2>
+          </div>
+          <p>
+            Paste any address to see where it stands today — a public address is all this needs,
+            and <strong>you do not connect anything</strong>. It is worked out in your browser and
+            never sent to us: only to a Solana node and to pump.fun, straight from your machine.
+          </p>
+        </div>
+
+        <form id="position-form" autocomplete="off">
+          <label for="position-input">Wallet address</label>
+          <div class="input-row">
+            <input
+              id="position-input"
+              name="address"
+              type="text"
+              inputmode="text"
+              spellcheck="false"
+              placeholder="Paste a Solana address"
+            />
+            <button type="submit">Check</button>
+          </div>
+        </form>
+
+        <div id="position-result" class="standing" hidden>
+          <p id="position-headline" class="standing-headline"></p>
+          <ul id="position-detail" class="standing-detail"></ul>
+          <table class="facts"><tbody id="position-facts"></tbody></table>
+        </div>
+      </section>
+
+      <!-- ── 4. timing ────────────────────────────────────────────────── -->
+      <section id="payouts" class="wrap section" aria-labelledby="payouts-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">timing</p>
+            <h2 id="payouts-heading">When you get paid</h2>
+          </div>
+          <p>
+            Once a day, at 00:00&nbsp;UTC. There is also an hourly estimate — it is useful, and it
+            is <strong>not</strong> your payout.
+          </p>
+        </div>
+
+        <div class="clocks">
+          <div class="clock clock-daily">
+            <h3>The payout — this is the real one</h3>
+            <p id="daily-clock" class="clock-label"></p>
+            <p class="note">
+              Every transfer of the day is replayed exactly, then the money goes out.
+            </p>
+          </div>
+          <div class="clock clock-hourly">
+            <h3>The hourly estimate</h3>
+            <p id="hourly-clock" class="clock-label"></p>
+            <p class="badge badge-provisional">estimate</p>
+            <p class="note">A rough check-in from balance samples. Not a payout.</p>
+          </div>
+        </div>
+
+        <details class="tech">
+          <summary>Why the estimate and the payout can differ</summary>
+          <div class="detail-body">
+            <p id="provisional-explanation"></p>
+          </div>
+        </details>
+      </section>
+
+      <!-- ── 5. live data ─────────────────────────────────────────────── -->
+      <section id="pool" class="wrap section" aria-labelledby="pool-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">live</p>
+            <h2 id="pool-heading">The pool right now</h2>
+          </div>
+          <p>
+            Read from Solana by your browser, and re-read every minute. Each figure says where it
+            came from — hover a badge to see what that means.
+          </p>
+        </div>
+
+        <div id="floor-mismatch" class="banner banner-danger" hidden></div>
+        <div id="hero-status"></div>
+        <!--
+          Staleness, said out loud. A refresh that fails leaves the last figures
+          that were actually read on the page rather than blanking them — but a
+          number that has stopped updating and does not say so is the one kind of
+          wrong this page cannot allow, so this line names the time it was read.
+        -->
+        <p id="live-status" class="live-status" hidden></p>
+
+        <dl class="metrics">
+          <div class="metric">
+            <dt>Caller pool</dt>
+            <dd id="pool-balance" class="big"></dd>
+            <p class="note">What today’s split divides.</p>
+          </div>
+          <div class="metric">
+            <dt>Fees not yet swept in</dt>
+            <dd id="vault-balance" class="big"></dd>
+            <p class="note">
+              Sitting in pump.fun’s creator vault. On its way, but not part of today’s split yet.
+            </p>
+          </div>
+          <div class="metric">
+            <dt>Day number</dt>
+            <dd id="current-epoch" class="big"></dd>
+            <p class="note">Counted from launch. One day runs 00:00 to 00:00 UTC.</p>
+          </div>
+          <div class="metric">
+            <dt>Paid out so far</dt>
+            <dd id="total-distributed" class="big"></dd>
+            <p class="note">Added up from every past day, in your browser.</p>
+          </div>
+        </dl>
+
+        <!--
+          The card charts. Each one is a chart OF a number already on this page,
+          with the same badge that number carries, and each refuses to draw
+          rather than showing an empty axis — an empty axis is a claim that we
+          looked and found nothing. See js/graphs.js.
+        -->
+        <div class="graph-grid">
+          <article class="graph-card">
+            <div class="graph-head">
+              <div class="graph-title">Pool vs. fees waiting</div>
+              <span id="card-pool-value" class="graph-value"></span>
+            </div>
+            <div id="card-pool-chart"></div>
+            <p class="graph-copy">What can be split today, against what is still waiting to come in.</p>
+          </article>
+
+          <article class="graph-card">
+            <div class="graph-head">
+              <div class="graph-title">Paid out per day</div>
+              <span id="card-history-value" class="graph-value"></span>
+            </div>
+            <div id="card-history-chart"></div>
+            <p class="graph-copy">One point per day settled so far, oldest first.</p>
+          </article>
+
+          <article class="graph-card">
+            <div class="graph-head">
+              <div class="graph-title">Today</div>
+              <span id="card-clock-value" class="graph-value"></span>
+            </div>
+            <div id="card-clock-chart"></div>
+            <p class="graph-copy">How far through today’s round we are, and the checking window after it.</p>
+          </article>
+        </div>
+
+        <details class="tech">
+          <summary>Addresses</summary>
+          <div class="detail-body">
+            <table class="facts">
+              <caption class="visually-hidden">Addresses</caption>
+              <tbody>
+                <tr><th scope="row">Coin</th><td id="mint-address"></td></tr>
+                <tr><th scope="row">Pool</th><td id="pool-address"></td></tr>
+                <tr><th scope="row">Program</th><td id="program-address"></td></tr>
+                <tr><th scope="row">Snapshot key</th><td id="snapshot-key"></td></tr>
+              </tbody>
+            </table>
+            <p class="note">
+              Check the coin address against the pinned post before you buy anything. Address
+              confusion is how people lose money during a launch.
+            </p>
           </div>
         </details>
       </section>
