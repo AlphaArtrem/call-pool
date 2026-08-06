@@ -86,6 +86,14 @@ pub mod callpool {
     /// The gap between this and `initialize` is safe for the money (the pool is
     /// a plain lamport account and fees accrue into it regardless) and safe for
     /// the parameters (only `INITIALIZER` can set them).
+    ///
+    /// **A donation to the pool PDA before this runs bricks this instruction,
+    /// harmlessly.** One lamport sent to the address makes the account exist, so
+    /// `init` here fails permanently. Nothing is lost: the donated account
+    /// already satisfies `initialize`'s `SystemAccount` check and pump.fun's
+    /// dialog, so the system works exactly as intended — only the `PoolCreated`
+    /// event is never emitted. Written down so that discovering it later reads
+    /// as an inconvenience rather than an attack.
     pub fn create_pool(ctx: Context<CreatePool>) -> Result<()> {
         // Created by hand rather than by Anchor's `init`, because the pool must
         // stay owned by the System Program with zero data: it is a bare lamport
@@ -139,11 +147,36 @@ pub mod callpool {
         require!(epoch_seconds > 0, CallpoolError::InvalidParameter);
         require!(snapshot_key != Pubkey::default(), CallpoolError::InvalidParameter);
 
+        // The challenge window is immutable and was the one argument here with
+        // no validation. `0` is no challenge window ever — and the audit trail's
+        // entire claim is that a wrong root can be disputed before it pays. At
+        // the other end, `u32::MAX` is ~136 years of frozen claims.
+        //
+        // The upper bound is the claim deadline: a challenge window that outlasts
+        // it is self-contradictory, because `close_epoch` could reclaim the money
+        // before claims even opened. A range rather than `== 86_400` because
+        // rehearsals legitimately run short epochs with short windows; L14 fixed
+        // the mainnet value at 24 h, and reading it back after deploy stays
+        // Phase 08's job.
+        require!(
+            challenge_seconds > 0
+                && (challenge_seconds as u64)
+                    <= CLAIM_DEADLINE_EPOCHS * (epoch_seconds as u64),
+            CallpoolError::InvalidParameter
+        );
+
         // `min_hold` is in RAW units. See `min_raw_floor` for what this catches
         // and, just as importantly, what it does not.
         require!(
             min_hold >= min_raw_floor(ctx.accounts.mint.decimals),
             CallpoolError::MinHoldLooksLikeWholeTokens
+        );
+        // And the upper-bound twin: a floor above the whole supply means nobody
+        // can ever be eligible and the pool only accumulates — permanently. A
+        // pump.fun mint is fully minted at creation, so `supply` is real here.
+        require!(
+            min_hold <= ctx.accounts.mint.supply,
+            CallpoolError::InvalidParameter
         );
 
         // Epoch 0 must start on an epoch boundary in absolute time, so the

@@ -362,6 +362,65 @@ fn initialize_refuses_a_genesis_that_is_not_a_utc_midnight() {
     f.initialize_as(&initializer, MIN_HOLD, GENESIS_TS).unwrap();
 }
 
+#[test]
+fn initialize_refuses_a_challenge_window_that_cannot_work() {
+    // `challenge_seconds` is immutable and was the one `initialize` argument
+    // with no validation at all. L14 fixed the value at 24 h, so this can be a
+    // range rather than a recommendation.
+    let mut f = Fixture::uninitialized();
+    f.create_pool().unwrap();
+    let initializer = f.initializer.insecure_clone();
+
+    // Zero: no challenge window, forever. The audit trail's whole claim is that
+    // there is a period in which a wrong root can be disputed.
+    assert!(f
+        .initialize_full(&initializer, MIN_HOLD, GENESIS_TS, EPOCH_SECONDS, 0)
+        .is_err());
+
+    // Longer than the claim deadline: `close_epoch` could reclaim the money
+    // before claims even opened. u32::MAX is ~136 years of frozen claims.
+    let past_deadline = (callpool::CLAIM_DEADLINE_EPOCHS as u32 + 1) * EPOCH_SECONDS;
+    assert!(f
+        .initialize_full(&initializer, MIN_HOLD, GENESIS_TS, EPOCH_SECONDS, past_deadline)
+        .is_err());
+    assert!(f
+        .initialize_full(&initializer, MIN_HOLD, GENESIS_TS, EPOCH_SECONDS, u32::MAX)
+        .is_err());
+
+    // Mainnet's shape is accepted.
+    f.initialize_full(&initializer, MIN_HOLD, GENESIS_TS, EPOCH_SECONDS, CHALLENGE_SECONDS)
+        .unwrap();
+    assert_eq!(f.config_state().challenge_seconds, CHALLENGE_SECONDS);
+}
+
+#[test]
+fn initialize_accepts_a_rehearsal_challenge_window() {
+    // A dry run legitimately uses short epochs and a short window. The guard is
+    // a range for exactly this reason — pinning it to 86,400 would make every
+    // rehearsal impossible while proving nothing extra about mainnet.
+    let mut f = Fixture::uninitialized();
+    f.create_pool().unwrap();
+    let initializer = f.initializer.insecure_clone();
+
+    // 300-second epochs, a 60-second window. GENESIS_TS is a UTC midnight, so
+    // it is aligned to any epoch length that divides a day.
+    f.initialize_full(&initializer, MIN_HOLD, GENESIS_TS, 300, 60).unwrap();
+    assert_eq!(f.config_state().challenge_seconds, 60);
+}
+
+#[test]
+fn initialize_refuses_a_floor_no_one_could_ever_meet() {
+    // The upper-bound twin of the whole-tokens footgun: a floor above the total
+    // supply means nobody is ever eligible, permanently, and the pool only ever
+    // accumulates.
+    let mut f = Fixture::uninitialized();
+    f.create_pool().unwrap();
+    let initializer = f.initializer.insecure_clone();
+
+    assert!(f.initialize_as(&initializer, TOTAL_SUPPLY + 1, GENESIS_TS).is_err());
+    f.initialize_as(&initializer, TOTAL_SUPPLY, GENESIS_TS).unwrap();
+}
+
 // ── proof 18 (D7 / L3) — empty epochs ──────────────────────────────────────
 
 #[test]

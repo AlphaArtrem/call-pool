@@ -41,6 +41,9 @@ pub const DECIMALS: u8 = 6;
 pub const MIN_HOLD: u64 = 100_000 * 1_000_000;
 pub const EPOCH_SECONDS: u32 = 86_400;
 pub const CHALLENGE_SECONDS: u32 = 86_400;
+/// One billion tokens at 6 decimals — a pump.fun mint's whole supply, minted at
+/// creation. `min_hold` above this would mean nobody can ever be eligible.
+pub const TOTAL_SUPPLY: u64 = 1_000_000_000 * 1_000_000;
 /// A UTC midnight, so the on-chain epoch index and a UTC calendar day agree.
 pub const GENESIS_TS: i64 = 1_785_801_600;
 
@@ -153,6 +156,18 @@ impl Fixture {
         let mint = self.mint.insecure_clone();
         let payer = self.payer.insecure_clone();
         self.send(&[create, init], &[&payer, &mint]).unwrap();
+
+        // A pump.fun mint is fully minted at creation, so by the time anyone can
+        // call `initialize` the supply is real. The fixture used to leave it at
+        // zero, which made `initialize` see a state that cannot occur on the
+        // chain this program is written for — and left `min_hold > supply`
+        // untestable. Held by the payer; no test reads its balance.
+        let treasury = ata(&payer.pubkey(), &self.mint.pubkey());
+        let create_ata =
+            spl::create_associated_token_account(&payer.pubkey(), &payer.pubkey(), &self.mint.pubkey());
+        let mint_to =
+            spl::mint_to(&self.mint.pubkey(), &treasury, &payer.pubkey(), TOTAL_SUPPLY);
+        self.send(&[create_ata, mint_to], &[&payer]).unwrap();
     }
 
     pub fn create_pool(&mut self) -> TransactionResult {
@@ -180,13 +195,26 @@ impl Fixture {
         min_hold: u64,
         genesis_ts: i64,
     ) -> TransactionResult {
+        self.initialize_full(payer, min_hold, genesis_ts, EPOCH_SECONDS, CHALLENGE_SECONDS)
+    }
+
+    /// Every immutable parameter, spelled out — for the tests that exist to
+    /// check what `initialize` refuses to make permanent.
+    pub fn initialize_full(
+        &mut self,
+        payer: &Keypair,
+        min_hold: u64,
+        genesis_ts: i64,
+        epoch_seconds: u32,
+        challenge_seconds: u32,
+    ) -> TransactionResult {
         let ix = Instruction::new_with_bytes(
             callpool::ID,
             &callpool::instruction::Initialize {
                 genesis_ts,
-                epoch_seconds: EPOCH_SECONDS,
+                epoch_seconds,
                 min_hold,
-                challenge_seconds: CHALLENGE_SECONDS,
+                challenge_seconds,
                 snapshot_key: self.snapshot.pubkey(),
             }
             .data(),
