@@ -816,5 +816,3 @@ main().catch((error) => {
     error,
   });
 });
-
-export { EPOCH_SECONDS };

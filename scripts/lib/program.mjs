@@ -59,10 +59,17 @@ export function poolPda(programId = PROGRAM_ID) {
   return PublicKey.findProgramAddressSync([POOL_SEED], programId)[0];
 }
 
+/**
+ * `(mint, epoch, programId)` — the same order as the site's `addresses.js`,
+ * which is the only other place this is derived. Both arguments accept a base58
+ * string or a `PublicKey`, so the two are genuinely interchangeable: an
+ * asymmetry there is the same class of trap as a differing argument order, just
+ * one that happens to raise instead of deriving a plausible wrong address.
+ */
 export function epochPda(mint, epoch, programId = PROGRAM_ID) {
   return PublicKey.findProgramAddressSync(
     [EPOCH_SEED, new PublicKey(mint).toBuffer(), u64le(epoch)],
-    programId,
+    new PublicKey(programId),
   )[0];
 }
 

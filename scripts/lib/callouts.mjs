@@ -289,15 +289,20 @@ export async function pollMint(mint, window, options) {
  * and never "everyone".
  */
 export async function collectByWallet(candidates, mint, window, options) {
+  // A flat loop, because that is what this is: one request per wallet, awaited
+  // in turn. It used to iterate `batches(candidates)` and then each address
+  // within a batch, which grouped the addresses without doing anything per
+  // group — identical behaviour, arranged to look like it had a reason.
+  // `batches` stays, tested and exported, for the batch POST described above:
+  // that is where a sublist becomes one request and the grouping starts to mean
+  // something.
   const records = [];
-  for (const batch of batches(candidates)) {
-    for (const address of batch) {
-      const history = await fetchWalletCallouts(address, options);
-      for (const record of history) {
-        if (!isForMint(record, mint)) continue;
-        const at = calloutTime(record);
-        if (at >= window.start && at < window.end) records.push(record);
-      }
+  for (const address of candidates) {
+    const history = await fetchWalletCallouts(address, options);
+    for (const record of history) {
+      if (!isForMint(record, mint)) continue;
+      const at = calloutTime(record);
+      if (at >= window.start && at < window.end) records.push(record);
     }
   }
   return records;

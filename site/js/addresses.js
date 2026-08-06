@@ -43,7 +43,16 @@ export function poolPda(programId) {
   return PublicKey.findProgramAddressSync([seed('pool')], new PublicKey(programId))[0];
 }
 
-export function epochPda(programId, mint, epoch) {
+/**
+ * `(mint, epoch, programId)` — deliberately the same order as
+ * `scripts/lib/program.mjs`, which is the only other place this is derived.
+ *
+ * They disagreed until now: this took `(programId, mint, epoch)`. Both
+ * arguments are base58 strings, so swapping them raises nothing — it derives a
+ * real-looking address for the wrong account, which is exactly the failure this
+ * file's own header warns about. One order, checked by the header's own rule.
+ */
+export function epochPda(mint, epoch, programId) {
   const index = new Uint8Array(8);
   new DataView(index.buffer).setBigUint64(0, BigInt(epoch), true);
   return PublicKey.findProgramAddressSync(

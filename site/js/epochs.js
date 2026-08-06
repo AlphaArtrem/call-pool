@@ -32,7 +32,7 @@ import { addressNode, field, SOURCES } from './ui.js';
 export async function loadEpochs(connection, config, currentEpoch) {
   const indices = epochIndices(currentEpoch);
 
-  const addresses = indices.map((e) => epochPda(config.programId, config.mint, e));
+  const addresses = indices.map((e) => epochPda(config.mint, e, config.programId));
   const datas = await multipleAccounts(connection, addresses);
 
   return Promise.all(

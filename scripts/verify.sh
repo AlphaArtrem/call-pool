@@ -46,12 +46,22 @@ pass "IDL generated"
 # ── tests ──────────────────────────────────────────────────────────────────
 echo
 echo "running tests"
-cargo test --quiet 2>&1 | grep -E "test result|FAILED" || true
-cargo test --quiet >/dev/null || fail "cargo test"
+# Run once, then read the captured output. This used to run each suite twice —
+# once through grep for the summary, once for the exit code — which doubled the
+# slowest part of the pre-deploy loop and could in principle report one run's
+# numbers beside the other run's verdict.
+if ! rust_out=$(cargo test --quiet 2>&1); then
+  echo "$rust_out"
+  fail "cargo test"
+fi
+echo "$rust_out" | grep -E "test result|FAILED" || true
 pass "rust: unit, merkle, program and invariant tests"
 
-npm test --silent 2>&1 | grep -E "^. (tests|pass|fail) " || true
-npm test --silent >/dev/null 2>&1 || fail "npm test"
+if ! js_out=$(npm test --silent 2>&1); then
+  echo "$js_out"
+  fail "npm test"
+fi
+echo "$js_out" | grep -E "^. (tests|pass|fail) " || true
 pass "js: timeline, merkle, program-client, crank and site tests"
 
 # ── structure ──────────────────────────────────────────────────────────────

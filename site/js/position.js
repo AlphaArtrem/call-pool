@@ -223,5 +223,3 @@ export function renderPositionFailure(nodes, error) {
     error,
   });
 }
-
-export { escapeHtml, formatSol };

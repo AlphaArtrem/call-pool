@@ -21,7 +21,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-import { decodeConfig as decodeConfigNode, decodeEpoch as decodeEpochNode } from '../lib/program.mjs';
+import {
+  decodeConfig as decodeConfigNode,
+  decodeEpoch as decodeEpochNode,
+  epochPda as epochPdaNode,
+} from '../lib/program.mjs';
 import { DUST_THRESHOLD_LAMPORTS, LOCKOUT_EPOCHS, MIN_HOLD_RAW } from '../lib/config.mjs';
 import { REPO_ROOT } from '../lib/store.mjs';
 
@@ -134,6 +138,30 @@ test('site and crank agree on which leaves are claimed', async () => {
 
   for (let i = 0; i < 9; i++) {
     assert.equal(isClaimed(site, i), isClaimed(node, i), `leaf ${i}`);
+  }
+});
+
+test('site and crank derive the same epoch address, in the same argument order', async () => {
+  // `addresses.js` is the one site module that reaches web3.js through a
+  // browser global, which is why nothing else here imports it. Handing it the
+  // real library under the name the page uses is enough, and keeps the two PDA
+  // derivations checkable against each other rather than by eye.
+  globalThis.solanaWeb3 ??= await import('@solana/web3.js');
+  const { epochPda: epochPdaSite } = await import('../../site/js/addresses.js');
+
+  // Two implementations of one PDA. Every argument is a base58 string, so a
+  // swapped pair raises nothing at all — it derives a real-looking address for
+  // the wrong account, and the row silently reads as "never posted". The
+  // argument orders disagreed until the site was standardised on the scripts'.
+  const mint = new PublicKey('Cg1hswfyVfnFaKHSEVyNdFWEj1bmnZoA8ZnWLVbApump').toBase58();
+  const programId = new PublicKey('ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7').toBase58();
+
+  for (const epoch of [0, 1, 7, 130, 4_294_967_296]) {
+    assert.equal(
+      epochPdaSite(mint, epoch, programId).toBase58(),
+      epochPdaNode(mint, epoch, programId).toBase58(),
+      `epoch ${epoch}`,
+    );
   }
 });
 

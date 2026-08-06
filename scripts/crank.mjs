@@ -36,7 +36,6 @@
 // which is only sensible when that window is seconds rather than a day.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { connect } from './lib/rpc.mjs';
@@ -44,7 +43,7 @@ import { connect } from './lib/rpc.mjs';
 import { DEFAULT_RPC_URL } from './lib/config.mjs';
 import { iso, windowForDay } from './lib/epoch.mjs';
 import { epochIndexFor, fetchConfig, fetchEpoch, windowForEpoch } from './lib/program.mjs';
-import { REPO_ROOT, snapshotDir } from './lib/store.mjs';
+import { REPO_ROOT } from './lib/store.mjs';
 
 function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL, dryRun: false, andPay: false, carryReset: false };
@@ -144,9 +143,6 @@ async function main() {
   const snapshot = run('snapshot.mjs', [...snapshotArgs, '--rpc', args.rpc], args);
   if (snapshot.status !== 0) throw new Error('snapshot failed — nothing was posted');
 
-  const dir = snapshotDir(epoch);
-  const empty = !args.dryRun && !existsSync(resolve(dir, 'tree.json'));
-
   // The independent check runs before the root is posted, not after. Catching a
   // bad root afterwards is a press release; catching it here is a fix.
   const verified = run(
@@ -159,8 +155,12 @@ async function main() {
   console.log('\n⏸  Publish snapshots/epoch-' + epoch + '/ now, before posting the root.');
   console.log('   The challenge window is only meaningful if the inputs came first.\n');
 
+  // No `--empty` here. A successful snapshot always writes tree.json, zero-leaf
+  // included, so the detection that used to sit here could never fire — and
+  // post-root handles a zero-leaf tree identically anyway. `post-root --empty`
+  // stays: it is the documented manual path for posting a zeroed root when
+  // there is no snapshot at all.
   const postArgs = ['--epoch', String(epoch), '--rpc', args.rpc];
-  if (empty) postArgs.push('--empty');
   if (args.keypair) postArgs.push('--keypair', args.keypair, '--yes');
   const posted = run('post-root.mjs', postArgs, args);
   if (posted.status !== 0) throw new Error('post-root failed');

@@ -8,7 +8,8 @@
   "scripts": {
     "test": "node --test 'scripts/tests/**/*.test.mjs'",
     "holds": "node scripts/holds.mjs",
-    "proofs:holds": "node scripts/proofs/holds-4-6-19.mjs"
+    "proofs:holds": "node scripts/proofs/holds-4-6-19.mjs",
+    "proofs:crank": "node scripts/proofs/crank-e2e.mjs"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.9",
