@@ -304,10 +304,17 @@ test('carried dust is folded into the next epoch and clears the threshold', () =
     window: W,
     calloutStore: storeOf([callout(wallet(1), 1)]),
     holds: holdsOf([[wallet(1), BIG]]),
-    available: 5_000n, // on its own, still dust
+    // 9,000 of carried dust was never allocated on chain, so it is still in the
+    // pool and still inside `available`; 5,000 arrived today. This used to read
+    // `5_000n`, which describes a pool that had somehow spent money it still
+    // owed — a state only reachable because the old code re-divided `available`
+    // without regard for the ledger. Today's share is still the 5,000.
+    available: 14_000n,
     previousCarry: previous,
     minHold: MIN_HOLD_RAW,
   });
+
+  assert.equal(built.divisible, 5_000n, 'only what arrived today is divisible');
 
   assert.equal(built.tree.length, 1);
   assert.equal(built.tree[0].amount, 14_000n, '9,000 carried + 5,000 today');
@@ -379,6 +386,175 @@ test('the stream reconciliation catches over-allocation across epochs', () => {
   assert.equal(reconcile({ inflows: 100n, allocated: 60n, carried: 30n, expired: 5n }).ok, true);
   assert.equal(reconcile({ inflows: 100n, allocated: 60n, carried: 30n, expired: 5n }).unallocated, '5');
   assert.equal(reconcile({ inflows: 100n, allocated: 90n, carried: 30n, expired: 0n }).ok, false);
+});
+
+// ── carry across chained epochs ────────────────────────────────────────────
+//
+// The tests above drive `advanceCarry` directly, and that is exactly why they
+// passed over a money bug for so long: the defect lives in the *seam* between
+// `buildEpoch` and `advanceCarry`, so it is only visible when an epoch is fed
+// the carry ledger its own predecessor produced. Everything below chains
+// `buildEpoch` through its own output.
+//
+// The pool model matters as much as the arithmetic. Withheld dust is never
+// allocated on chain, so it stays in the pool and is still inside `available`
+// the next day. `available(n) = carried(n-1) + inflow` is not a convenience
+// here — it is what the program actually reports, and assuming otherwise is
+// what made the bug invisible.
+
+/** Run `buildEpoch` over consecutive epochs, feeding each its predecessor's carry. */
+function chainEpochs({ wallets, inflow, epochs, from = 0 }) {
+  const results = [];
+  let carry = emptyCarry();
+  let retained = 0n; // dust withheld so far — still sitting in the pool
+
+  for (let i = 0; i < epochs; i++) {
+    const epoch = from + i;
+    const available = retained + inflow;
+    const built = buildEpoch({
+      epoch,
+      window: W,
+      calloutStore: storeOf(wallets.map((w) => callout(w, 1))),
+      holds: holdsOf(wallets.map((w) => [w, BIG])),
+      available,
+      previousCarry: carry,
+      minHold: MIN_HOLD_RAW,
+    });
+
+    results.push({ epoch, available, built });
+    carry = built.carry;
+    retained = available - built.allocate - built.expiredLamports;
+  }
+  return results;
+}
+
+test('chained dusty epochs accumulate linearly, and the crossing payout is exact', () => {
+  const share = 3_000n; // one wallet, so the whole divisible pool is its share
+  const run = chainEpochs({ wallets: [wallet(1)], inflow: share, epochs: 4 });
+
+  // Epochs 0-2 stay under the 10,000 threshold: the ledger is n·share, not the
+  // doubling `b(n) = 2·b(n-1) + share` the unfixed code produced.
+  for (const [i, { built }] of run.slice(0, 3).entries()) {
+    assert.equal(
+      carriedFor(built.carry, wallet(1)),
+      share * BigInt(i + 1),
+      `epoch ${i}: the ledger grows by one share, not by doubling`,
+    );
+    assert.equal(built.allocate, 0n, `epoch ${i}: nothing is paid while under the threshold`);
+  }
+
+  // Epoch 3 crosses. The payout must equal exactly what four epochs earned.
+  const crossing = run[3].built;
+  assert.equal(crossing.tree.length, 1, 'the fourth epoch pays');
+  assert.equal(crossing.tree[0].amount, share * 4n, 'paid exactly what was earned, not inflated');
+  assert.equal(carriedFor(crossing.carry, wallet(1)), 0n, 'and the ledger is emptied');
+});
+
+test("one wallet's accumulated carry does not inflate another's share", () => {
+  const a = wallet(1);
+  const b = wallet(2);
+
+  // Epoch 0: only A is active, and its share is dust.
+  const first = buildEpoch({
+    epoch: 0,
+    window: W,
+    calloutStore: storeOf([callout(a, 1)]),
+    holds: holdsOf([[a, BIG]]),
+    available: 3_000n,
+    previousCarry: emptyCarry(),
+    minHold: MIN_HOLD_RAW,
+  });
+  assert.equal(carriedFor(first.carry, a), 3_000n);
+
+  // Epoch 1: both are active with equal holds. A's 3,000 is still in the pool,
+  // so `available` is 8,000 — but only the 5,000 that arrived today is anyone's
+  // to divide. Dividing all 8,000 would pay B out of money already owed to A.
+  const second = buildEpoch({
+    epoch: 1,
+    window: W,
+    calloutStore: storeOf([callout(a, 1), callout(b, 2)]),
+    holds: holdsOf([[a, BIG], [b, BIG]]),
+    available: 8_000n,
+    previousCarry: first.carry,
+    minHold: MIN_HOLD_RAW,
+  });
+
+  const shareOf = (w) => second.payouts.find((p) => p.wallet === w).share;
+  assert.equal(shareOf(b), 2_500n, "B's share divides the pool net of what A is owed");
+  assert.equal(shareOf(a), 2_500n, 'and A is not paid twice for the same lamports');
+  assert.equal(second.payouts.find((p) => p.wallet === a).carried, 3_000n);
+});
+
+test('carry expiring this epoch returns to the pool and is not also paid', () => {
+  // A's dust was banked at epoch 0; at epoch 30 it expires. The same lamports
+  // must not both "return to the pool" and be handed to A as carry.
+  const previous = advanceCarry(emptyCarry(), {
+    epoch: 0,
+    withheld: new Map([[wallet(1), 4_000n]]),
+    paid: new Set(),
+  }).carry;
+
+  const built = buildEpoch({
+    epoch: CARRY_EXPIRY_EPOCHS,
+    window: W,
+    calloutStore: storeOf([callout(wallet(1), 1)]),
+    holds: holdsOf([[wallet(1), BIG]]),
+    available: 24_000n, // the 4,000 expired dust, plus 20,000 that arrived today
+    previousCarry: previous,
+    minHold: MIN_HOLD_RAW,
+  });
+
+  assert.equal(built.expiredLamports, 4_000n, 'the entry expired');
+  assert.equal(built.payouts[0].carried, 0n, 'an expired entry is not paid as carry');
+  assert.equal(built.payouts[0].amount, 24_000n, 'it comes back through the divisible pool instead');
+  assert.ok(built.allocate <= built.available, 'and the epoch cannot over-allocate');
+  assert.equal(carriedFor(built.carry, wallet(1)), 0n);
+});
+
+test('allocate never exceeds available, over a chain and per epoch', () => {
+  const run = chainEpochs({ wallets: [wallet(1), wallet(2), wallet(3)], inflow: 7_000n, epochs: 8 });
+
+  let inflows = 0n;
+  for (const { epoch, available, built } of run) {
+    assert.ok(
+      built.allocate <= available,
+      `epoch ${epoch}: allocated ${built.allocate} of ${available} available`,
+    );
+    inflows += 7_000n;
+    const carried = BigInt(built.carry.totals.carried);
+    const check = reconcile({
+      inflows,
+      allocated: run.slice(0, epoch + 1).reduce((s, r) => s + r.built.allocate, 0n),
+      carried,
+      expired: run.slice(0, epoch + 1).reduce((s, r) => s + r.built.expiredLamports, 0n),
+    });
+    assert.equal(check.ok, true, `epoch ${epoch}: ${JSON.stringify(check)}`);
+  }
+});
+
+test('a pool smaller than the ledger it owes stops the crank', () => {
+  // The ledger says 9,000 is owed but the pool reports 5,000 allocatable. That
+  // is not a rounding artefact — it means the ledger and the chain disagree,
+  // and guessing which is right is how a settlement quietly underpays.
+  const previous = advanceCarry(emptyCarry(), {
+    epoch: 0,
+    withheld: new Map([[wallet(1), 9_000n]]),
+    paid: new Set(),
+  }).carry;
+
+  assert.throws(
+    () =>
+      buildEpoch({
+        epoch: 1,
+        window: W,
+        calloutStore: storeOf([callout(wallet(1), 1)]),
+        holds: holdsOf([[wallet(1), BIG]]),
+        available: 5_000n,
+        previousCarry: previous,
+        minHold: MIN_HOLD_RAW,
+      }),
+    /owed .* exceeds|carry ledger/i,
+  );
 });
 
 // ── the reproducer ─────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@
 // convenient: any concave function pays sybils a premium, because splitting one
 // bag across n wallets would increase total weight. Never "make it fairer".
 
-import { advanceCarry, carriedFor, DUST_THRESHOLD_LAMPORTS } from './carry.mjs';
+import { advanceCarry, carriedFor, DUST_THRESHOLD_LAMPORTS, splitCarry } from './carry.mjs';
 import { activeWallets } from './callouts.mjs';
 import { buildProof, buildTree } from './merkle.mjs';
 
@@ -68,19 +68,39 @@ export function buildEpoch({
   // the pool rather than being allocated to someone. That is the safe direction:
   // an epoch can under-allocate harmlessly, but over-allocating turns claims
   // into a race.
+  //
+  // Expiry is decided once, here, before any balance is read.
+  const split = splitCarry(previousCarry, epoch);
+  const activeCarry = { balances: split.active };
+
+  // Withheld dust was never allocated on chain, so it is still sitting in the
+  // pool and is still inside `available` — but it is already promised. Only
+  // what is left after the ledger's claim is anyone's to divide; dividing all
+  // of `available` would re-divide money that is owed, every single epoch.
+  // Expired lamports are deliberately *not* subtracted: they are free again.
+  if (available < split.activeTotal) {
+    throw new Error(
+      `carry ledger disagrees with the pool at epoch ${epoch}: ` +
+        `${split.activeTotal} lamports owed as carry exceeds ${available} allocatable. ` +
+        'Settle the previous epoch or reconcile the ledger — do not clamp this.',
+    );
+  }
+  const divisible = available - split.activeTotal;
+
   const payouts = [];
   const withheld = new Map();
   const paid = new Set();
 
   for (const row of eligible) {
-    const share = totalWeight === 0n ? 0n : (available * row.hold) / totalWeight;
-    const carried = carriedFor(previousCarry, row.wallet);
+    const share = totalWeight === 0n ? 0n : (divisible * row.hold) / totalWeight;
+    const carried = carriedFor(activeCarry, row.wallet);
     const total = share + carried;
 
     if (total < dustThreshold) {
       // Not forfeited — credited in the next epoch (Decision 18). With daily
-      // epochs this is most wallets on most days.
-      withheld.set(row.wallet, total);
+      // epochs this is most wallets on most days. Only `share` is new: the
+      // carried part is already in the ledger and is retained there.
+      withheld.set(row.wallet, share);
       payouts.push({ ...row, share, carried, amount: 0n, withheld: total });
     } else {
       paid.add(row.wallet);
@@ -103,6 +123,7 @@ export function buildEpoch({
     epoch,
     withheld,
     paid,
+    split,
   });
 
   const tree = leaves.map((leaf) => ({
@@ -119,6 +140,8 @@ export function buildEpoch({
     leafCount: leaves.length,
     allocate,
     available,
+    divisible,
+    carryOwed: split.activeTotal,
     totalWeight,
     rows,
     payouts,

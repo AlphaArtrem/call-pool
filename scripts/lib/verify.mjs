@@ -95,6 +95,16 @@ export function verifyOffline(dir, { minHold }) {
     problems.push(`allocate mismatch: published ${tree.allocate}, recomputed ${recomputed.allocate}`);
   }
 
+  // What the epoch was allowed to divide, checked rather than taken on trust.
+  // A snapshot that split all of `available` while owing carry would match on
+  // the root — it recomputes from the same inputs — but not on these.
+  if (pool.divisible !== undefined && recomputed.divisible !== big(pool.divisible)) {
+    problems.push(`divisible mismatch: published ${pool.divisible}, recomputed ${recomputed.divisible}`);
+  }
+  if (pool.carryOwed !== undefined && recomputed.carryOwed !== big(pool.carryOwed)) {
+    problems.push(`carry owed mismatch: published ${pool.carryOwed}, recomputed ${recomputed.carryOwed}`);
+  }
+
   // ── every leaf, individually ─────────────────────────────────────────────
   // A matching root already implies this, but a mismatch is far easier to act
   // on when it names the wallet.

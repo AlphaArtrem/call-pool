@@ -239,6 +239,12 @@ async function main() {
     rentMinimum: pool.rent.toString(),
     outstanding: pool.outstanding.toString(),
     available: pool.available.toString(),
+    // `available` still contains dust withheld in earlier epochs — it was never
+    // allocated on chain, so it never entered `outstanding`. Only `divisible`
+    // was this epoch's to split. Published so a verifier can check the split
+    // without re-deriving the ledger.
+    carryOwed: built.carryOwed.toString(),
+    divisible: built.divisible.toString(),
     allocate: built.allocate.toString(),
     reconciliation: reconcile({
       inflows: pool.available,

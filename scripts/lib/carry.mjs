@@ -46,30 +46,60 @@ export function emptyCarry() {
 }
 
 /**
- * Fold this epoch's withheld dust into the running ledger.
+ * Decide, once, which entries this epoch still owes and which have expired.
  *
- * @param {object} previous       the previous epoch's carry.json (or emptyCarry())
- * @param {object} args
- * @param {number} args.epoch
- * @param {Map<string, bigint>} args.withheld  wallet → lamports withheld this epoch
- * @param {Set<string>} args.paid              wallets that were paid this epoch
- * @returns {{ carry: object, expiredLamports: bigint }}
+ * This exists because expiry used to be decided in two places that could
+ * disagree inside a single epoch: `buildEpoch` read a wallet's balance to pay
+ * it while `advanceCarry` expired that same balance back into the pool. Both
+ * callers now consume this, so expiry is settled *before* anything reads a
+ * balance and the two answers cannot drift.
+ *
+ * @param {object} previous  the previous epoch's carry.json (or emptyCarry())
+ * @param {number} epoch     the epoch being built
+ * @returns {{ active: object, expired: object[], expiredLamports: bigint, activeTotal: bigint }}
  */
-export function advanceCarry(previous, { epoch, withheld, paid }) {
-  const balances = {};
+export function splitCarry(previous, epoch) {
+  const active = {};
   const expired = [];
   let expiredLamports = 0n;
+  let activeTotal = 0n;
 
   for (const [wallet, entry] of Object.entries(previous.balances ?? {})) {
-    // A wallet paid this epoch has had its carry included in the payout, so it
-    // starts again from zero rather than being counted twice.
-    if (paid.has(wallet)) continue;
-
     if (epoch - entry.sinceEpoch >= CARRY_EXPIRY_EPOCHS) {
       expired.push({ wallet, lamports: entry.lamports, sinceEpoch: entry.sinceEpoch, expiredAt: epoch });
       expiredLamports += BigInt(entry.lamports);
       continue;
     }
+    active[wallet] = { ...entry };
+    activeTotal += BigInt(entry.lamports);
+  }
+
+  return { active, expired, expiredLamports, activeTotal };
+}
+
+/**
+ * Fold this epoch's withheld dust into the running ledger.
+ *
+ * `withheld` carries **only the dust that arose this epoch** — the wallet's
+ * existing balance is retained here, so passing `share + carried` would credit
+ * the carried part twice and compound it every epoch.
+ *
+ * @param {object} previous       the previous epoch's carry.json (or emptyCarry())
+ * @param {object} args
+ * @param {number} args.epoch
+ * @param {Map<string, bigint>} args.withheld  wallet → lamports newly withheld this epoch
+ * @param {Set<string>} args.paid              wallets that were paid this epoch
+ * @param {object} [args.split]                `splitCarry` result, when the caller already has one
+ * @returns {{ carry: object, expiredLamports: bigint }}
+ */
+export function advanceCarry(previous, { epoch, withheld, paid, split }) {
+  const { active, expired, expiredLamports } = split ?? splitCarry(previous, epoch);
+  const balances = {};
+
+  for (const [wallet, entry] of Object.entries(active)) {
+    // A wallet paid this epoch has had its carry included in the payout, so it
+    // starts again from zero rather than being counted twice.
+    if (paid.has(wallet)) continue;
     balances[wallet] = { ...entry };
   }
 
@@ -98,7 +128,13 @@ export function advanceCarry(previous, { epoch, withheld, paid }) {
   };
 }
 
-/** What a wallet is owed from previous epochs, to fold into this epoch's share. */
+/**
+ * What a wallet is owed from previous epochs, to fold into this epoch's share.
+ *
+ * Give this the **active** balances (`splitCarry().active`), never the raw
+ * previous ledger: an entry expiring this epoch is owed to the pool, not to
+ * the wallet, and reading it here would pay it out and return it at once.
+ */
 export function carriedFor(carry, wallet) {
   const entry = carry.balances?.[wallet];
   return entry ? BigInt(entry.lamports) : 0n;
@@ -125,12 +161,19 @@ export function verifyCarryChain(files) {
 }
 
 /**
- * The stream reconciliation: does every lamport the pool received end up
- * allocated, carried, or expired?
+ * Does every allocatable lamport end up allocated, carried, or expired?
  *
- * Checking one epoch in isolation cannot catch a crank that quietly
- * under-allocates every day, because under-allocating is individually
- * harmless — the money simply stays in the pool. Only the running total shows it.
+ * This checks **one epoch**, not the stream — the docstring used to promise a
+ * running Σ-inflows reconciliation that the implementation never did. Per-epoch
+ * is now a real check rather than a tautology: since shares divide the pool net
+ * of what the ledger owes, `allocated + carried + expired` cannot exceed
+ * `inflows` unless something is genuinely wrong. Before that fix the two sides
+ * were computed from the same over-counted numbers and always agreed.
+ *
+ * The caller passes `inflows` as the epoch's allocatable balance. A running
+ * total across epochs would additionally catch a crank that under-allocates
+ * every day — individually harmless, since the money stays in the pool — and
+ * that remains unbuilt.
  */
 export function reconcile({ inflows, allocated, carried, expired }) {
   const accounted = allocated + carried + expired;
