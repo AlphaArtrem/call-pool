@@ -19,6 +19,7 @@ import {
   calloutTime,
   countable,
   FEED_CAP,
+  isForMint,
   isTruncated,
   mergeById,
   recordsInWindow,
@@ -123,6 +124,34 @@ test('the fallback splits candidates into bounded sublists', () => {
   assert.equal(split.length, 3);
   assert.deepEqual(split.map((b) => b.length), [150, 150, 20]);
   assert.equal(split.flat().length, 320);
+});
+
+test('the mint filter reads the field pump.fun actually sends', () => {
+  // Pinned against a real captured response, because this is a trust boundary:
+  // the field name is pump.fun's to choose, and a wrong guess fails *open* into
+  // a confident "no callout found" rather than into an error anyone would see.
+  const sample = JSON.parse(
+    readFileSync(resolve(import.meta.dirname, '../../docs/fixtures/callouts-sample.json'), 'utf8'),
+  );
+  const records = sample.callouts;
+  const mint = 'Cg1hswfyVfnFaKHSEVyNdFWEj1bmnZoA8ZnWLVbApump';
+
+  assert.equal(records.filter((r) => isForMint(r, mint)).length, records.length, 'all 27 match');
+  assert.equal(records.filter((r) => isForMint(r, 'SomeOtherMint')).length, 0);
+
+  // The site used to filter on `r.mint || r.coinMint`. Neither field exists on
+  // anything pump.fun returns, so the filter matched nothing and every visitor
+  // was told their callout did not exist.
+  assert.ok(
+    records.every((r) => !('mint' in r) && !('coinMint' in r)),
+    'neither field pump.fun never sends has appeared',
+  );
+
+  // One predicate, so the crank and the browser cannot drift apart.
+  assert.deepEqual(
+    records.filter((r) => isForMint(r, mint)).map((r) => r.id),
+    records.filter((r) => r.tokenAddress === mint).map((r) => r.id),
+  );
 });
 
 test('createdAt is parsed as UTC, to the second', () => {

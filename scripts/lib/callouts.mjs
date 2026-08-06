@@ -103,6 +103,20 @@ export function countable(record) {
   return !record.isSpam && !record.isHarmful && !record.deletedAt;
 }
 
+/**
+ * Is this record about our coin?
+ *
+ * `tokenAddress` is pump.fun's field name, pinned by
+ * `docs/fixtures/callouts-sample.json` and by a test that reads it. One
+ * predicate for every caller — the crank and the browser both answer this
+ * question, and the site once answered it with `record.mint`, a field that has
+ * never existed in a pump.fun response. A wrong field name here does not throw;
+ * it silently matches nothing and reports that nobody ever called anything.
+ */
+export function isForMint(record, mint) {
+  return record.tokenAddress === mint;
+}
+
 // ── fetching ───────────────────────────────────────────────────────────────
 
 /** The per-mint feed. One request, newest first, capped at 50. */
@@ -280,7 +294,7 @@ export async function collectByWallet(candidates, mint, window, options) {
     for (const address of batch) {
       const history = await fetchWalletCallouts(address, options);
       for (const record of history) {
-        if (record.tokenAddress !== mint) continue;
+        if (!isForMint(record, mint)) continue;
         const at = calloutTime(record);
         if (at >= window.start && at < window.end) records.push(record);
       }
@@ -310,7 +324,7 @@ export async function verifyPermalink(url, { mint, address, window, ...options }
   const record = body.callout ?? body;
 
   const checks = {
-    tokenAddress: record.tokenAddress === mint,
+    tokenAddress: isForMint(record, mint),
     walletAddress: record.walletAddress === address,
     inWindow: calloutTime(record) >= window.start && calloutTime(record) < window.end,
     notModerated: countable(record),

@@ -11,7 +11,7 @@
 
 import { computeHold, decreasesIn, TimelineError } from '../../scripts/lib/timeline.mjs';
 import { lockoutWindow } from '../../scripts/lib/epoch.mjs';
-import { calloutTime, countable, fetchWalletCallouts } from '../../scripts/lib/callouts.mjs';
+import { calloutTime, countable, fetchWalletCallouts, isForMint } from '../../scripts/lib/callouts.mjs';
 import { LOCKOUT_EPOCHS, MINT_DECIMALS } from '../../scripts/lib/config.mjs';
 
 import {
@@ -98,7 +98,7 @@ async function loadCallouts({ config, address, window: epochWindow }) {
 
   try {
     const records = await fetchWalletCallouts(address, { apiKey: config.calloutApiKey });
-    const forMint = records.filter((r) => r.mint === config.mint || r.coinMint === config.mint);
+    const forMint = records.filter((r) => isForMint(r, config.mint));
     const usable = forMint.filter(countable);
 
     const times = usable.map(calloutTime);
