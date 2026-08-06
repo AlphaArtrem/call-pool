@@ -173,3 +173,54 @@ export function freshnessNote({ readAt, failedAt }) {
  */
 export const PROVISIONAL_EXPLANATION =
   'The hourly figure is a spot check: it looks at balances once an hour. The daily settlement replays every single transfer of the day, so it catches a sale and a rebuy that happened between two of those checks. The daily number is the exact one. The hourly one is usually identical, and it is never what you are paid.';
+
+/**
+ * What the daily record says before there is a single settled day.
+ *
+ * §7.4 again: an empty table is a state, and "No days yet" leaves a reader
+ * wondering whether it is broken, whether they are early, or whether something
+ * went wrong. All three are answerable, so answer them.
+ *
+ * **It deliberately does not say "24 hours after launch".** Days close at the
+ * epoch boundary, and launch happens somewhere inside the first one — launch at
+ * 22:00 UTC and the first day closes two hours later, not twenty-four. Promising
+ * a day and delivering in two hours is harmless; promising two hours and taking
+ * a day is not, and the honest version costs nothing because the boundary is
+ * known exactly.
+ *
+ * Three states, because the gap between a day closing and its root being posted
+ * is real and a page that says nothing during it looks stuck.
+ *
+ * @param {{now: number, window: {start: number, end: number}|null}} facts
+ */
+export function firstRecordNote({ now, window = null }) {
+  if (window == null) {
+    return 'Nothing here yet — the first day starts when the coin launches, and its record appears here once that day has finished.';
+  }
+
+  if (now >= window.end) {
+    return 'The first day has just closed. Its record appears here as soon as the day is settled, usually within a few minutes.';
+  }
+
+  return `Nothing to show yet — the first day is still running. It finishes at ${boundaryLabel(window)}, ${roughly(window.end - now)}, and this table fills in shortly after that.`;
+}
+
+/**
+ * A duration a person would say out loud.
+ *
+ * `countdown()` shows seconds at every scale because the hero clock ticks and
+ * needs them. Here they are noise dressed as precision — "about 23h 00m 00s"
+ * is a stopwatch reading in a sentence that begins with "about". Nobody waiting
+ * a day cares about the seconds, and the row will not appear at that second
+ * anyway: it appears once the crank has settled the day.
+ */
+function roughly(seconds) {
+  if (seconds <= 90) return 'any moment now';
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `about ${minutes} minutes from now`;
+
+  const hours = Math.round(seconds / 3600);
+  if (hours === 1) return 'about an hour from now';
+  return `about ${hours} hours from now`;
+}

@@ -37,7 +37,7 @@ import {
 import { decodeBase58, encodeBase58 } from '../../site/js/base58.js';
 import { standingFor, formatSol, formatTokens, countdown, utcTime } from '../../site/js/standing.js';
 import * as clocksModule from '../../site/js/clocks.js';
-import { dailyState, epochAt, freshnessNote, hourlyState, windowFor } from '../../site/js/clocks.js';
+import { dailyState, epochAt, firstRecordNote, freshnessNote, hourlyState, windowFor } from '../../site/js/clocks.js';
 import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
 import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
 import { pageOf, PAGE_SIZE } from '../../site/js/paging.js';
@@ -739,4 +739,84 @@ test('an empty history is one page, no controls, and no phantom row numbers', ()
   assert.equal(view.needed, false);
   assert.equal(view.first, 0);
   assert.equal(view.last, 0);
+});
+
+// ── the daily record before there is a record ──────────────────────────────
+//
+// "No days yet" leaves a reader wondering whether the page is broken, whether
+// they are early, or whether something went wrong. All three are answerable.
+
+const DAY = 86_400;
+
+test('before launch it says the record starts when the coin does', () => {
+  const note = firstRecordNote({ now: 1_760_000_000, window: null });
+  assert.match(note, /launches/);
+  assert.doesNotMatch(note, /NaN|undefined|Invalid/);
+});
+
+test('on day one it names the boundary and how far off it is', () => {
+  const start = 1_760_000_000 - (1_760_000_000 % DAY);
+  const window = { start, end: start + DAY };
+  const note = firstRecordNote({ now: start + 3600, window });
+
+  assert.match(note, /still running/);
+  assert.match(note, /00:00 UTC/, 'a real day closes at midnight, so say so');
+  assert.doesNotMatch(note, /NaN|undefined|Invalid/);
+});
+
+// The wording must not promise 24 hours. Days close on the epoch boundary and
+// launch happens somewhere inside the first one — launch at 22:00 UTC and the
+// first day closes two hours later. Promising a day and delivering in two hours
+// is harmless; the reverse is not.
+test('the wait is measured to the boundary, not asserted as 24 hours', () => {
+  const start = 1_760_000_000 - (1_760_000_000 % DAY);
+  const window = { start, end: start + DAY };
+
+  // The risk is telling a reader "24 hours after launch" as though it were the
+  // rule. Launch at 22:00 UTC and the first day closes two hours later — the
+  // page must say two hours, because that is what is true.
+  assert.match(
+    firstRecordNote({ now: start + DAY - 7200, window }),
+    /about 2 hours from now/,
+    'a coin launched late in the day settles its first day the same night',
+  );
+
+  // Saying "about 24 hours" one minute in is not the same claim — it is
+  // measured, and it is correct.
+  assert.match(firstRecordNote({ now: start + 60, window }), /about 24 hours from now/);
+});
+
+test('between the day closing and the root landing it says so, not nothing', () => {
+  const start = 1_760_000_000 - (1_760_000_000 % DAY);
+  const window = { start, end: start + DAY };
+  const note = firstRecordNote({ now: start + DAY + 30, window });
+
+  assert.match(note, /just closed/);
+  assert.match(note, /settled/);
+});
+
+test('a short rehearsal epoch reports its real end, not a fictional midnight', () => {
+  const window = { start: 1_760_000_000, end: 1_760_000_300 };
+  const note = firstRecordNote({ now: 1_760_000_100, window });
+  assert.doesNotMatch(note, /00:00 UTC/, '300s epochs do not end at midnight');
+});
+
+test('the wait is said the way a person would say it, not as a stopwatch', () => {
+  const start = 1_760_000_000 - (1_760_000_000 % DAY);
+  const window = { start, end: start + DAY };
+
+  assert.match(firstRecordNote({ now: start + 3600, window }), /about 23 hours from now/);
+  assert.match(firstRecordNote({ now: start + DAY - 300, window }), /about 5 minutes from now/);
+  assert.match(firstRecordNote({ now: start + DAY - 30, window }), /any moment now/);
+
+  // No stopwatch readings in a sentence that begins with "about".
+  for (const offset of [3600, DAY - 3540, DAY - 300]) {
+    assert.doesNotMatch(firstRecordNote({ now: start + offset, window }), /\d+m \d+s/);
+  }
+});
+
+test('an hour is "an hour", not "1 hours"', () => {
+  const start = 1_760_000_000 - (1_760_000_000 % DAY);
+  const window = { start, end: start + DAY };
+  assert.match(firstRecordNote({ now: start + DAY - 3600, window }), /about an hour from now/);
 });

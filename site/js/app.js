@@ -17,6 +17,7 @@ import { configPda, connect, poolPda } from './addresses.js';
 import {
   dailyState,
   epochAt,
+  firstRecordNote,
   freshnessNote,
   hourlyState,
   PROVISIONAL_EXPLANATION,
@@ -133,7 +134,12 @@ function resetLiveFields(reason = null) {
     chartState(el(chartId), reason?.clock ?? 'reading…', { unavailable: reason != null });
   }
 
-  if (reason != null) renderEpochs(el('epoch-rows'), [], state.config ?? {}, el('epoch-pagination'));
+  if (reason != null) {
+    renderEpochs(el('epoch-rows'), [], state.config ?? {}, {
+      pager: el('epoch-pagination'),
+      emptyNote: firstRecordNote({ now: Math.floor(Date.now() / 1000), window: state.window }),
+    });
+  }
 }
 
 /** The three card charts, as [value slot, chart slot]. */
@@ -730,7 +736,10 @@ async function loadHistory(config) {
 
   el('history-status').replaceChildren();
   el('history-status').classList.remove('failed');
-  renderEpochs(el('epoch-rows'), live.epochs, config, el('epoch-pagination'));
+  renderEpochs(el('epoch-rows'), live.epochs, config, {
+    pager: el('epoch-pagination'),
+    emptyNote: firstRecordNote({ now: Math.floor(Date.now() / 1000), window: state.window }),
+  });
   renderTotals(el('total-distributed'), live.epochs);
   renderHistoryCard(live.epochs);
   return true;

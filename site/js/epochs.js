@@ -57,7 +57,7 @@ export function totalClaimed(epochs) {
  */
 let currentPage = 0;
 
-export function renderEpochs(tbody, epochs, config, pager = null) {
+export function renderEpochs(tbody, epochs, config, { pager = null, emptyNote = null } = {}) {
   tbody.replaceChildren();
 
   if (epochs.length === 0) {
@@ -65,7 +65,11 @@ export function renderEpochs(tbody, epochs, config, pager = null) {
     const td = document.createElement('td');
     td.colSpan = 7;
     td.className = 'pending';
-    td.textContent = 'No days yet. The first is settled at the first 00:00 UTC after launch.';
+    // Before the first settled day this is the only thing in the section, so
+    // it has to answer "is this broken, am I early, or did something go
+    // wrong?" — see firstRecordNote in clocks.js.
+    td.textContent =
+      emptyNote ?? 'No days yet. The first is settled at the first 00:00 UTC after launch.';
     tr.append(td);
     tbody.append(tr);
     if (pager) renderPager(pager, pageOf([], 0), tbody, config);
@@ -95,7 +99,7 @@ function renderPager(node, view, tbody, config, epochs = []) {
 
   const step = (delta) => {
     currentPage = view.page + delta;
-    renderEpochs(tbody, epochs, config, node);
+    renderEpochs(tbody, epochs, config, { pager: node });
     // Keep the reader at the table rather than wherever the page happened to
     // be scrolled after the rows changed height.
     tbody.closest('table')?.scrollIntoView({ block: 'nearest' });
