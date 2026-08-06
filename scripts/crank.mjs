@@ -193,13 +193,27 @@ async function pay(connection, config, epoch, onChain, args) {
   }
   if (!onChain) throw new Error(`epoch ${epoch} has no root on chain — nothing to pay`);
 
+  // Wait on the **cluster's** clock, because that is the one `claim` compares
+  // against. This used to wait on `Date.now()` plus a second of slack, which
+  // assumes the two clocks differ by less than that second. A local validator's
+  // clock advances with slots and can lag wall time by much more, so the wait
+  // ended early and the airdrop came back `ChallengeWindowOpen` — the root
+  // posted, the money unpaid, and the crank reporting failure for a settlement
+  // that was fine. Polling the chain cannot be early by construction.
   const opensAt = onChain.postedTs + config.challengeSeconds;
-  const waitFor = opensAt - Math.floor(Date.now() / 1000);
-  if (waitFor > 0) {
-    console.log(`\n⏳ the challenge window closes at ${iso(opensAt)} — waiting ${waitFor}s\n`);
-    // A second of slack: the cluster's clock and this one are not the same, and
-    // being one second early costs a whole extra run.
-    await sleep(waitFor + 1);
+  let announced = false;
+  for (;;) {
+    const slot = await connection.getSlot('confirmed');
+    const chainNow = await connection.getBlockTime(slot);
+    if (chainNow == null) throw new Error(`the RPC returned no block time for slot ${slot}`);
+    if (chainNow >= opensAt) break;
+    if (!announced) {
+      console.log(
+        `\n⏳ the challenge window closes at ${iso(opensAt)} — waiting ${opensAt - chainNow}s\n`,
+      );
+      announced = true;
+    }
+    await sleep(2);
   }
 
   const paid = run('airdrop.mjs', ['--epoch', String(epoch), '--rpc', args.rpc, '--keypair', args.payer], args);

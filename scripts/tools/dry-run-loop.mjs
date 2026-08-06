@@ -30,7 +30,7 @@ import { connect } from '../lib/rpc.mjs';
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
 import { iso } from '../lib/epoch.mjs';
 import { fetchConfig, fetchEpoch, windowForEpoch } from '../lib/program.mjs';
-import { REPO_ROOT, snapshotDir } from '../lib/store.mjs';
+import { REPO_ROOT } from '../lib/store.mjs';
 import { assertNotMainnet, DEVNET_DIR, DEVNET_STORE_PATH, readManifest } from './devnet.mjs';
 
 /**
@@ -65,8 +65,17 @@ function parseArgs(argv) {
   return args;
 }
 
-/** Where an epoch's carry ledger lives — its absence means that epoch never settled. */
-const carryLedgerFor = (epoch) => resolve(snapshotDir(epoch), 'carry.json');
+/**
+ * Where an epoch's carry ledger lives — its absence means that epoch never settled.
+ *
+ * Built from `SNAPSHOTS_SUBDIR` rather than `snapshotDir()`, because
+ * `CALLPOOL_SNAPSHOTS_DIR` is set on the **children** and not on this process:
+ * asking `store.mjs` here would resolve to the public `snapshots/` tree, find
+ * nothing ever, and pass `--carry-reset` on every single epoch — turning the
+ * guard off while looking like it was on.
+ */
+const carryLedgerFor = (epoch) =>
+  resolve(REPO_ROOT, SNAPSHOTS_SUBDIR, `epoch-${epoch}`, 'carry.json');
 
 /** Run one of our own scripts as a child process, the way a scheduler would. */
 function run(script, scriptArgs) {
@@ -175,13 +184,19 @@ async function main() {
       // per-wallet credit does not survive.
       record(epoch, 'SKIPPED', 'on purpose, to render a "not posted" row');
     } else {
-      // An epoch that never settled — skipped on purpose, or a crank that died
-      // before writing its snapshot — leaves no carry ledger where the next
-      // epoch expects its predecessor's. The crank now refuses to guess rather
-      // than silently restarting the chain, which is right on mainnet and would
-      // end an unattended rehearsal at 2 a.m. Asking the filesystem covers the
-      // deliberate skip and the accidental failure with one rule.
-      const restarting = epoch > manifest.startEpoch && !existsSync(carryLedgerFor(epoch - 1));
+      // An epoch that never settled leaves no carry ledger where the next epoch
+      // expects its predecessor's. The crank now refuses to guess rather than
+      // silently restarting the chain — right on mainnet, and it would end an
+      // unattended rehearsal at 2 a.m.
+      //
+      // Asking the filesystem covers all three cases with one rule: the
+      // deliberate SKIP at offset 4, a crank that died before writing its
+      // snapshot, and the **first epoch of any run** — the loop starts at
+      // epoch 1 while `deploy-devnet.mjs` leaves epoch 0 unsettled, so there has
+      // never been an epoch-0 ledger to inherit. That last one is why this is
+      // `epoch > 0` and not `epoch > manifest.startEpoch`: the first epoch of a
+      // rehearsal is precisely the one with no predecessor.
+      const restarting = epoch > 0 && !existsSync(carryLedgerFor(epoch - 1));
       if (restarting) {
         console.log(
           `\n⚠️  epoch ${epoch - 1} left no carry ledger, so it never settled.\n` +
