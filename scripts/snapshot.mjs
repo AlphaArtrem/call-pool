@@ -16,15 +16,18 @@
 //   ... --rpc <URL> --mint <MINT>     # mint defaults to the on-chain config
 //   ... --store <PATH>                # a callout store other than the poll's
 //   ... --dry-run                     # compute and print, write nothing
+//   ... --carry-reset                 # previous epoch never settled: forfeit
+//                                     #   its carried dust and start a new chain
 //
 // `--day` is how a human refers to an epoch and `--epoch` is how the chain
 // does. They must agree — `initialize` refuses a genesis that is not aligned to
 // an epoch boundary precisely so that they can.
 //
-// Refuses rather than guesses, in three places that matter:
+// Refuses rather than guesses, in four places that matter:
 //   * a truncated feed with no usable fallback list
 //   * a caller whose balance history has a gap (holds.mjs raises)
 //   * a window that is not an epoch boundary for the on-chain genesis
+//   * a missing carry ledger for epoch N-1 (--carry-reset to override)
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -33,7 +36,7 @@ import { connect } from './lib/rpc.mjs';
 
 import { apiKeyFromEnv, collectByWallet, isTruncated, mergeById, recordsInWindow } from './lib/callouts.mjs';
 import { DEFAULT_RPC_URL, LOCKOUT_EPOCHS } from './lib/config.mjs';
-import { emptyCarry, reconcile } from './lib/carry.mjs';
+import { previousCarryFor, reconcile } from './lib/carry.mjs';
 import { buildEpoch, payoutsCsv } from './lib/epoch-build.mjs';
 import { iso, windowForDay } from './lib/epoch.mjs';
 import {
@@ -49,9 +52,12 @@ import { writeSnapshotIndex } from './lib/snapshot-index.mjs';
 import { holdsFor } from './holds.mjs';
 
 function parseArgs(argv) {
-  const args = { rpc: DEFAULT_RPC_URL, dryRun: false };
+  const args = { rpc: DEFAULT_RPC_URL, dryRun: false, carryReset: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') args.dryRun = true;
+    // A boolean, so it must be matched before the `--flag value` branch below
+    // swallows whatever follows it.
+    else if (argv[i] === '--carry-reset') args.carryReset = true;
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -166,10 +172,11 @@ async function main() {
   console.log(`pool      ${pool.lamports} lamports, ${pool.available} allocatable`);
 
   // ── steps 3, 4, 6, 7 ─────────────────────────────────────────────────────
-  const previousCarry =
-    epoch === 0
-      ? emptyCarry()
-      : readJson(resolve(snapshotDir(epoch - 1), 'carry.json'), emptyCarry());
+  const previousCarry = previousCarryFor({
+    epoch,
+    path: resolve(snapshotDir(epoch - 1), 'carry.json'),
+    carryReset: args.carryReset,
+  });
 
   const built = buildEpoch({
     epoch,

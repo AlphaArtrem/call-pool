@@ -31,6 +31,7 @@ import {
   DUST_THRESHOLD_LAMPORTS,
   emptyCarry,
   hashCarryFile,
+  previousCarryFor,
   reconcile,
   verifyCarryChain,
 } from '../lib/carry.mjs';
@@ -586,6 +587,48 @@ test('a pool smaller than the ledger it owes stops the crank', () => {
   );
 });
 
+// ── a missing carry ledger ─────────────────────────────────────────────────
+
+test('a missing carry ledger stops the crank instead of starting over', () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'callpool-'));
+  const missing = resolve(dir, 'epoch-4', 'carry.json');
+
+  assert.throws(
+    () => previousCarryFor({ epoch: 5, path: missing }),
+    (err) => err.message.includes(missing) && /--carry-reset/.test(err.message),
+    'the error names the file it wanted and the flag that overrides it',
+  );
+});
+
+test('--carry-reset is the explicit way to restart the carry chain', () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'callpool-'));
+  const missing = resolve(dir, 'epoch-4', 'carry.json');
+
+  const reset = previousCarryFor({ epoch: 5, path: missing, carryReset: true });
+  assert.deepEqual(reset, emptyCarry(), 'the ledger restarts, but only because it was asked to');
+
+  // Epoch 0 has no predecessor by definition — that is genesis, not a restart.
+  assert.deepEqual(previousCarryFor({ epoch: 0, path: missing }), emptyCarry());
+});
+
+test('an existing ledger is read, flag or no flag', () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'callpool-'));
+  const path = resolve(dir, 'carry.json');
+  const carry = advanceCarry(emptyCarry(), {
+    epoch: 4,
+    withheld: new Map([[wallet(1), 2_500n]]),
+    paid: new Set(),
+  }).carry;
+  writeFileSync(path, `${JSON.stringify(carry, null, 2)}\n`);
+
+  assert.deepEqual(previousCarryFor({ epoch: 5, path }), carry);
+  assert.deepEqual(
+    previousCarryFor({ epoch: 5, path, carryReset: true }),
+    carry,
+    'the flag permits a restart, it does not force one',
+  );
+});
+
 // ── the reproducer ─────────────────────────────────────────────────────────
 
 /** Write a snapshot directory the way snapshot.mjs does, then reproduce it. */
@@ -633,6 +676,38 @@ function writeSnapshot(dir, { epoch, built, records, available }) {
     })),
   });
 }
+
+test('the verifier flags a chain that restarted mid-history', () => {
+  // Epoch 5's directory exists, but its carry.json is gone — the shape a failed
+  // settlement leaves behind. Epoch 6 was then built from an empty ledger. The
+  // hash check cannot catch this on its own: with no predecessor file to hash,
+  // "no previous carry" is exactly what a genesis epoch looks like, so the
+  // restart reconciles perfectly with itself.
+  const root = mkdtempSync(resolve(tmpdir(), 'callpool-'));
+  mkdirSync(resolve(root, 'epoch-5'), { recursive: true });
+
+  const records = [callout(wallet(1), 1)];
+  const available = 90n * 1_000_000_000n;
+  const built = buildEpoch({
+    epoch: 6,
+    window: W,
+    calloutStore: storeOf(records),
+    holds: holdsOf([[wallet(1), BIG]]),
+    available,
+    previousCarry: emptyCarry(),
+    minHold: MIN_HOLD_RAW,
+  });
+
+  const dir = resolve(root, 'epoch-6');
+  writeSnapshot(dir, { epoch: 6, built, records, available });
+
+  const result = verifyOffline(dir, { minHold: MIN_HOLD_RAW });
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.problems.some((p) => /carry chain restarted/i.test(p)),
+    `expected a restart problem, got ${JSON.stringify(result.problems)}`,
+  );
+});
 
 test('a published epoch reproduces exactly from its own directory', () => {
   const records = [callout(wallet(1), 1), callout(wallet(2), 2), callout(wallet(3), 3)];

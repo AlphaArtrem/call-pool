@@ -22,6 +22,7 @@
 // left in the audit trail is worse than no audit trail.
 
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { connect } from '../lib/rpc.mjs';
@@ -29,7 +30,7 @@ import { connect } from '../lib/rpc.mjs';
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
 import { iso } from '../lib/epoch.mjs';
 import { fetchConfig, fetchEpoch, windowForEpoch } from '../lib/program.mjs';
-import { REPO_ROOT } from '../lib/store.mjs';
+import { REPO_ROOT, snapshotDir } from '../lib/store.mjs';
 import { assertNotMainnet, DEVNET_DIR, DEVNET_STORE_PATH, readManifest } from './devnet.mjs';
 
 /**
@@ -63,6 +64,9 @@ function parseArgs(argv) {
   }
   return args;
 }
+
+/** Where an epoch's carry ledger lives — its absence means that epoch never settled. */
+const carryLedgerFor = (epoch) => resolve(snapshotDir(epoch), 'carry.json');
 
 /** Run one of our own scripts as a child process, the way a scheduler would. */
 function run(script, scriptArgs) {
@@ -138,6 +142,7 @@ async function main() {
   seed(epoch, manifest, args, record);
 
   let settled = 0;
+
   while (settled < limit) {
     const window = windowForEpoch(config, epoch);
     const plan = args.schedule ? (SCHEDULE[epoch - manifest.startEpoch] ?? {}) : {};
@@ -170,6 +175,22 @@ async function main() {
       // per-wallet credit does not survive.
       record(epoch, 'SKIPPED', 'on purpose, to render a "not posted" row');
     } else {
+      // An epoch that never settled — skipped on purpose, or a crank that died
+      // before writing its snapshot — leaves no carry ledger where the next
+      // epoch expects its predecessor's. The crank now refuses to guess rather
+      // than silently restarting the chain, which is right on mainnet and would
+      // end an unattended rehearsal at 2 a.m. Asking the filesystem covers the
+      // deliberate skip and the accidental failure with one rule.
+      const restarting = epoch > manifest.startEpoch && !existsSync(carryLedgerFor(epoch - 1));
+      if (restarting) {
+        console.log(
+          `\n⚠️  epoch ${epoch - 1} left no carry ledger, so it never settled.\n` +
+            `    Passing --carry-reset to epoch ${epoch}: any dust carried into it is\n` +
+            '    forfeited. On mainnet this is a decision a human makes deliberately;\n' +
+            '    here it is what keeps an unattended rehearsal running.',
+        );
+      }
+
       const cranked = run('scripts/crank.mjs', [
         '--epoch', String(epoch),
         '--rpc', args.rpc,
@@ -177,6 +198,7 @@ async function main() {
         '--payer', manifest.payer.keypair,
         '--store', DEVNET_STORE_PATH,
         '--and-pay',
+        ...(restarting ? ['--carry-reset'] : []),
       ]);
 
       if (cranked.ok) {

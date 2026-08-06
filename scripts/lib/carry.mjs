@@ -19,6 +19,7 @@
 // CARRY_EXPIRY_EPOCHS and returns to the pool.
 
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 
 export const CARRY_EXPIRY_EPOCHS = 30;
 
@@ -43,6 +44,44 @@ export function emptyCarry() {
     expired: [],
     totals: { carried: '0', expired: '0' },
   };
+}
+
+/**
+ * The previous epoch's ledger — or a refusal.
+ *
+ * This used to be `readJson(path, emptyCarry())`: if the file was missing, the
+ * settlement started the ledger over. That turns the project's most-feared
+ * failure — an epoch that does not settle — into a silent one. Every wallet's
+ * dust credit is wiped, the hash chain restarts, and the epoch it produces is
+ * internally consistent, so nothing downstream can tell. It was the one place
+ * the repo guessed instead of refusing.
+ *
+ * `--carry-reset` still allows a restart, deliberately and on the record.
+ *
+ * @param {object} args
+ * @param {number} args.epoch          the epoch being built
+ * @param {string} args.path           the previous epoch's carry.json
+ * @param {boolean} [args.carryReset]  permit an absent ledger and start fresh
+ */
+export function previousCarryFor({ epoch, path, carryReset = false }) {
+  // Epoch 0 has no predecessor. That is genesis, not a restart.
+  if (epoch === 0) return emptyCarry();
+  if (existsSync(path)) return JSON.parse(readFileSync(path, 'utf8'));
+
+  if (carryReset) {
+    console.warn(
+      `warn      no carry ledger at ${path}\n` +
+        `warn      --carry-reset given: starting a new carry chain at epoch ${epoch}.\n` +
+        'warn      Every unpaid dust balance from before this epoch is forfeited.',
+    );
+    return emptyCarry();
+  }
+
+  throw new Error(
+    `no carry ledger for epoch ${epoch - 1}: ${path}\n` +
+      `Epoch ${epoch - 1} has not settled, so every wallet's carried dust is unknown. ` +
+      'Settle it first, or pass --carry-reset to forfeit those balances and start a new chain.',
+  );
 }
 
 /**

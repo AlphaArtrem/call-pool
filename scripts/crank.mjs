@@ -19,6 +19,9 @@
 //   node scripts/crank.mjs --day 2026-08-04 --keypair <SNAPSHOT_KEY>
 //   node scripts/crank.mjs --epoch 7 --keypair <SNAPSHOT_KEY>   # by chain index
 //   node scripts/crank.mjs --day 2026-08-04 --dry-run     # print the plan
+//   node scripts/crank.mjs --epoch 7 --carry-reset        # epoch 6 never
+//     settled: forfeit its carried dust and start a new carry chain. Deliberate
+//     and on the record — without it a missing ledger stops the crank.
 //
 // `--day` is the mainnet ergonomic: one epoch is one UTC day, and a human
 // refers to it by date. `--epoch N` addresses the on-chain index instead and is
@@ -44,10 +47,12 @@ import { epochIndexFor, fetchConfig, fetchEpoch, windowForEpoch } from './lib/pr
 import { REPO_ROOT, snapshotDir } from './lib/store.mjs';
 
 function parseArgs(argv) {
-  const args = { rpc: DEFAULT_RPC_URL, dryRun: false, andPay: false };
+  const args = { rpc: DEFAULT_RPC_URL, dryRun: false, andPay: false, carryReset: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') args.dryRun = true;
     else if (argv[i] === '--and-pay') args.andPay = true;
+    // Booleans, matched before the `--flag value` branch consumes what follows.
+    else if (argv[i] === '--carry-reset') args.carryReset = true;
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -135,6 +140,7 @@ async function main() {
   // date the truncation records are keyed on.
   const snapshotArgs = args.day ? ['--day', args.day] : ['--epoch', String(epoch)];
   if (args.store) snapshotArgs.push('--store', args.store);
+  if (args.carryReset) snapshotArgs.push('--carry-reset');
   const snapshot = run('snapshot.mjs', [...snapshotArgs, '--rpc', args.rpc], args);
   if (snapshot.status !== 0) throw new Error('snapshot failed — nothing was posted');
 

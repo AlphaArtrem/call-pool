@@ -138,6 +138,18 @@ export function verifyOffline(dir, { minHold }) {
         `epoch ${epoch - 1}'s carry.json hashes to ${expectedPrevious}`,
     );
   }
+
+  // A restart is not caught by the hash check above, and cannot be: with no
+  // predecessor file to hash, "no previous carry" is what a genesis epoch looks
+  // like, so a restarted chain reconciles perfectly with itself. The predecessor
+  // *directory* is the evidence — epoch N-1 was published, but its ledger is
+  // gone, so this epoch forfeited balances it should have inherited.
+  if (epoch > 0 && carry.previousCarrySha256 === null && existsSync(previousDir)) {
+    problems.push(
+      `carry chain restarted at epoch ${epoch}: epoch ${epoch - 1} was published but ` +
+        'this ledger claims no predecessor, so every dust balance before it was forfeited',
+    );
+  }
   if (JSON.stringify(carry.balances) !== JSON.stringify(recomputed.carry.balances)) {
     problems.push('carry balances do not match the recomputed ledger');
   }
