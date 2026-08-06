@@ -12,6 +12,9 @@
 //   ... --epoch-seconds 300 --challenge-seconds 60     # the dry run's clocks
 //   ... --rpc https://api.devnet.solana.com
 //   ... --skip-build                                   # reuse target/sbf-v3
+//   ... --skip-deploy             # the program is already on this cluster
+//   ... --snapshot-key <VAULT>    # a multisig vault instead of a fresh keypair
+//   ... --initializer <PATH>      # when INITIALIZER is not the throwaway
 //
 // ⚠️ **Devnet only, and it checks.** `initialize` is signed by the throwaway
 // `INITIALIZER` whose secret is committed in this repository, every argument it
@@ -93,9 +96,11 @@ function parseArgs(argv) {
     'challenge-seconds': '60',
     'vault-sol': '2',
     skipBuild: false,
+    skipDeploy: false,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--skip-build') args.skipBuild = true;
+    else if (argv[i] === '--skip-deploy') args.skipDeploy = true;
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -236,6 +241,14 @@ async function main() {
     );
   }
 
+  // Resuming a half-finished run. The public devnet endpoint rate-limits a
+  // 235 KB upload hard enough that the deploy lands and the steps after it
+  // 429 — at which point re-uploading costs another ~2 SOL and re-rolls the
+  // same dice. `--skip-deploy` picks up from the coin instead.
+  const deployed = await connection.getAccountInfo(PROGRAM_ID);
+  if (args.skipDeploy && deployed?.executable) {
+    console.log('skipping deploy — the program is already on this cluster\n');
+  } else {
   console.log('deploying…');
   sh('solana', [
     'program', 'deploy',
@@ -245,6 +258,7 @@ async function main() {
     '--url', args.rpc,
   ]);
   console.log('deployed\n');
+  }
 
   // ── the coin ─────────────────────────────────────────────────────────────
   // The mint authority is kept rather than revoked: this is a rehearsal, and
@@ -292,7 +306,14 @@ async function main() {
   // ── create_pool + initialize ─────────────────────────────────────────────
   await send(connection, [createPoolIx({ payer: payer.publicKey })], [payer]);
 
-  const initializer = throwawayInitializer();
+  // `--initializer <PATH>` for a build whose INITIALIZER constant is not the
+  // committed throwaway — which is every deployment build, and is what the
+  // launch rehearsal exercises. Defaults to the throwaway so the ordinary
+  // devnet path is unchanged.
+  const initializer = args.initializer
+    ? loadKeypair(args.initializer)
+    : throwawayInitializer();
+  console.log(`initializer ${initializer.publicKey.toBase58()}${args.initializer ? '' : '   (committed throwaway)'}`);
   await fund(connection, payer, initializer.publicKey, BigInt(0.05 * LAMPORTS_PER_SOL));
 
   // `--snapshot-key <ADDRESS>` binds the config to an address we do not hold —

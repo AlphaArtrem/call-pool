@@ -36,6 +36,34 @@ pub const INITIALIZER_SECRET: [u8; 64] = [
     112, 34, 0,
 ];
 
+/// The keypair matching the program's `INITIALIZER` constant.
+///
+/// **`CALLPOOL_TEST_INITIALIZER=<path-to-keypair.json>` overrides it**, and a
+/// deployment build needs that. `INITIALIZER` is a compile-time constant, so
+/// replacing it for launch — which is mandatory — makes every fixture here fail
+/// at `initialize`, and `verify.sh` runs these tests. The alternative would be
+/// committing the launch secret to fix the tests, which is obviously worse than
+/// the problem.
+///
+/// So the real key stays in a file the build machine already has (it has to
+/// sign `initialize` anyway) and never enters the repository. Without the
+/// variable this is the committed throwaway, which is what every ordinary run
+/// and every CI run uses.
+pub fn initializer_keypair() -> Keypair {
+    match std::env::var("CALLPOOL_TEST_INITIALIZER") {
+        Ok(path) => {
+            let bytes: Vec<u8> = serde_json::from_str(
+                &std::fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("CALLPOOL_TEST_INITIALIZER={path}: {e}")),
+            )
+            .unwrap_or_else(|e| panic!("CALLPOOL_TEST_INITIALIZER={path} is not a keypair: {e}"));
+            Keypair::try_from(&bytes[..])
+                .unwrap_or_else(|e| panic!("CALLPOOL_TEST_INITIALIZER={path}: {e}"))
+        }
+        Err(_) => Keypair::try_from(&INITIALIZER_SECRET[..]).unwrap(),
+    }
+}
+
 pub const DECIMALS: u8 = 6;
 /// 100,000 tokens at 6 decimals — the floor, in raw units (L4/L12).
 pub const MIN_HOLD: u64 = 100_000 * 1_000_000;
@@ -69,7 +97,7 @@ impl Fixture {
         .unwrap();
 
         let payer = Keypair::new();
-        let initializer = Keypair::try_from(&INITIALIZER_SECRET[..]).unwrap();
+        let initializer = initializer_keypair();
         let snapshot = Keypair::new();
         let mint = Keypair::new();
 
@@ -106,7 +134,7 @@ impl Fixture {
         .unwrap();
 
         let payer = Keypair::new();
-        let initializer = Keypair::try_from(&INITIALIZER_SECRET[..]).unwrap();
+        let initializer = initializer_keypair();
         let snapshot = Keypair::new();
         let mint = Keypair::new();
         for key in [&payer, &initializer, &snapshot] {

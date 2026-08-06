@@ -219,3 +219,51 @@ their own user, with their own `SOLANA_RPC_URL`. The signing key goes in
 `/etc/callpool/`, never under `/srv/callpool` — that directory is a web root.
 Signer B lives on a different provider entirely; two automated signers on one
 host is a 2-of-3 multisig wearing a costume.
+
+## Replacing INITIALIZER for a deployment build
+
+`INITIALIZER` is a compile-time constant and the only address that may call
+`initialize`, which writes every immutable parameter. The committed value is a
+throwaway **whose secret is public** — anyone reading this repository has it —
+so replacing it is mandatory before a deployment build.
+
+The trap, found by rehearsing this on devnet rather than on launch day: changing
+the constant **breaks `cargo test`**, because the litesvm fixtures call
+`initialize` and hold the matching secret. Fixing that by committing the launch
+secret would be far worse than the problem. So the fixture takes the key from
+the environment instead, and the secret stays in the file the build machine
+already needs in order to sign `initialize` at all.
+
+```bash
+# 1. Generate the launch key. Write the seed phrase down offline.
+solana-keygen new -o ~/.config/solana/callpool-initializer.json
+INIT=$(solana address -k ~/.config/solana/callpool-initializer.json)
+
+# 2. Replace the constant in programs/callpool/src/lib.rs
+#    pub const INITIALIZER: Pubkey = pubkey!("<INIT>");
+
+# 3. Rebuild BOTH bytecode targets. `anchor build` is not one of them.
+rm -f target/deploy/callpool.so
+cargo build-sbf --manifest-path programs/callpool/Cargo.toml
+cargo build-sbf --manifest-path programs/callpool/Cargo.toml --arch v3 \
+  --sbf-out-dir target/sbf-v3
+
+# 4. The deployment gate. Both variables are required:
+#    EXPECTED_INITIALIZER pins the constant in the source,
+#    CALLPOOL_TEST_INITIALIZER lets the litesvm fixtures sign as it.
+EXPECTED_INITIALIZER=$INIT \
+CALLPOOL_TEST_INITIALIZER=~/.config/solana/callpool-initializer.json \
+  ./scripts/verify.sh
+```
+
+Step 4 must print `ok  INITIALIZER == <INIT>` rather than the placeholder
+warning. It also **fails** if the constant and `EXPECTED_INITIALIZER` disagree,
+which is the check that catches editing the wrong line.
+
+Fund the key with about 0.05 SOL: it pays rent for the Config account
+(~0.0016) and the transaction fee. After `initialize` it has no power at all —
+there is no admin path — so it does not need protecting afterwards, only until
+launch. Until then, whoever holds it can bind the coin with a wrong mint,
+snapshot key or floor, permanently.
+
+Phase 08 §8.5 reads the value back off chain before the coin is created.
