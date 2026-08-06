@@ -21,8 +21,31 @@
 // the runner's job, not this script's.
 
 import { apiKeyFromEnv, CalloutError, mergeById, pollMint } from './lib/callouts.mjs';
+import { LOCKOUT_EPOCHS } from './lib/config.mjs';
 import { iso, windowForDay } from './lib/epoch.mjs';
 import { readStore, STORE_PATH, writeStore } from './lib/store.mjs';
+
+/**
+ * How long a truncation record is worth keeping.
+ *
+ * A truncation matters while the epoch it happened in can still affect a
+ * settlement, and the lockout reaches back `LOCKOUT_EPOCHS`. Two days of slack
+ * on top so nothing in flight is ever pruned.
+ */
+export const TRUNCATION_RETENTION_DAYS = LOCKOUT_EPOCHS + 2;
+
+/**
+ * Drop truncation records too old to bear on any epoch still being settled.
+ *
+ * The callout store beside this is append-only on purpose — a record that
+ * vanishes from the public feed has to survive in ours. The truncation log is
+ * the opposite: operational noise, written every hour the feed is full, and it
+ * grew forever. Unlike the callouts, nothing reproduces from it.
+ */
+export function pruneTruncations(truncations, observedAt) {
+  const cutoff = observedAt - TRUNCATION_RETENTION_DAYS * 86_400;
+  return (truncations ?? []).filter((entry) => entry.observedAt >= cutoff);
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -44,7 +67,7 @@ export async function pollOnce({ mint, window, store, apiKey, baseUrl, fetchImpl
   });
 
   const callouts = mergeById(store.callouts ?? {}, records, observedAt);
-  const truncations = [...(store.truncations ?? [])];
+  const truncations = pruneTruncations(store.truncations, observedAt);
   if (truncated) truncations.push({ observedAt, day: window.day, feedSize });
 
   return {

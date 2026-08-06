@@ -113,6 +113,40 @@ test('malformed calls are refused before anything is forwarded', () => {
   }
 });
 
+test('a batch is charged per call, not per request', async () => {
+  // The bill from the provider is per call. Charging one token for a 32-call
+  // batch hands out a 32x discount to exactly the traffic that costs most.
+  let now = 0;
+  const limiter = createRateLimiter({ capacity: 60, refillPerSecond: 1, now: () => now });
+  const batch = Array.from({ length: 32 }, (_, i) => call('getAccountInfo', i));
+
+  await handleRpc(fakeReq({ body: JSON.stringify(batch) }), fakeRes(), {
+    upstream: 'https://provider.example/key',
+    limiter,
+    fetchImpl: async () => new Response('{}', { status: 200 }),
+  });
+
+  // 60 - 32 = 28 left, so 28 more single calls fit and the 29th does not.
+  for (let i = 0; i < 28; i++) {
+    assert.equal(limiter.take('127.0.0.1').allowed, true, `single call ${i} should fit`);
+  }
+  assert.equal(limiter.take('127.0.0.1').allowed, false, 'the batch really cost 32');
+});
+
+test('a refused batch still costs its admission token, so probing is not free', async () => {
+  let now = 0;
+  const limiter = createRateLimiter({ capacity: 60, refillPerSecond: 1, now: () => now });
+
+  await handleRpc(fakeReq({ body: JSON.stringify(call('sendTransaction')) }), fakeRes(), {
+    upstream: 'https://provider.example/key',
+    limiter,
+    fetchImpl: () => assert.fail('must not reach the provider'),
+  });
+
+  for (let i = 0; i < 59; i++) assert.equal(limiter.take('127.0.0.1').allowed, true);
+  assert.equal(limiter.take('127.0.0.1').allowed, false, 'the refused probe cost one token');
+});
+
 // ── the rate limiter ───────────────────────────────────────────────────────
 
 test('a bucket lets a real session through and then stops a loop', () => {

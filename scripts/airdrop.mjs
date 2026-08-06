@@ -18,7 +18,7 @@
 // completed airdrop, not only on errors. The claim page stays as the fallback,
 // and the 30-epoch deadline covers whatever this never delivered.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
@@ -156,13 +156,18 @@ async function main() {
     }
   }
 
-  writeJson(resolve(snapshotDir(epoch), 'airdrop.json'), {
-    epoch,
-    ranAt: now,
-    submitter: submitter.publicKey.toBase58(),
-    sent,
-    failed,
-  });
+  // Appended, never overwritten. See `mergeAirdropRuns`.
+  const recordPath = resolve(snapshotDir(epoch), 'airdrop.json');
+  const existing = existsSync(recordPath) ? readJson(recordPath) : null;
+  writeJson(
+    recordPath,
+    mergeAirdropRuns(existing, {
+      ranAt: now,
+      submitter: submitter.publicKey.toBase58(),
+      sent,
+      failed,
+    }),
+  );
 
   // airdrop.json did not exist when the snapshot wrote its index, so the
   // listing is now one file short of the truth.
@@ -173,6 +178,32 @@ async function main() {
     console.log('Failed leaves stay claimable by anyone until the 30-epoch deadline.');
   }
   console.log('');
+}
+
+/**
+ * Fold one run into the epoch's airdrop record, keeping every earlier run.
+ *
+ * This used to overwrite. The reader who needs this file most is whoever is
+ * recovering from a partial run — and overwriting erased exactly the run they
+ * were recovering from, along with the signatures proving what *had* been
+ * delivered. A record of a scheduled job that deletes its own failures is not
+ * evidence of anything.
+ *
+ * The newest run is also flattened onto the top level, so `ranAt` / `sent` /
+ * `failed` still mean what they always did to anything already reading them.
+ *
+ * @param {object|null} existing  the parsed airdrop.json, or null on a first run
+ * @param {object} run            `{ ranAt, submitter, sent, failed }`
+ */
+export function mergeAirdropRuns(existing, run) {
+  const previous = existing?.runs
+    ? existing.runs
+    : // Written before `runs` existed: one run, flattened at the top level.
+      existing?.ranAt !== undefined
+      ? [{ ranAt: existing.ranAt, submitter: existing.submitter, sent: existing.sent, failed: existing.failed }]
+      : [];
+
+  return { ...existing, ...run, runs: [...previous, run] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

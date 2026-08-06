@@ -258,9 +258,13 @@ export async function handleRpc(req, res, { upstream, cluster = 'mainnet', limit
   }
 
   const key = clientKey(req, { trustProxy });
-  const { allowed, retryAfter } = limiter.take(key);
-  if (!allowed) {
-    return jsonError(res, 429, 'too many requests', { 'retry-after': String(retryAfter) });
+
+  // One token to be admitted at all, charged before the body is read. That is
+  // what keeps an unauthenticated flood from making this process read 64 KB a
+  // time — so the guard stays in front of the work, not behind it.
+  const admission = limiter.take(key);
+  if (!admission.allowed) {
+    return jsonError(res, 429, 'too many requests', { 'retry-after': String(admission.retryAfter) });
   }
 
   let payload;
@@ -278,6 +282,17 @@ export async function handleRpc(req, res, { upstream, cluster = 'mainnet', limit
     // refused is telling them which are not.
     log(`rpc: refused from ${key} — ${verdict.reason}`);
     return jsonError(res, verdict.status, 'that request is not allowed here');
+  }
+
+  // The provider bills per call, so the limiter charges per call. A batch of 32
+  // costs 32, not 1 — otherwise the traffic that costs the most money is the
+  // traffic that gets the biggest discount, and 60 requests/minute silently
+  // means up to 1,920 calls. The admission token above is the first of them.
+  if (verdict.calls > 1) {
+    const rest = limiter.take(key, verdict.calls - 1);
+    if (!rest.allowed) {
+      return jsonError(res, 429, 'too many requests', { 'retry-after': String(rest.retryAfter) });
+    }
   }
 
   // Screening happens above this line on purpose: a request that would be

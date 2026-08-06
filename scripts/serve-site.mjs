@@ -15,6 +15,14 @@
 //   node scripts/serve-site.mjs            → http://127.0.0.1:8099/site/
 //   node scripts/serve-site.mjs --port 3000
 //
+//   CALLPOOL_PUBLIC=1 node scripts/serve-site.mjs
+//     → serves only site/, scripts/lib/ and snapshots/, the same three trees
+//       the live edge allows, and 404s everything else. Caddy is still the
+//       documented gate and the one verified from outside; this is so that a
+//       Caddyfile misedit cannot re-expose the repository root — which is also
+//       where .env, .callout-auth, .git/ and any stray key live — through the
+//       process sitting behind it.
+//
 //   CALLPOOL_RPC_URL_MAINNET='https://<provider>/<key>' node scripts/serve-site.mjs
 //     → /rpc forwards to that endpoint, and /rpc/devnet to
 //       CALLPOOL_RPC_URL_DEVNET. One route and one key per cluster, so one
@@ -35,10 +43,11 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { extname, join } from 'node:path';
 
 import { REPO_ROOT } from './lib/store.mjs';
 import { createRateLimiter, handleRpc, resolveUpstream } from './lib/rpc-proxy.mjs';
+import { resolvePath } from './lib/site-paths.mjs';
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -59,18 +68,10 @@ const port =
   portFlag === -1 ? Number(process.env.PORT ?? 8099) : Number(args[portFlag + 1]);
 
 /**
- * Resolve a request path to a file inside the repository, or null.
- *
- * The containment check is the only security-relevant line here: without it,
- * `GET /../../.ssh/id_rsa` is served. `normalize` collapses the traversal and
- * the prefix test rejects anything that still lands outside.
+ * `CALLPOOL_PUBLIC=1` narrows this server to the three trees the live edge
+ * serves. Off by default: locally, serving the repository is the point.
  */
-function resolvePath(urlPath) {
-  const decoded = decodeURIComponent(urlPath.split('?')[0]);
-  const requested = decoded === '/site/' ? '/site/index.html' : decoded;
-  const full = resolve(REPO_ROOT, `.${normalize(requested)}`);
-  return full === REPO_ROOT || full.startsWith(REPO_ROOT + sep) ? full : null;
-}
+const publicMode = process.env.CALLPOOL_PUBLIC === '1';
 
 /**
  * The RPC proxy's shared state.
@@ -113,9 +114,15 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const path = resolvePath(req.url ?? '/');
+  const path = resolvePath(req.url ?? '/', { publicMode });
   if (path == null) {
-    res.writeHead(403, { 'content-type': 'text/plain' }).end('outside the repository\n');
+    // In public mode a refusal is a 404, not a 403: "you may not have this"
+    // confirms it exists, and the live edge answers 404 for the same paths.
+    if (publicMode) {
+      res.writeHead(404, { 'content-type': 'text/plain' }).end(`not found: ${req.url}\n`);
+    } else {
+      res.writeHead(403, { 'content-type': 'text/plain' }).end('outside the repository\n');
+    }
     return;
   }
 
