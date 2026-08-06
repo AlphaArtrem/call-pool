@@ -841,12 +841,14 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
           <summary>The caller list is attested, not trustless</summary>
           <div class="detail-body">
             <p>
-              Every number here except one can be re-derived by a stranger from public chain
-              history. The exception is <strong>who called out</strong> — that exists only in
-              pump.fun’s database. We read it and publish exactly what we read. You can check any
-              individual callout against pump.fun directly, but you cannot re-derive the full list
-              without us. We say <em>attested</em> rather than <em>trustless</em> because the
-              second word would be false.
+              Every number here except one can be re-derived from public chain history. The
+              exception is <strong>who called out</strong> — that exists only in pump.fun’s
+              database, not on chain. Anyone can clone the
+              <a href="https://github.com/AlphaArtrem/call-pool" target="_blank" rel="noopener noreferrer">GitHub repo</a>
+              and re-derive the same
+              list the same way we do. We say <em>attested</em> rather than <em>trustless</em>
+              because the input still comes from pump.fun’s API, not from immutable chain
+              history — the second word would be false.
             </p>
           </div>
         </details>
@@ -858,17 +860,6 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
               Callouts marked spam or harmful, or deleted, do not count. Those flags belong to
               pump.fun and can change after the fact. They are published in each day’s working so
               the rule stays checkable.
-            </p>
-          </div>
-        </details>
-
-        <details class="tech">
-          <summary>The 24-hour window deters, it does not prevent</summary>
-          <div class="detail-body">
-            <p>
-              Between a day’s results being posted and the money going out there are 24 hours in
-              which anyone can spot a bad result — and nobody can stop it. There is no pause, no
-              veto and no dispute button.
             </p>
           </div>
         </details>

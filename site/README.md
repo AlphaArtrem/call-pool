@@ -303,7 +303,7 @@ quietly is the failure mode.
    *when a limitation is described, describe it precisely rather than
    flatteringly*; the old paragraph existed because an earlier "worst case is
    one week" sentence described a one-shot bound for a repeatable capability.
-   The other three limitations are still on the page in full.
+   The other two limitations are still on the page in full.
 6. **Decision 9's sentence is on the page**: if pump.fun removes callouts,
    everything earned stays claimable.
 7. **No wallet connection, for anything.** Every number resolves from a pasted
