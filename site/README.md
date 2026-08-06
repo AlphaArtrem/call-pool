@@ -465,6 +465,23 @@ the 90/10 split, the risks — renders in full and is final.
 
 ### On launch day, in this order
 
+0. **Install from the committed lockfile on whichever host runs the crank.**
+
+   ```bash
+   npm ci --ignore-scripts
+   ```
+
+   `package-lock.json` is in the repository for the same reason `Cargo.lock` is:
+   the scripts it pins hold the snapshot key in memory and sign with it, so
+   their dependency versions have to be as fixed as the deployed binary's.
+   `npm install` resolves `^1.95.4` to whatever is newest that day — on the
+   devnet box it silently picked web3.js 1.98.4 — and the December 2024
+   `@solana/web3.js` compromise is exactly that threat model. `npm ci` installs
+   the locked tree and fails rather than changing it. `--ignore-scripts` because
+   nothing here needs a postinstall hook.
+
+   The site host needs none of this: `serve-site.mjs` is `node:` builtins only.
+
 1. Deploy the program and run `initialize`. Until this lands, nothing else here
    changes anything.
 2. **Start the server with the provider URL**, and confirm the boot line says

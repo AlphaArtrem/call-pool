@@ -62,7 +62,10 @@ dist/
 build/
 .bin/
 *.so
-package-lock.json
+# package-lock.json is COMMITTED, for the same reason Cargo.lock is: the scripts
+# it pins hold the snapshot key in memory and sign with it, so their dependency
+# versions have to be as fixed as the deployed binary's. `npm ci` in the runbook
+# requires it. yarn/pnpm are not used here.
 yarn.lock
 pnpm-lock.yaml
 
