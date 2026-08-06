@@ -754,6 +754,15 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
             <tbody id="epoch-rows"></tbody>
           </table>
         </div>
+
+        <!--
+          Ten days a page. Hidden entirely when there is only one page — two
+          disabled buttons and "1 of 1" is chrome answering a question nobody
+          asked. js/epochs.js fills this and owns the page number, because the
+          table re-reads every minute and a reader on page 3 must stay there.
+        -->
+        <nav id="epoch-pagination" class="pager" aria-label="Epoch history pages" hidden></nav>
+
         <p class="note">
           Unclaimed rewards go back into the pool after 30 days. A day marked <em>not posted</em>
           was never settled — that stays visible on purpose.

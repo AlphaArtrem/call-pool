@@ -32,6 +32,7 @@ import { associatedTokenAddress, tokenProgramForMint } from './lib/chain.mjs';
 import { DEFAULT_RPC_URL } from './lib/config.mjs';
 import { claimIx, fetchConfig, fetchEpoch, isClaimed } from './lib/program.mjs';
 import { readJson, snapshotDir, writeJson } from './lib/store.mjs';
+import { writeSnapshotIndex } from './lib/snapshot-index.mjs';
 
 /**
  * Claims per transaction.
@@ -162,6 +163,10 @@ async function main() {
     sent,
     failed,
   });
+
+  // airdrop.json did not exist when the snapshot wrote its index, so the
+  // listing is now one file short of the truth.
+  writeSnapshotIndex(snapshotDir(epoch), { epoch });
 
   console.log(`\n${sent.length} transaction(s) sent, ${failed.length} failed`);
   if (failed.length > 0) {

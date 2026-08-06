@@ -1960,3 +1960,51 @@ footer {
   margin-top: 2rem;
   padding: 2rem 1rem 3rem;
 }
+
+/* ── the audit trail's pager ──────────────────────────────────────────────
+ *
+ * Ten days a page. `hidden` is set by js/epochs.js when there is only one
+ * page, so this never renders two dead buttons around "1 of 1".
+ *
+ * `justify-content: space-between` rather than a centred row: the two controls
+ * stay in the same place as the count changes, so Next does not drift sideways
+ * under the cursor between pages.
+ */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.9rem;
+}
+
+.pager[hidden] {
+  display: none;
+}
+
+.pager-button {
+  font-size: 0.875rem;
+  padding: 0.45rem 0.95rem;
+}
+
+/* Disabled is a real state here — page 1 has no previous — so it has to read
+ * as "not available now" rather than as a broken control. Same treatment as
+ * the disabled trade chip: dimmed, no pointer, and no hover promise. */
+.pager-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.pager-button:disabled:hover {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* The position, not a page number: a reader is looking for a day. */
+.pager-position {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}

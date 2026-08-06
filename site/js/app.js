@@ -133,7 +133,7 @@ function resetLiveFields(reason = null) {
     chartState(el(chartId), reason?.clock ?? 'reading…', { unavailable: reason != null });
   }
 
-  if (reason != null) renderEpochs(el('epoch-rows'), [], state.config ?? {});
+  if (reason != null) renderEpochs(el('epoch-rows'), [], state.config ?? {}, el('epoch-pagination'));
 }
 
 /** The three card charts, as [value slot, chart slot]. */
@@ -730,7 +730,7 @@ async function loadHistory(config) {
 
   el('history-status').replaceChildren();
   el('history-status').classList.remove('failed');
-  renderEpochs(el('epoch-rows'), live.epochs, config);
+  renderEpochs(el('epoch-rows'), live.epochs, config, el('epoch-pagination'));
   renderTotals(el('total-distributed'), live.epochs);
   renderHistoryCard(live.epochs);
   return true;

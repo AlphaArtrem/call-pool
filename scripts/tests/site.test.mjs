@@ -40,6 +40,7 @@ import * as clocksModule from '../../site/js/clocks.js';
 import { dailyState, epochAt, freshnessNote, hourlyState, windowFor } from '../../site/js/clocks.js';
 import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
 import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
+import { pageOf, PAGE_SIZE } from '../../site/js/paging.js';
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 
@@ -667,4 +668,75 @@ test('the challenge window is drawn relative to the epoch it follows', () => {
   });
   assert.equal(progress.challengeShare, 1);
   assert.equal(epochProgress({ window: WINDOW, now: WINDOW.start }).challengeShare, 0);
+});
+
+
+// ── the audit trail's pager ────────────────────────────────────────────────
+//
+// Ten days a page. The clamping is the part worth asserting: the table
+// re-reads every minute, so the row count can shrink under a reader sitting on
+// the last page, and the wrong answer there is an empty table — which reads as
+// "there is no history".
+
+const days = (n) => Array.from({ length: n }, (_, i) => ({ index: n - i }));
+
+test('a page is ten days', () => {
+  assert.equal(PAGE_SIZE, 10);
+  assert.equal(pageOf(days(30), 0).rows.length, 10);
+});
+
+test('pages walk forward through the list, newest first', () => {
+  const items = days(30);
+  assert.deepEqual(pageOf(items, 0).rows, items.slice(0, 10));
+  assert.deepEqual(pageOf(items, 1).rows, items.slice(10, 20));
+  assert.deepEqual(pageOf(items, 2).rows, items.slice(20, 30));
+});
+
+test('the position is 1-based and inclusive, because a person reads it', () => {
+  const view = pageOf(days(30), 1);
+  assert.equal(view.first, 11);
+  assert.equal(view.last, 20);
+  assert.equal(view.count, 30);
+  assert.equal(view.totalPages, 3);
+});
+
+test('a short last page reports its real end, not a round number', () => {
+  const view = pageOf(days(25), 2);
+  assert.equal(view.rows.length, 5);
+  assert.equal(view.first, 21);
+  assert.equal(view.last, 25);
+});
+
+test('a page past the end clamps to the last real page, never to nothing', () => {
+  const view = pageOf(days(30), 99);
+  assert.equal(view.page, 2);
+  assert.equal(view.rows.length, 10, 'an empty table would read as "no history"');
+});
+
+test('the row count shrinking under a reader clamps them back, still with rows', () => {
+  // On page 2 of 3, then a refresh returns fewer epochs.
+  const view = pageOf(days(12), 2);
+  assert.equal(view.page, 1);
+  assert.equal(view.rows.length, 2);
+  assert.ok(view.rows.length > 0);
+});
+
+test('a negative or nonsense page is page one', () => {
+  assert.equal(pageOf(days(30), -5).page, 0);
+  assert.equal(pageOf(days(30), Number.NaN).page, 0);
+});
+
+test('one page needs no controls', () => {
+  assert.equal(pageOf(days(10), 0).needed, false, 'exactly one full page');
+  assert.equal(pageOf(days(3), 0).needed, false);
+  assert.equal(pageOf(days(11), 0).needed, true, 'one row over is two pages');
+});
+
+test('an empty history is one page, no controls, and no phantom row numbers', () => {
+  const view = pageOf([], 0);
+  assert.deepEqual(view.rows, []);
+  assert.equal(view.totalPages, 1);
+  assert.equal(view.needed, false);
+  assert.equal(view.first, 0);
+  assert.equal(view.last, 0);
 });

@@ -14,6 +14,7 @@ import { decodeEpoch, bitmapIsSized, isZeroRoot, rootHex } from './program.js';
 import { epochPda } from './addresses.js';
 import { multipleAccounts } from './chain.js';
 import { explorerUrl, snapshotUrl } from './config.js';
+import { pageOf } from './paging.js';
 import { formatSol, utcTime } from './standing.js';
 import { addressNode, field, SOURCES } from './ui.js';
 
@@ -46,7 +47,17 @@ export function totalClaimed(epochs) {
   return epochs.reduce((sum, e) => sum + (e.posted ? e.claimedLamports : 0n), 0n);
 }
 
-export function renderEpochs(tbody, epochs, config) {
+/**
+ * Which page the reader is on. Module state on purpose.
+ *
+ * The minute refresh calls `renderEpochs` again with fresh rows. Holding this
+ * in the caller would mean either threading it through every call site or
+ * resetting to page 1 every sixty seconds, which would yank a reader off page 3
+ * while they were reading it.
+ */
+let currentPage = 0;
+
+export function renderEpochs(tbody, epochs, config, pager = null) {
   tbody.replaceChildren();
 
   if (epochs.length === 0) {
@@ -57,12 +68,59 @@ export function renderEpochs(tbody, epochs, config) {
     td.textContent = 'No days yet. The first is settled at the first 00:00 UTC after launch.';
     tr.append(td);
     tbody.append(tr);
+    if (pager) renderPager(pager, pageOf([], 0), tbody, config);
     return;
   }
 
-  for (const epoch of epochs) {
+  const view = pageOf(epochs, currentPage);
+  currentPage = view.page;
+
+  for (const epoch of view.rows) {
     tbody.append(epochRow(epoch, config));
   }
+
+  if (pager) renderPager(pager, view, tbody, config, epochs);
+}
+
+/**
+ * Previous / next, and where the reader is.
+ *
+ * The position is spelled out ("Days 11–20 of 30") rather than "Page 2 of 3",
+ * because the row a reader is looking for is a day, not a page number.
+ */
+function renderPager(node, view, tbody, config, epochs = []) {
+  node.replaceChildren();
+  node.hidden = !view.needed;
+  if (!view.needed) return;
+
+  const step = (delta) => {
+    currentPage = view.page + delta;
+    renderEpochs(tbody, epochs, config, node);
+    // Keep the reader at the table rather than wherever the page happened to
+    // be scrolled after the rows changed height.
+    tbody.closest('table')?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const button = (label, delta, disabled) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'button pager-button';
+    b.textContent = label;
+    b.disabled = disabled;
+    if (!disabled) b.addEventListener('click', () => step(delta));
+    return b;
+  };
+
+  const position = document.createElement('p');
+  position.className = 'note pager-position';
+  position.setAttribute('aria-live', 'polite');
+  position.textContent = `Days ${view.first}–${view.last} of ${view.count}`;
+
+  node.append(
+    button('Previous', -1, view.page === 0),
+    position,
+    button('Next', 1, view.page >= view.totalPages - 1),
+  );
 }
 
 function epochRow(epoch, config) {

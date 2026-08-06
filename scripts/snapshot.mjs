@@ -45,6 +45,7 @@ import {
   windowForEpoch,
 } from './lib/program.mjs';
 import { readJson, readStore, snapshotDir, writeJson } from './lib/store.mjs';
+import { writeSnapshotIndex } from './lib/snapshot-index.mjs';
 import { holdsFor } from './holds.mjs';
 
 function parseArgs(argv) {
@@ -301,6 +302,10 @@ if (!ok) {
 console.log('reproduced');
 `,
   );
+
+  // Last, so it lists every file that is actually there. Without it the
+  // site's audit-trail link — which points at this directory — is a 404.
+  writeSnapshotIndex(dir, { epoch, window: { start: iso(window.start), end: iso(window.end) } });
 
   console.log(`\nwrote ${dir}`);
   console.log('Publish this directory BEFORE posting the root — the challenge');
