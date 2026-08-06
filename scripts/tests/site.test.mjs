@@ -41,6 +41,7 @@ import { dailyState, epochAt, firstRecordNote, freshnessNote, hourlyState, windo
 import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
 import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
 import { pageOf, PAGE_SIZE } from '../../site/js/paging.js';
+import { epochIndices, totalClaimed } from '../../site/js/history.js';
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 
@@ -739,6 +740,41 @@ test('an empty history is one page, no controls, and no phantom row numbers', ()
   assert.equal(view.needed, false);
   assert.equal(view.first, 0);
   assert.equal(view.last, 0);
+});
+
+// ── what "so far" covers ───────────────────────────────────────────────────
+
+test('the history covers every day, not the last thirty', () => {
+  assert.deepEqual(epochIndices(0), [0], 'day one is one row');
+  assert.deepEqual(epochIndices(4), [4, 3, 2, 1, 0], 'newest first');
+
+  // The dry run reached epoch 130. A 30-epoch fetch would have started at 101.
+  const all = epochIndices(130);
+  assert.equal(all.length, 131, 'every epoch since genesis');
+  assert.equal(all[0], 130);
+  assert.equal(all.at(-1), 0, 'including the first day');
+});
+
+test('"paid out so far" adds up every day, not just the ones on screen', () => {
+  // 40 epochs of 1 SOL each. Summing only the newest 30 gives 30 — and the
+  // caption under this number promises every past day.
+  const epochs = Array.from({ length: 40 }, (_, i) => ({
+    index: 39 - i,
+    posted: true,
+    claimedLamports: 1_000_000_000n,
+  }));
+
+  assert.equal(totalClaimed(epochs), 40_000_000_000n);
+  assert.notEqual(totalClaimed(epochs), 30_000_000_000n, 'a 30-epoch window would undercount');
+});
+
+test('an unposted day contributes nothing and breaks nothing', () => {
+  const epochs = [
+    { index: 2, posted: true, claimedLamports: 5n },
+    { index: 1, posted: false },
+    { index: 0, posted: true, claimedLamports: 7n },
+  ];
+  assert.equal(totalClaimed(epochs), 12n);
 });
 
 // ── the daily record before there is a record ──────────────────────────────

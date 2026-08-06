@@ -79,6 +79,8 @@ js/
   standing.js    every §7.8 state, pure and tested
   clocks.js      the two clocks, pure and tested
   graphs.js      the card-chart arithmetic, pure and tested
+  paging.js      which slice of the history is on screen, pure and tested
+  history.js     which epochs are read, and what they add up to — pure and tested
   position.js    the address calculator
   epochs.js      the audit-trail table
   ui.js          render primitives: the source badge, and the charts

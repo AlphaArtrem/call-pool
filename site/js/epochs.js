@@ -14,20 +14,23 @@ import { decodeEpoch, bitmapIsSized, isZeroRoot, rootHex } from './program.js';
 import { epochPda } from './addresses.js';
 import { multipleAccounts } from './chain.js';
 import { explorerUrl, snapshotUrl } from './config.js';
+import { epochIndices, totalClaimed } from './history.js';
 import { pageOf } from './paging.js';
 import { formatSol, utcTime } from './standing.js';
 import { addressNode, field, SOURCES } from './ui.js';
 
 /**
- * Read the last `count` epochs, newest first.
+ * Read every epoch since genesis, newest first.
  *
  * A missing account is a real state — the epoch was never posted — and it is
  * rendered as such rather than skipped. A skipped epoch stays postable forever
  * (Phase 05 §5.5), so a gap in this table is a thing readers should see.
+ *
+ * All of them, because "Paid out so far" is summed from these rows and its
+ * caption promises every past day. `pageOf` is what keeps the table readable.
  */
-export async function loadEpochs(connection, config, currentEpoch, count = 30) {
-  const indices = [];
-  for (let e = currentEpoch; e >= 0 && indices.length < count; e--) indices.push(e);
+export async function loadEpochs(connection, config, currentEpoch) {
+  const indices = epochIndices(currentEpoch);
 
   const addresses = indices.map((e) => epochPda(config.programId, config.mint, e));
   const datas = await multipleAccounts(connection, addresses);
@@ -40,11 +43,6 @@ export async function loadEpochs(connection, config, currentEpoch, count = 30) {
       return { ...decoded, posted: true, address: addresses[i].toBase58() };
     }),
   );
-}
-
-/** Total distributed across every epoch read. Derived here, never fetched. */
-export function totalClaimed(epochs) {
-  return epochs.reduce((sum, e) => sum + (e.posted ? e.claimedLamports : 0n), 0n);
 }
 
 /**
