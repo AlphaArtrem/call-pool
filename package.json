@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "CALLPOOL — crank, snapshot and verification scripts",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "node --test 'scripts/tests/**/*.test.mjs'",
     "holds": "node scripts/holds.mjs",
@@ -13,6 +15,7 @@
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.9",
-    "@solana/web3.js": "^1.95.4"
+    "@solana/web3.js": "^1.95.4",
+    "@sqds/multisig": "^2.1.4"
   }
 }

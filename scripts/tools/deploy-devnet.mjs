@@ -295,9 +295,22 @@ async function main() {
   const initializer = throwawayInitializer();
   await fund(connection, payer, initializer.publicKey, BigInt(0.05 * LAMPORTS_PER_SOL));
 
-  const snapshotKey = Keypair.generate();
-  const snapshotKeyPath = writeKeypair(resolve(KEYS_DIR, 'snapshot-key.json'), snapshotKey);
-  await fund(connection, payer, snapshotKey.publicKey, BigInt(0.5 * LAMPORTS_PER_SOL));
+  // `--snapshot-key <ADDRESS>` binds the config to an address we do not hold —
+  // a Squads vault, which is what mainnet does (§5.5a). The rehearsal then has
+  // no snapshot keypair at all, and `post-root.mjs` can only go through
+  // `cosign.mjs`, which is precisely the path worth proving before launch.
+  const externalSnapshotKey = args['snapshot-key']
+    ? new PublicKey(args['snapshot-key'])
+    : null;
+
+  const snapshotKey = externalSnapshotKey ? null : Keypair.generate();
+  const snapshotKeyPath = snapshotKey
+    ? writeKeypair(resolve(KEYS_DIR, 'snapshot-key.json'), snapshotKey)
+    : null;
+  const snapshotKeyAddress = externalSnapshotKey ?? snapshotKey.publicKey;
+  if (snapshotKey) {
+    await fund(connection, payer, snapshotKey.publicKey, BigInt(0.5 * LAMPORTS_PER_SOL));
+  }
 
   const slot = await connection.getSlot('confirmed');
   const chainNow = await connection.getBlockTime(slot);
@@ -313,7 +326,7 @@ async function main() {
         epochSeconds: args.epochSeconds,
         minHold: MIN_HOLD_RAW,
         challengeSeconds: args.challengeSeconds,
-        snapshotKey: snapshotKey.publicKey,
+        snapshotKey: snapshotKeyAddress,
       }),
     ],
     [initializer],
@@ -356,7 +369,7 @@ async function main() {
     // are windows nobody could have called out in, so the loop starts here.
     startEpoch,
     payer: { address: payer.publicKey.toBase58(), keypair: resolve(args.keypair) },
-    snapshotKey: { address: snapshotKey.publicKey.toBase58(), keypair: snapshotKeyPath },
+    snapshotKey: { address: snapshotKeyAddress.toBase58(), keypair: snapshotKeyPath },
     creatorVault: { address: vault.publicKey.toBase58(), keypair: vaultPath },
     cast,
   };
@@ -364,7 +377,7 @@ async function main() {
 
   console.log(`\npool      ${poolPda().toBase58()}`);
   console.log(`vault     ${vault.publicKey.toBase58()}  (stand-in for pump.fun's creator vault)`);
-  console.log(`snapshot  ${snapshotKey.publicKey.toBase58()}`);
+  console.log(`snapshot  ${snapshotKeyAddress.toBase58()}${snapshotKeyPath ? '' : '   (external — a multisig vault; no keypair here)'}`);
   console.log(`genesis   ${new Date(genesisTs * 1000).toISOString()}`);
   console.log(`epoch 0   started ${chainNow - genesisTs}s ago; the loop starts at epoch ${startEpoch}`);
   console.log(`\nwrote ${MANIFEST_PATH}`);
