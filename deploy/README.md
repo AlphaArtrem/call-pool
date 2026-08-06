@@ -141,6 +141,53 @@ Then open the page in a browser and confirm it renders the "has not launched"
 state rather than "The page failed to load" — the second means `rpc` did not
 resolve to an absolute URL before web3.js saw it, and it throws inside `main()`.
 
+## Updating the site
+
+Push to `main`, then on the box:
+
+```bash
+# what is about to arrive — read it before pulling. The box has been two
+# commits behind before, and "git pull said Already up to date" is not the
+# same sentence as "the box is running what I just pushed".
+sudo -u callpool git -C /srv/callpool log --oneline HEAD..origin/main
+
+sudo -u callpool git -C /srv/callpool pull --ff-only
+```
+
+**A restart is only needed if the server itself changed** — `serve-site.mjs`,
+`scripts/lib/rpc-proxy.mjs` or `scripts/lib/site-paths.mjs`. Static site files
+are read per request. When it is needed:
+
+```bash
+sudo systemctl restart callpool-site
+sudo systemctl status callpool-site --no-pager | head -5
+```
+
+Then verify from a machine that is not the box, **asserting content and not
+status codes**. A 200 proves the edge answered; it does not prove it answered
+with the version you pushed, and a stale cache or a wrong root returns 200 all
+day:
+
+```bash
+# the commit that is actually serving: grep for something only the new
+# version contains, rather than trusting the status line
+curl -s https://callpool.fun/site/ | grep -c 'Paid out so far'      # ≥ 1
+curl -s https://callpool.fun/scripts/lib/carry.mjs | grep -c splitCarry  # ≥ 1
+
+# the allowlist still holds after the pull
+for p in .env .git/config .callout-auth package.json docs/DECISIONS-LOCKED.md; do
+  printf '%s → %s\n' "$p" "$(curl -s -o /dev/null -w '%{http_code}' "https://callpool.fun/$p")"
+done                                                                # all 404
+
+# the proxy still proxies, and still says nothing to other origins
+curl -s https://callpool.fun/rpc -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getBalance","params":["11111111111111111111111111111111"]}'
+curl -sI https://callpool.fun/rpc | grep -i access-control          # expect nothing
+```
+
+Section 5's full check is the one to run after anything larger than a content
+edit.
+
 ## 6. Restrict the provider key — by IP, not by domain
 
 Once the box is up and you have its egress address:
