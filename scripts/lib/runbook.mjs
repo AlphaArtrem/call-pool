@@ -19,21 +19,34 @@
 //
 // Hosts and paths come from the environment so a mainnet deployment can point
 // these at different machines without touching the code.
+//
+// ⚠️ The defaults below are the **launch layout** (MAINNET-HANDOFF §3): box A
+// runs the crank and signer A, box B runs the co-signer. They were the reverse
+// until 2026-08-07, matching an earlier rehearsal, and that is not a cosmetic
+// difference — an alert is read on a phone during an outage, and remediation
+// that names the wrong machine sends the reader to a healthy box to look for a
+// dead service. It cost exactly that during the 2026-08-07 rehearsal: the alert
+// said "the crank stopped on box B" while the crank was fine on box A and the
+// real fault was a firewall.
+//
+// Set the environment variables explicitly in each unit rather than relying on
+// these. A default that happens to be right is one deployment away from being
+// silently wrong again.
 
 /** Where the crank runs, where the watchdog runs, and how to reach each. */
 export function topology(env = process.env) {
   return {
     crank: {
-      host: env.CALLPOOL_CRANK_HOST ?? 'root@155.138.236.181',
-      key: env.CALLPOOL_CRANK_SSH_KEY ?? '~/.ssh/vultr',
+      host: env.CALLPOOL_CRANK_HOST ?? 'root@31.97.11.4',
+      key: env.CALLPOOL_CRANK_SSH_KEY ?? '~/.ssh/hostinger',
       unit: env.CALLPOOL_CRANK_UNIT ?? 'callpool-rehearsal',
-      label: env.CALLPOOL_CRANK_LABEL ?? 'box B',
+      label: env.CALLPOOL_CRANK_LABEL ?? 'box A',
     },
     cosign: {
-      host: env.CALLPOOL_COSIGN_HOST ?? 'root@31.97.11.4',
-      key: env.CALLPOOL_COSIGN_SSH_KEY ?? '~/.ssh/hostinger',
+      host: env.CALLPOOL_COSIGN_HOST ?? 'root@155.138.236.181',
+      key: env.CALLPOOL_COSIGN_SSH_KEY ?? '~/.ssh/vultr',
       unit: env.CALLPOOL_COSIGN_UNIT ?? 'callpool-cosign',
-      label: env.CALLPOOL_COSIGN_LABEL ?? 'box A',
+      label: env.CALLPOOL_COSIGN_LABEL ?? 'box B',
     },
     repo: env.CALLPOOL_REPO_PATH ?? '/srv/callpool',
     programId: env.CALLPOOL_PROGRAM_ID ?? '',
@@ -41,6 +54,8 @@ export function topology(env = process.env) {
     payer: env.CALLPOOL_PAYER_KEYPAIR ?? '/etc/callpool/devnet-payer.json',
     multisig: env.CALLPOOL_MULTISIG ?? '',
     signer: env.CALLPOOL_SIGNER_KEYPAIR ?? '/etc/callpool/signerA.json',
+    // Where the crank publishes epoch inputs for the co-signer to re-derive.
+    publishPort: env.CALLPOOL_PUBLISH_PORT ?? '8100',
   };
 }
 
@@ -78,6 +93,27 @@ export const unitStatus = (target) =>
 /** Kick it. */
 export const restartUnit = (target) =>
   ssh(target, `systemctl restart ${target.unit} && sleep 3 && systemctl is-active ${target.unit}`);
+
+/**
+ * Can the co-signer actually fetch the crank's published epoch inputs?
+ *
+ * The 2-of-3 is completed by a *different machine*, which means there is a
+ * network path between two hosts that has to stay open — and unlike a dead
+ * service, a blocked path leaves both units looking perfectly healthy. The
+ * crank builds, proposes and self-approves without ever needing the second
+ * host, so the symptom is "no root on chain" while every log reads normal.
+ *
+ * Run from the co-signer, because that is the direction that has to work; a
+ * check from anywhere else can pass while the one path that matters is shut.
+ */
+export function reachability(t) {
+  const url = `http://${t.crank.host.replace(/^.*@/, '')}:${t.publishPort}/`;
+  return ssh(
+    t.cosign,
+    `curl -s -m 10 -o /dev/null -w 'inputs from ${t.crank.label}: HTTP %{http_code}\\n' ${url} ` +
+      `|| echo 'UNREACHABLE — the co-signer cannot fetch the epoch inputs'`,
+  );
+}
 
 /** Settle one specific epoch by hand, through the multisig. */
 export function settleEpoch(t, epoch) {

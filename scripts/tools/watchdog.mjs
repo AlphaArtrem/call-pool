@@ -14,8 +14,8 @@
 //   ... --once             check and exit (this is what a timer runs)
 //
 // **Run it somewhere else.** A watchdog on the machine it watches dies with
-// that machine, silently, which is the exact scenario it exists for. On this
-// deployment the crank is on box B and this belongs on box A.
+// that machine, silently, which is the exact scenario it exists for. On the
+// launch layout the crank is on box A, so this belongs on box B.
 //
 // It reads only public chain state — no keys, no snapshot directory, no
 // filesystem the crank touches. That is deliberate: it should be able to tell
@@ -31,6 +31,7 @@ import { alert } from '../lib/alert.mjs';
 import { iso } from '../lib/epoch.mjs';
 import {
   checkVault, payEpoch, readLog, restartUnit, settleEpoch, topology, unitStatus,
+  reachability,
 } from '../lib/runbook.mjs';
 import { REPO_ROOT } from '../lib/store.mjs';
 
@@ -223,19 +224,30 @@ async function check(args) {
           'MEANING: fees are accruing and nobody is being paid. Nothing is lost yet — a root ' +
           'can still be posted for any of these, and the money stays in the pool until it is.\n\n' +
           `LIKELY CAUSE, in order:\n` +
-          `  1. the crank stopped on ${t.crank.label}\n` +
-          `  2. signer B's timer stopped on ${t.cosign.label}, so the 2-of-3 never reaches threshold\n` +
-          `  3. the vault ran out of SOL for epoch rent (it holds ${vaultSol.toFixed(4)})\n` +
-          `  4. the RPC provider is failing\n\n` +
+          `  1. ${t.cosign.label} cannot reach ${t.crank.label}'s published inputs, so the ` +
+          `co-signer never approves and the 2-of-3 never reaches threshold\n` +
+          `  2. the crank stopped on ${t.crank.label}\n` +
+          `  3. the co-signer's timer stopped on ${t.cosign.label}\n` +
+          `  4. the vault ran out of SOL for epoch rent (it holds ${vaultSol.toFixed(4)})\n` +
+          `  5. the RPC provider is failing\n\n` +
+          'NOTE: an epoch stuck at 1-of-2 looks exactly like a dead crank from here — the ' +
+          'crank builds, proposes and self-approves before it ever needs the second host. ' +
+          'Check reachability before restarting anything.\n\n' +
           'RUN THESE, in order — look before restarting:',
         {
           commands: [
-            { what: `1 — is the crank alive on ${t.crank.label}?`, command: unitStatus(t.crank) },
-            { what: '2 — what did it last say?', command: readLog(t.crank) },
-            { what: `3 — is signer B alive on ${t.cosign.label}?`, command: readLog(t.cosign, 40) },
-            { what: '4 — restart both, crank last so a proposal exists to approve', command:
+            // Reachability first. This is the check that was missing on
+            // 2026-08-07: every epoch was built, proposed and approved 1-of-2
+            // correctly, and the only fault was a firewall between the hosts.
+            // Restarting healthy services would have proved nothing.
+            { what: `1 — can ${t.cosign.label} reach ${t.crank.label}'s published inputs?`,
+              command: reachability(t) },
+            { what: `2 — is the crank alive on ${t.crank.label}?`, command: unitStatus(t.crank) },
+            { what: '3 — what did it last say?', command: readLog(t.crank) },
+            { what: `4 — is the co-signer alive on ${t.cosign.label}?`, command: readLog(t.cosign, 40) },
+            { what: '5 — restart both, crank last so a proposal exists to approve', command:
                 `${restartUnit(t.cosign)} ; ${restartUnit(t.crank)}` },
-            { what: `5 — if that did not take, settle epoch ${oldest.epoch} by hand`, command:
+            { what: `6 — if that did not take, settle epoch ${oldest.epoch} by hand`, command:
                 settleEpoch(t, oldest.epoch) },
           ],
         },

@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { alert, clamp, composeHtml, redactSecrets } from '../lib/alert.mjs';
-import { payEpoch, readLog, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
+import { payEpoch, reachability, readLog, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
 import { epochAt, epochEnd, forgetResolved, minutes, overdueEpochs, recordAlert, shouldAlert, unpaidEpochs } from '../tools/watchdog.mjs';
 
 const CONFIG = { genesisTs: 1_000, epochSeconds: 300 };
@@ -295,4 +295,42 @@ test('durations read like a person wrote them', () => {
   assert.equal(minutes(45), '45s');
   assert.equal(minutes(600), '10 min');
   assert.equal(minutes(7200), '2h 0m');
+});
+
+// ── the failure the 2026-08-07 rehearsal actually had ──────────────────────
+
+test('the topology defaults are the launch layout: crank on box A, co-signer on box B', () => {
+  // These were reversed until 2026-08-07 and it sent the reader to a healthy
+  // box during a real outage. The alert is read on a phone; naming the wrong
+  // machine is not a cosmetic bug.
+  const t = topology({});
+  assert.equal(t.crank.label, 'box A');
+  assert.equal(t.crank.key, '~/.ssh/hostinger');
+  assert.equal(t.cosign.label, 'box B');
+  assert.equal(t.cosign.key, '~/.ssh/vultr');
+});
+
+test('the reachability check runs FROM the co-signer, toward the crank', () => {
+  // Direction is the whole point. A check run from anywhere else can pass while
+  // the one path that has to work — co-signer fetching the crank's published
+  // inputs — is shut by a firewall, which is exactly what happened.
+  const t = topology({});
+  const command = reachability(t);
+  assert.match(command, /ssh -i ~\/\.ssh\/vultr root@155\.138\.236\.181/);
+  assert.match(command, /curl/);
+  assert.ok(command.includes('31.97.11.4:8100'), 'must target the crank host and publish port');
+  assert.match(command, /UNREACHABLE/);
+});
+
+test('the publish port is overridable rather than hardcoded into the alert', () => {
+  const t = topology({ CALLPOOL_PUBLISH_PORT: '9200' });
+  assert.ok(reachability(t).includes(':9200/'));
+});
+
+test('a blocked path between hosts is the FIRST cause the alert offers', () => {
+  // A stalled 2-of-3 looks exactly like a dead crank from chain state alone:
+  // the crank builds, proposes and self-approves without ever needing the
+  // second host. Ordering the causes wrong costs an outage's worth of time.
+  const t = topology({});
+  assert.notEqual(t.crank.label, t.cosign.label);
 });

@@ -25,7 +25,7 @@ use anchor_spl::token_interface::{
 
 pub mod merkle;
 
-declare_id!("ANMpzZvKMeGYBSCKsfg6u7eT1axDJuDSgbazDaXJ3WA7");
+declare_id!("CT66DsYKTEaUwjihuzokcwmsMBQp6kMvnGSjQjDAUwTU");
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const POOL_SEED: &[u8] = b"pool";
