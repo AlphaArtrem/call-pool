@@ -44,6 +44,28 @@ import { writeSnapshotIndex } from './lib/snapshot-index.mjs';
  */
 const CLAIMS_PER_TX = 5;
 
+/**
+ * `CallpoolError::BelowMinHold` — 6014, which the RPC reports in hex.
+ *
+ * A recipient who sold below the floor between the snapshot and the payout is
+ * refused by `claim` on purpose (§4.5). That is the mechanic working, not a
+ * fault, and it must not make a scheduled airdrop look broken — the leaf simply
+ * stays claimable until the deadline.
+ */
+const BELOW_MIN_HOLD_HEX = '0x177e';
+
+/** Is this failure the mechanic refusing, rather than something going wrong? */
+export function isPolicyRefusal(message = '') {
+  return message.toLowerCase().includes(BELOW_MIN_HOLD_HEX);
+}
+
+/** A one-line reason, with the expected refusal named rather than dumped. */
+export function describeFailure(message = '') {
+  return isPolicyRefusal(message)
+    ? 'refused: holds less than min_hold — sold since the snapshot (§4.5), still claimable'
+    : message;
+}
+
 function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL };
   for (let i = 0; i < argv.length; i++) {
@@ -120,11 +142,9 @@ async function main() {
   );
   console.log(`submitter  ${submitter.publicKey.toBase58()} (pays gas, controls nothing)\n`);
 
-  const sent = [];
-  const failed = [];
-  for (const batch of chunk(outstanding, CLAIMS_PER_TX)) {
+  const send = async (leaves) => {
     const tx = new Transaction();
-    for (const leaf of batch) {
+    for (const leaf of leaves) {
       tx.add(
         claimIx({
           submitter: submitter.publicKey,
@@ -139,20 +159,46 @@ async function main() {
         }),
       );
     }
+    return sendAndConfirmTransaction(connection, tx, [submitter], { commitment: 'confirmed' });
+  };
 
+  const sent = [];
+  const failed = [];
+  for (const batch of chunk(outstanding, CLAIMS_PER_TX)) {
     try {
-      const signature = await sendAndConfirmTransaction(connection, tx, [submitter], {
-        commitment: 'confirmed',
-      });
+      const signature = await send(batch);
       sent.push({ signature, leaves: batch.map((l) => l.index) });
       console.log(`  ✔ ${batch.length} leaf/leaves  ${signature}`);
+      continue;
     } catch (error) {
-      // One batch failing must not stop the rest. The commonest cause is a
-      // recipient who has since sold below the floor, which `claim` refuses by
-      // design (§4.5) — that is policy, not a bug, and it is worth naming per
-      // batch rather than aborting the run.
-      failed.push({ leaves: batch.map((l) => l.index), error: error.message });
-      console.log(`  ✘ ${batch.map((l) => l.index).join(', ')}  ${error.message}`);
+      if (batch.length === 1) {
+        const only = batch[0];
+        failed.push({ leaves: [only.index], error: error.message, policy: isPolicyRefusal(error.message) });
+        console.log(`  ✘ ${only.index}  ${describeFailure(error.message)}`);
+        continue;
+      }
+      // **A transaction is all or nothing.** One refused claim reverts every
+      // other claim beside it, so a single holder who sold below the floor
+      // costs their whole batch its payout — four other people, in silence,
+      // for someone else's sale. Observed on the devnet rehearsal at epoch 2.
+      //
+      // Retrying one at a time is what keeps a refusal the refused holder's
+      // own. It costs one extra transaction per affected batch, which is
+      // nothing next to not paying people who are owed.
+      console.log(
+        `  ↻ ${batch.map((l) => l.index).join(', ')}  batch reverted — retrying one at a time`,
+      );
+    }
+
+    for (const leaf of batch) {
+      try {
+        const signature = await send([leaf]);
+        sent.push({ signature, leaves: [leaf.index] });
+        console.log(`  ✔ ${leaf.index}  ${signature}`);
+      } catch (error) {
+        failed.push({ leaves: [leaf.index], error: error.message, policy: isPolicyRefusal(error.message) });
+        console.log(`  ✘ ${leaf.index}  ${describeFailure(error.message)}`);
+      }
     }
   }
 
@@ -176,6 +222,21 @@ async function main() {
   console.log(`\n${sent.length} transaction(s) sent, ${failed.length} failed`);
   if (failed.length > 0) {
     console.log('Failed leaves stay claimable by anyone until the 30-epoch deadline.');
+  }
+
+  // A holder who sold is the mechanic working, and the run is a success. Any
+  // other failure is a payout that was owed and did not happen, and this
+  // process is the only thing that knows — it used to print the word "failed"
+  // and exit 0, so the crank saw success and an unattended run never alerted.
+  // Phase 09 §9.3: alert on the absence of a completed airdrop.
+  const unexplained = failed.filter((entry) => !entry.policy);
+  if (unexplained.length > 0) {
+    console.log(
+      `\n${unexplained.length} leaf/leaves failed for reasons that are NOT the min-hold rule. ` +
+        'Money is owed and unsent.\n',
+    );
+    process.exitCode = 1;
+    return;
   }
   console.log('');
 }

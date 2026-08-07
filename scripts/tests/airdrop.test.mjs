@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mergeAirdropRuns } from '../airdrop.mjs';
+import { describeFailure, isPolicyRefusal, mergeAirdropRuns } from '../airdrop.mjs';
 
 const run = (ranAt, sent, failed = []) => ({
   ranAt,
@@ -66,4 +66,30 @@ test('every transaction ever sent for the epoch stays reachable', () => {
 
   const signatures = record.runs.flatMap((r) => r.sent.map((s) => s.signature));
   assert.deepEqual(signatures, ['a', 'b', 'c']);
+});
+
+// ── a batch that reverts, and what the exit code owes the operator ─────────
+//
+// Found on the devnet rehearsal, epoch 2. `dumper` sold mid-epoch, so `claim`
+// refused it at payout time (§4.5) — correctly. But all three claims shared one
+// transaction, and a transaction is all or nothing, so two holders who had done
+// nothing wrong went unpaid. The run then printed "1 failed" and exited 0, and
+// the crank read that as a completed airdrop.
+
+test('the min-hold refusal is recognised, and named rather than dumped', () => {
+  const real = 'Transaction simulation failed: Error processing Instruction 1: custom program error: 0x177e.';
+  assert.equal(isPolicyRefusal(real), true);
+  assert.match(describeFailure(real), /sold since the snapshot/);
+  assert.doesNotMatch(describeFailure(real), /0x177e/, 'the operator gets the reason, not the code');
+});
+
+test('any other program error is not policy — it is money owed and unsent', () => {
+  // 0x1775 is InvalidProof: a real defect in what was published.
+  const other = 'Transaction simulation failed: custom program error: 0x1775.';
+  assert.equal(isPolicyRefusal(other), false);
+  assert.equal(describeFailure(other), other, 'unexpected failures are shown verbatim');
+
+  assert.equal(isPolicyRefusal('fetch failed'), false, 'a dropped connection is not policy');
+  assert.equal(isPolicyRefusal(''), false);
+  assert.equal(isPolicyRefusal(undefined), false);
 });
