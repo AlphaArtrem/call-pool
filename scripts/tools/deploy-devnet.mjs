@@ -31,8 +31,8 @@
 //     already hold SOL. Everything else is funded from it by transfer.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 
 import {
   Keypair,
@@ -140,8 +140,19 @@ function sh(command, commandArgs) {
     );
   }
   if (result.status !== 0) {
-    process.stderr.write(result.stderr ?? '');
-    throw new Error(`${command} ${commandArgs.join(' ')} exited ${result.status}`);
+    // Redacted, both halves. `--url` carries the provider key as a PATH
+    // segment, so echoing the argv verbatim publishes it — and this message
+    // lands in journald when the deploy runs under systemd, and in a terminal
+    // scrollback either way. 16a6449 fixed the `cluster` line that printed it
+    // on the happy path and left this one, which only fires on the bad day when
+    // the output is most likely to be pasted into a chat.
+    //
+    // The child's own stderr goes through the same filter: `solana program
+    // deploy` echoes the failing command back, key included.
+    process.stderr.write(redactSecrets(result.stderr ?? ''));
+    throw new Error(
+      `${command} ${redactSecrets(commandArgs.join(' '))} exited ${result.status}`,
+    );
   }
   return result.stdout ?? '';
 }
@@ -256,14 +267,51 @@ async function main() {
   if (args.skipDeploy && deployed?.executable) {
     console.log('skipping deploy — the program is already on this cluster\n');
   } else {
-  console.log('deploying…');
-  sh('solana', [
-    'program', 'deploy',
-    resolve(REPO_ROOT, 'target/sbf-v3/callpool.so'),
-    '--program-id', programKeypairPath,
-    '--keypair', resolve(args.keypair),
-    '--url', args.rpc,
-  ]);
+  // Which bytecode to upload.
+  //
+  // `target/sbf-v3/` exists because agave once refused an SBPF v0 executable.
+  // It is not unconditionally right: the arch the *builder* emits has to be one
+  // the *deployer's* loader accepts, and those are two different machines here —
+  // the program is built on a workstation and deployed from a box, because
+  // neither box has a Rust toolchain and the RPC key is IP-allowlisted to them.
+  //
+  // Measured 2026-08-07: cargo-build-sbf 4.1.0 on the workstation against
+  // solana-cli 2.1.14 on box A gives `ELF error: Offset or value is out of
+  // bounds` for the v3 build, while the default-arch build deploys cleanly. A
+  // newer builder emits something an older loader cannot read, and the error
+  // names neither version.
+  //
+  // So it is a flag with a default rather than a hardcoded path, and the failure
+  // says what to try. Whichever is used, `declare_id!` is baked into both.
+  const programSo = resolve(REPO_ROOT, args['program-so'] ?? 'target/sbf-v3/callpool.so');
+  if (!existsSync(programSo)) {
+    throw new Error(
+      `${programSo} does not exist. Build it, or point --program-so at the one you have ` +
+        '(target/deploy/callpool.so is the default-arch build).',
+    );
+  }
+  console.log(`deploying… ${relative(REPO_ROOT, programSo)}`);
+  try {
+    sh('solana', [
+      'program', 'deploy',
+      programSo,
+      '--program-id', programKeypairPath,
+      '--keypair', resolve(args.keypair),
+      '--url', args.rpc,
+    ]);
+  } catch (error) {
+    if (/ELF error/i.test(error.message) || /ELF error/i.test(String(error))) {
+      throw new Error(
+        `${error.message}\n\n` +
+          '  This is almost always a builder/loader version skew, not a broken program.\n' +
+          `  The deploying host's loader cannot read the arch the build emitted.\n` +
+          '  Try the other build:  --program-so target/deploy/callpool.so\n' +
+          '  and compare `cargo-build-sbf --version` where it was built against\n' +
+          '  `solana --version` where it is being deployed from.',
+      );
+    }
+    throw error;
+  }
   console.log('deployed\n');
   }
 
