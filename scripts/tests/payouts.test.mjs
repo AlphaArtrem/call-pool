@@ -8,7 +8,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DELIVERY, deliveryFor, payoutHistory, describeDelivery, projectedShare } from '../../site/js/payouts.js';
+import {
+  DELIVERY, deliveryFor, payoutHistory, describeDelivery, projectedShare, settledEpochIndices,
+} from '../../site/js/payouts.js';
 
 const W = 'EXbcXYZJTRFLjix9CPLFa4p79WhxtxFnBZz7kyQiYgXZ';
 const OTHER = 'Amn5WXq5eYtMab1QADor82tQoWXY4EgSPWbiWLsDqLxw';
@@ -206,4 +208,56 @@ test('no basis means no number — it must not invent one', () => {
 test('an empty pool projects zero rather than failing', () => {
   const previousTree = { epoch: 9, allocate: '1000', leaves: [{ index: 0, owner: W, amount: '250' }] };
   assert.equal(projectedShare({ previousTree, wallet: W, poolLamports: 0n }).indicative, 0n);
+});
+
+// ── which epochs the panel asks for ────────────────────────────────────────
+//
+// The bug these pin shipped and was invisible: app.js read the epoch rows off
+// the wrong object and then took a field that does not exist on them. Both
+// produce an empty list, an empty list produces an empty trail, and an empty
+// trail renders identically to a wallet that has never been paid — so the
+// paid/owed panel never appeared for anyone and nothing looked wrong.
+
+test('settled epochs are taken by index, newest first', () => {
+  assert.deepEqual(
+    settledEpochIndices([
+      { posted: true, index: 3 },
+      { posted: true, index: 11 },
+      { posted: true, index: 7 },
+    ]),
+    [11, 7, 3],
+  );
+});
+
+test('unposted epochs are not asked for — they have no published inputs', () => {
+  assert.deepEqual(
+    settledEpochIndices([
+      { posted: false, index: 12 },
+      { posted: true, index: 4 },
+      { posted: false, index: 13 },
+    ]),
+    [4],
+  );
+});
+
+test('a row without a numeric index is dropped, never turned into a URL', () => {
+  // `epoch-undefined/tree.json` 404s, and `loadPayoutTrail` swallows a 404 by
+  // design — so this is precisely the shape that failed silently. The field is
+  // `index`; a row carrying only `epoch` is the mistake, not an alias for it.
+  assert.deepEqual(settledEpochIndices([{ posted: true, epoch: 5 }]), []);
+  assert.deepEqual(settledEpochIndices([{ posted: true, index: undefined }]), []);
+  assert.deepEqual(settledEpochIndices([{ posted: true, index: 2 }, { posted: true, epoch: 9 }]), [2]);
+});
+
+test('the list is bounded, and keeps the newest', () => {
+  const rows = Array.from({ length: 30 }, (_, i) => ({ posted: true, index: i }));
+  assert.deepEqual(settledEpochIndices(rows, 3), [29, 28, 27]);
+  assert.equal(settledEpochIndices(rows).length, 14, 'defaults to a fortnight');
+});
+
+test('a missing or unread epochs list is empty, not a crash', () => {
+  // The panel is wired before the first chain read finishes.
+  assert.deepEqual(settledEpochIndices(undefined), []);
+  assert.deepEqual(settledEpochIndices(null), []);
+  assert.deepEqual(settledEpochIndices([]), []);
 });

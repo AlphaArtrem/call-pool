@@ -238,3 +238,30 @@ export async function loadPayoutTrail({ epochFileUrl, epochs, fetchImpl = fetch 
   );
   return loaded.filter(Boolean);
 }
+
+/**
+ * Which settled epochs the wallet panel should fetch, newest first.
+ *
+ * A function, in a module Node can import, for one reason: **the caller got
+ * this wrong twice and neither mistake could fail visibly.** It read the rows
+ * off the wrong object (`state`, which has no `epochs`, rather than `live`)
+ * and then took the wrong field (`epoch`, where `loadEpochs` and `decodeEpoch`
+ * both say `index`). Either slip yields an empty list, an empty list yields an
+ * empty trail, and an empty trail renders exactly like a wallet that has never
+ * been paid — so the paid/owed panel silently never appeared for anyone.
+ *
+ * Everything it guards is therefore a shape assertion rather than a policy:
+ * unposted rows are dropped, non-numeric indices are dropped rather than
+ * becoming `epoch-undefined` URLs, and the list is bounded because a holder
+ * checking today does not need last quarter and each epoch costs two fetches.
+ *
+ * @param {{posted?: boolean, index?: number}[]} epochs  as `loadEpochs` returns them
+ * @param {number} limit  how many of the newest to keep
+ */
+export function settledEpochIndices(epochs, limit = 14) {
+  return (Array.isArray(epochs) ? epochs : [])
+    .filter((e) => e?.posted && Number.isInteger(e.index))
+    .map((e) => e.index)
+    .sort((a, b) => b - a)
+    .slice(0, limit);
+}

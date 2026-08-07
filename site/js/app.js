@@ -26,6 +26,7 @@ import {
 import { explorerUrl, FLOOR_PERCENT_LABEL, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
 import { decodeConfig } from './program.js';
+import { settledEpochIndices } from './payouts.js';
 import { loadPosition, looksLikeAddress, renderPosition, renderPositionFailure } from './position.js';
 import { countdown, formatSol, formatTokens } from './standing.js';
 import { wireTopbar } from './topbar.js';
@@ -829,12 +830,19 @@ function wireCalculator(config) {
         // pool as it stands — the two inputs the payout panel needs. Bounded:
         // a holder checking today does not need last quarter, and each epoch
         // is two fetches from the audit trail.
-        settledEpochs: (state.epochs ?? [])
-          .filter((e) => e.posted)
-          .map((e) => e.epoch)
-          .sort((a, b) => b - a)
-          .slice(0, 14),
-        poolLamports: state.poolLamports ?? 0n,
+        // **`live`, not `state`.** The read values live on `live`; `state` has
+        // no `epochs` and no `poolLamports`, so this used to read `undefined`
+        // and fall through to `[]` and `0n` — which meant the paid/owed panel
+        // and the projected share had never once rendered for any wallet, on
+        // any cluster. An empty trail renders exactly like a wallet with no
+        // history, so nothing ever looked broken. Found 2026-08-08 on a local
+        // validator carrying real settled payouts.
+        //
+        // The index selection is `settledEpochIndices` for the same reason:
+        // the field is named `index`, this file twice said `epoch`, and the
+        // mistake is only catchable in a test.
+        settledEpochs: settledEpochIndices(live.epochs),
+        poolLamports: live.poolLamports ?? 0n,
       });
       nodes.result.classList.remove('failed');
       renderPosition(nodes, loaded, {
