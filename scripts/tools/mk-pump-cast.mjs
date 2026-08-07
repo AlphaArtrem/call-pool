@@ -3,6 +3,7 @@
 // scripts/tools/mk-pump-cast.mjs — the wallets a real-coin rehearsal needs.
 //
 //   node scripts/tools/mk-pump-cast.mjs --keypair <FUNDED> --rpc <DEVNET_RPC>
+//   ... --only minnow --sol 0.0002    # redo one role with a different buy size
 //
 // **Devnet only**, checked by genesis hash before anything is sent.
 //
@@ -83,10 +84,22 @@ async function main() {
   console.log(`\nCALLPOOL — build the cast by buying ${mint}\n`);
   console.log(`floor      ${MIN_HOLD_TOKENS.toLocaleString('en-US')} tokens (${MIN_HOLD_RAW} raw)\n`);
 
-  const cast = [];
+  // `--only` re-does a subset, keeping everyone else exactly as they are. The
+  // floor check below is a first guess against a curve that reprices on every
+  // buy, so getting a role's size wrong is expected — and rebuying the whole
+  // cast to fix one of them costs SOL the dry faucets cannot replace (F18).
+  const only = args.only ? new Set(args.only.split(',').map((s) => s.trim())) : null;
+  const wanted = only ? CAST.filter((m) => only.has(m.name)) : CAST;
+  if (only && wanted.length !== only.size) {
+    throw new Error(`--only names a role that does not exist: ${[...only].join(', ')}`);
+  }
+
+  const cast = only ? (manifest.cast ?? []).filter((m) => !only.has(m.name)) : [];
   const problems = [];
 
-  for (const member of CAST) {
+  for (const member of wanted) {
+    // `--sol` overrides the guess when redoing a single role.
+    if (args.sol && wanted.length === 1) member.sol = Number(args.sol);
     const wallet = Keypair.generate();
     const lamports = BigInt(Math.round((member.sol + GAS_SOL) * LAMPORTS_PER_SOL));
 
