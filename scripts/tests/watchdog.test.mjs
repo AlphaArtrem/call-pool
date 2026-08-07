@@ -9,8 +9,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { alert, clamp, redactSecrets } from '../lib/alert.mjs';
-import { epochAt, epochEnd, forgetResolved, overdueEpochs, recordAlert, shouldAlert, unpaidEpochs } from '../tools/watchdog.mjs';
+import { alert, clamp, composeHtml, redactSecrets } from '../lib/alert.mjs';
+import { payEpoch, readLog, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
+import { epochAt, epochEnd, forgetResolved, minutes, overdueEpochs, recordAlert, shouldAlert, unpaidEpochs } from '../tools/watchdog.mjs';
 
 const CONFIG = { genesisTs: 1_000, epochSeconds: 300 };
 
@@ -224,4 +225,74 @@ test('an epoch with no root at all is left to the overdue check', async () => {
     readEpoch: async () => null,
   });
   assert.deepEqual(unpaid, [], 'one problem, one alert — not two for the same epoch');
+});
+
+// ── the alert has to be actionable, and paste-safe ─────────────────────────
+//
+// An alert that says "epoch 12 has no root" states a fact the reader can
+// already see. What they need at 3 a.m. is a line to paste into a laptop
+// terminal — which means a full ssh invocation, no assumed login, and nothing
+// Telegram will refuse to render.
+
+test('a shell command survives Telegram HTML — && would otherwise reject the message', () => {
+  // An unescaped `&&` makes Telegram return 400 and the alert never arrives,
+  // which is a worse failure than an ugly one.
+  const body = composeHtml('crank is down', [
+    { what: 'restart it', command: "ssh -i ~/.ssh/vultr root@1.2.3.4 'cd /srv && systemctl restart x'" },
+  ]);
+  assert.match(body, /&amp;&amp;/, 'ampersands are escaped');
+  assert.ok(!/(?<!&amp;)&(?!amp;|lt;|gt;)/.test(body), 'no bare ampersand survives');
+  assert.match(body, /<pre>.*<\/pre>/s, 'commands are tap-to-copy blocks');
+});
+
+test('angle brackets in a command are escaped, not swallowed', () => {
+  const body = composeHtml('x', [{ what: '', command: 'node a.mjs > /tmp/out 2>&1' }]);
+  assert.match(body, /&gt;/);
+  assert.ok(!body.includes('> /tmp'), 'a raw > would be read as a tag');
+});
+
+test('a command carrying a secret is still redacted inside its block', () => {
+  const body = composeHtml('x', [
+    { what: '', command: 'node crank.mjs --rpc https://rpc.ankr.com/devnet/KEY999' },
+  ]);
+  assert.ok(!body.includes('KEY999'), 'redaction applies to commands, not only prose');
+});
+
+test('every remediation command is runnable from a laptop, not from the box', () => {
+  const t = topology({
+    CALLPOOL_CRANK_HOST: 'root@1.2.3.4',
+    CALLPOOL_CRANK_SSH_KEY: '~/.ssh/vultr',
+    CALLPOOL_PROGRAM_ID: 'PROG',
+    CALLPOOL_MULTISIG: 'MS',
+  });
+
+  for (const command of [
+    readLog(t.crank), unitStatus(t.crank), restartUnit(t.crank),
+    settleEpoch(t, 12), payEpoch(t, 12),
+  ]) {
+    assert.match(command, /^ssh -i \S+ \S+ '/, `not laptop-runnable: ${command}`);
+    assert.ok(!command.includes('https://'), 'no RPC URL inline — it is sourced on the box');
+  }
+});
+
+test('the settle and pay commands name the epoch they were sent about', () => {
+  const t = topology({ CALLPOOL_PROGRAM_ID: 'PROG', CALLPOOL_MULTISIG: 'MS' });
+  assert.match(settleEpoch(t, 12), /--epoch 12\b/);
+  assert.match(settleEpoch(t, 12), /--multisig MS\b/);
+  assert.match(payEpoch(t, 12), /airdrop\.mjs --epoch 12\b/);
+});
+
+test('work on the box runs as the service user, not as root', () => {
+  // Files written as root under epochs/ are files the service cannot rewrite,
+  // and that surfaces hours later as a permission error nobody connects to a
+  // manual fix.
+  const t = topology({ CALLPOOL_PROGRAM_ID: 'PROG' });
+  assert.match(payEpoch(t, 3), /sudo -u callpool/);
+  assert.match(settleEpoch(t, 3), /sudo -u callpool/);
+});
+
+test('durations read like a person wrote them', () => {
+  assert.equal(minutes(45), '45s');
+  assert.equal(minutes(600), '10 min');
+  assert.equal(minutes(7200), '2h 0m');
 });

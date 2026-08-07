@@ -46,6 +46,33 @@ export function clamp(text, limit = MAX_MESSAGE) {
 }
 
 /**
+ * Escape for Telegram's HTML mode — the three characters, and only those.
+ *
+ * Shell commands are full of `&&`, `>` and quotes, and an unescaped `&&` makes
+ * Telegram reject the whole message with a parse error. The alert then does not
+ * arrive at all, which is a worse failure than an ugly one.
+ */
+export const htmlEscape = (text = '') =>
+  String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * Build the message body: prose, then each command in its own block.
+ *
+ * `<pre>` is what makes a command tappable-to-copy in the Telegram client,
+ * which is the whole point — the reader is on a phone and needs the line in a
+ * laptop terminal without retyping it.
+ */
+export function composeHtml(text, commands = []) {
+  const body = htmlEscape(redactSecrets(text));
+  if (commands.length === 0) return body;
+  const blocks = commands
+    .map(({ what, command }) =>
+      `${what ? `${htmlEscape(what)}\n` : ''}<pre>${htmlEscape(redactSecrets(command))}</pre>`)
+    .join('\n');
+  return `${body}\n\n${blocks}`;
+}
+
+/**
  * Where the alerter sends, or `null` when it is not configured.
  *
  * Read from the environment rather than a file, so the token lives in the
@@ -64,12 +91,17 @@ export function alertConfig(env = process.env) {
  * log the difference. It does not throw, and it does not retry: the watchdog
  * runs on a timer, so the next tick is the retry.
  */
-export async function alert(text, { env = process.env, fetchFn = fetch, log = console.log } = {}) {
-  const body = clamp(redactSecrets(text));
+export async function alert(
+  text,
+  { env = process.env, fetchFn = fetch, log = console.log, commands = [] } = {},
+) {
+  const body = clamp(composeHtml(text, commands));
   const config = alertConfig(env);
 
   if (!config) {
-    log(`[alert — not configured, printing instead]\n${body}`);
+    // Plain, for a console: the HTML tags would be noise in a terminal.
+    const plain = [redactSecrets(text), ...commands.map((c) => `  $ ${redactSecrets(c.command)}`)];
+    log(`[alert — not configured, printing instead]\n${plain.join('\n')}`);
     return false;
   }
 
@@ -77,7 +109,12 @@ export async function alert(text, { env = process.env, fetchFn = fetch, log = co
     const response = await fetchFn(`https://api.telegram.org/bot${config.token}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: config.chat, text: body, disable_web_page_preview: true }),
+      body: JSON.stringify({
+        chat_id: config.chat,
+        text: body,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      }),
     });
     if (!response.ok) {
       // The status, not the body: an error body from Telegram echoes the

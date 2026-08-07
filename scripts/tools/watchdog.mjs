@@ -26,8 +26,12 @@ import { dirname, resolve } from 'node:path';
 
 import { connect } from '../lib/rpc.mjs';
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
-import { fetchConfig, fetchEpoch } from '../lib/program.mjs';
+import { PROGRAM_ID, fetchConfig, fetchEpoch } from '../lib/program.mjs';
 import { alert } from '../lib/alert.mjs';
+import { iso } from '../lib/epoch.mjs';
+import {
+  checkVault, payEpoch, readLog, restartUnit, settleEpoch, topology, unitStatus,
+} from '../lib/runbook.mjs';
 import { REPO_ROOT } from '../lib/store.mjs';
 
 /** How long after an epoch closes before an unposted root is a problem. */
@@ -63,6 +67,14 @@ function parseArgs(argv) {
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
   return args;
+}
+
+/** A duration a person can read at a glance, not 4980 seconds. */
+export function minutes(seconds) {
+  if (seconds < 90) return `${Math.round(seconds)}s`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min`;
+  const h = Math.floor(seconds / 3600);
+  return `${h}h ${Math.round((seconds - h * 3600) / 60)}m`;
 }
 
 /** When epoch `n`'s window closes. */
@@ -162,6 +174,7 @@ async function check(args) {
   const mint = config.mint.toBase58();
   const now = Math.floor(Date.now() / 1000);
 
+  const t = topology();
   let state = readState(statePath);
   const hasRoot = async (epoch) => (await fetchEpoch(connection, mint, epoch)) != null;
 
@@ -184,21 +197,48 @@ async function check(args) {
   const vaultLamports = await connection.getBalance(config.snapshotKey);
   const vaultSol = vaultLamports / 1e9;
 
+  // Text and its remediation commands travel together — an alert that arrives
+  // without the command to fix it is half an alert.
   const problems = [];
+  const addProblem = (text, options = {}) => problems.push({ text, options });
   const keys = [];
 
   if (overdue.length > 0) {
     const key = `overdue-${overdue[0].epoch}`;
     keys.push(key);
     if (shouldAlert(state, key, now, args.repeat)) {
+      const oldest = overdue[0];
       const list = overdue
-        .slice(0, 10)
-        .map((o) => `  epoch ${o.epoch} — closed ${Math.round(o.lateBy / 60)} min ago, no root`)
+        .slice(0, 8)
+        .map((o) => `  epoch ${o.epoch}  closed ${iso(o.closedAt)}  (${minutes(o.lateBy)} ago)`)
         .join('\n');
-      problems.push(
-        `🔴 CALLPOOL — ${overdue.length} epoch(s) closed with NO ROOT ON CHAIN\n\n${list}\n\n` +
-          'Fees are accruing and nobody is being paid. Check the crank on box B and the ' +
-          'co-signer on box A. Roots can still be posted for these epochs — nothing is lost yet.',
+
+      addProblem(
+        `🔴 CALLPOOL — ${overdue.length} epoch(s) closed with NO ROOT ON CHAIN\n\n` +
+          `${list}${overdue.length > 8 ? `\n  … and ${overdue.length - 8} more` : ''}\n\n` +
+          `oldest late by   ${minutes(oldest.lateBy)}\n` +
+          `program          ${PROGRAM_ID.toBase58()}\n` +
+          `epoch clock      ${config.epochSeconds}s, challenge ${config.challengeSeconds}s\n` +
+          `vault            ${vaultSol.toFixed(4)} SOL\n\n` +
+          'MEANING: fees are accruing and nobody is being paid. Nothing is lost yet — a root ' +
+          'can still be posted for any of these, and the money stays in the pool until it is.\n\n' +
+          `LIKELY CAUSE, in order:\n` +
+          `  1. the crank stopped on ${t.crank.label}\n` +
+          `  2. signer B's timer stopped on ${t.cosign.label}, so the 2-of-3 never reaches threshold\n` +
+          `  3. the vault ran out of SOL for epoch rent (it holds ${vaultSol.toFixed(4)})\n` +
+          `  4. the RPC provider is failing\n\n` +
+          'RUN THESE, in order — look before restarting:',
+        {
+          commands: [
+            { what: `1 — is the crank alive on ${t.crank.label}?`, command: unitStatus(t.crank) },
+            { what: '2 — what did it last say?', command: readLog(t.crank) },
+            { what: `3 — is signer B alive on ${t.cosign.label}?`, command: readLog(t.cosign, 40) },
+            { what: '4 — restart both, crank last so a proposal exists to approve', command:
+                `${restartUnit(t.cosign)} ; ${restartUnit(t.crank)}` },
+            { what: `5 — if that did not take, settle epoch ${oldest.epoch} by hand`, command:
+                settleEpoch(t, oldest.epoch) },
+          ],
+        },
       );
       state = recordAlert(state, key, now);
     }
@@ -212,10 +252,22 @@ async function check(args) {
         .slice(0, 10)
         .map((u) => `  epoch ${u.epoch} — ${u.allocated} lamports, none claimed, ${Math.round(u.since / 60)} min past the window`)
         .join('\n');
-      problems.push(
+      addProblem(
         `🔴 CALLPOOL — ${unpaid.length} settled epoch(s) with NOTHING paid out\n\n${list}\n\n` +
-          'The root is posted but the airdrop never landed. Re-running airdrop.mjs for these ' +
-          'epochs is safe — claims are write-once on chain, so nobody can be paid twice.',
+          `program          ${PROGRAM_ID.toBase58()}\n\n` +
+          'MEANING: the root is posted and correct, but the airdrop never landed — so the ' +
+          'money is allocated and sitting in the pool with nobody holding it.\n\n' +
+          'SAFE TO RE-RUN: claims are write-once on chain. The program refuses a second claim ' +
+          'on the same leaf, so re-running the airdrop can never pay anyone twice — it pays ' +
+          'only what is still outstanding.\n\n' +
+          'A holder who sold below the floor since the snapshot is refused by design (§4.5) ' +
+          'and will still show as unpaid. That is the mechanic working, not a failure.',
+        {
+          commands: [
+            { what: `1 — pay epoch ${unpaid[0].epoch} again`, command: payEpoch(t, unpaid[0].epoch) },
+            { what: '2 — if it fails, read why', command: readLog(t.crank, 40) },
+          ],
+        },
       );
       state = recordAlert(state, key, now);
     }
@@ -225,10 +277,23 @@ async function check(args) {
     const key = 'vault-low';
     keys.push(key);
     if (shouldAlert(state, key, now, args.repeat)) {
-      problems.push(
-        `🟠 CALLPOOL — the multisig vault is low: ${vaultSol.toFixed(4)} SOL\n\n` +
-          `${config.snapshotKey.toBase58()}\n\nIt pays rent for every epoch account it creates ` +
-          '(~0.00146 SOL each). An unfunded vault stops the crank exactly as dead as a lost key.',
+      const epochsLeft = Math.floor(vaultLamports / 1_461_600);
+      addProblem(
+        `🟠 CALLPOOL — the multisig vault is running low\n\n` +
+          `balance          ${vaultSol.toFixed(4)} SOL\n` +
+          `address          ${config.snapshotKey.toBase58()}\n` +
+          `rent per epoch   0.0014616 SOL\n` +
+          `epochs left      ~${epochsLeft} (about ${minutes(epochsLeft * Number(config.epochSeconds))})\n\n` +
+          'MEANING: the vault is the payer for every Epoch account the crank creates. When it ' +
+          'empties, the crank stops settling — exactly as dead as a lost key, and with the same ' +
+          'symptom as every other cause, so fix it before it gets there.\n\n' +
+          'FIX: send SOL to the address above from any wallet. Nothing else needs restarting.',
+        {
+          commands: [
+            { what: '1 — confirm the balance yourself', command: checkVault(t, config.snapshotKey.toBase58()) },
+            { what: '2 — after funding, check the crank picked up again', command: readLog(t.crank, 30) },
+          ],
+        },
       );
       state = recordAlert(state, key, now);
     }
@@ -237,15 +302,20 @@ async function check(args) {
   // A problem that has cleared should be able to fire again if it comes back.
   state = forgetResolved(state, keys);
 
-  for (const text of problems) await alert(text);
+  for (const { text, options } of problems) await alert(text, options);
 
   const quiet =
     problems.length === 0 && overdue.length === 0 && unpaid.length === 0 && vaultSol >= args.minVault;
   if (quiet && now - (state.lastHeartbeat ?? 0) >= args.heartbeat) {
     const current = epochAt(now, config);
     await alert(
-      `🟢 CALLPOOL — still settling.\n\nepoch ${current} in progress, everything through ` +
-        `${current - 1} has a root.\nvault ${vaultSol.toFixed(4)} SOL`,
+      `🟢 CALLPOOL — still settling.\n\n` +
+        `epoch            ${current} in progress\n` +
+        `settled through  ${current - 1}, every root posted\n` +
+        `vault            ${vaultSol.toFixed(4)} SOL (~${Math.floor(vaultLamports / 1_461_600)} epochs)\n` +
+        `program          ${PROGRAM_ID.toBase58()}\n\n` +
+        'Nothing needs doing. This arrives once a day so that silence means something.',
+      { commands: [{ what: 'the run, if you want to look', command: readLog(t.crank, 40) }] },
     );
     state = { ...state, lastHeartbeat: now };
   }
