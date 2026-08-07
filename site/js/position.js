@@ -23,8 +23,11 @@ import {
 import { associatedTokenAddress, lpMint } from './addresses.js';
 import { explorerUrl, snapshotUrl } from './config.js';
 import { DELIVERY, describeDelivery, loadPayoutTrail, payoutHistory, projectedShare } from './payouts.js';
-import { formatSol, formatTokens, standingFor, utcDate } from './standing.js';
+import { exactTitle, formatSolShort, formatTokens, standingFor, utcDate } from './standing.js';
 import { addressNode, escapeHtml, failure, field, row, SOURCES } from './ui.js';
+
+/** SOL, short enough to scan. Always paired with `exactTitle` on the element. */
+const solText = (lamports) => `${formatSolShort(lamports)} SOL`;
 
 /** Base58 is 32–44 chars from a fixed alphabet. Reject before spending an RPC call. */
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -209,44 +212,19 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   // money moved or it did not.
   const payouts = loaded.payouts;
   if (payouts && payouts.rows.length > 0) {
-    const owedCell = document.createElement('span');
-    if (payouts.owed > 0n) owedCell.className = 'warn';
-    field(owedCell, {
-      value: payouts.owed > 0n ? `${formatSol(payouts.owed)} SOL` : 'nothing outstanding',
-      source: SOURCES.snapshot,
-    });
-    table.append(row(
-      'owed to this wallet',
-      owedCell,
-      payouts.needsAttention
-        ? 'Allocated on a settled day and not delivered. It stays claimable until the deadline — nobody has to do anything for it to remain yours.'
-        : 'Every settled day has either paid out or correctly withheld.',
-    ));
-
-    const paidCell = document.createElement('span');
-    field(paidCell, { value: `${formatSol(payouts.paid)} SOL`, source: SOURCES.snapshot });
-    table.append(row('paid to this wallet so far', paidCell));
-
-    // Withheld is shown separately and never added to "owed". A wallet that
-    // sold below the floor is not owed that money — it stayed in the pool for
-    // everyone else — and presenting it as a balance would be a claim on funds
-    // that belong to other holders.
+    // Withheld stays in the table and never becomes a tile, because it is not
+    // a balance. A wallet that sold below the floor is not owed that money —
+    // it stayed in the pool for everyone else — and giving it the same
+    // prominence as "owed" would read as a claim on other holders' funds.
     if (payouts.refused > 0n) {
       const refusedCell = document.createElement('span');
-      field(refusedCell, { value: `${formatSol(payouts.refused)} SOL`, source: SOURCES.snapshot });
+      field(refusedCell, { value: solText(payouts.refused), source: SOURCES.snapshot });
+      refusedCell.title = exactTitle(payouts.refused);
       table.append(row(
         'allocated but withheld',
         refusedCell,
         'This wallet held less than the floor when those days paid out, so its share stayed in the pool. This is not owed to you.',
       ));
-    }
-
-    // Per-day detail, newest first, so a disputed day can be pointed at.
-    for (const entry of payouts.rows.slice(0, 7)) {
-      const dayCell = document.createElement('span');
-      if (entry.state === DELIVERY.failed) dayCell.className = 'warn';
-      dayCell.textContent = describeDelivery(entry, (n) => `${formatSol(n)} SOL`);
-      table.append(row(`day ${entry.epoch}`, dayCell));
     }
   }
 
@@ -257,19 +235,6 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   // pool now — a basis, not a forecast — and it is absent entirely when there
   // is nothing to base it on, because inventing one would be the return
   // framing this site does not do.
-  if (loaded.projected) {
-    const todayCell = document.createElement('span');
-    field(todayCell, {
-      value: `about ${formatSol(loaded.projected.indicative)} SOL`,
-      source: SOURCES.derived,
-    });
-    table.append(row(
-      'today, if it settled now',
-      todayCell,
-      `Not owed and not promised. Today has not settled, so nobody knows who qualifies yet. This applies your share of day ${loaded.projected.basisEpoch} to the pool as it stands now, and it moves every time someone buys, sells or calls out.`,
-    ));
-  }
-
   const ataCell = addressNode(loaded.ata, { href: explorerUrl(config, 'address', loaded.ata) });
   table.append(
     row('the account being read', ataCell, 'Only this associated token account counts.'),
@@ -305,7 +270,108 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     table.append(row('locked out', lockCell, 'Buying back does not shorten it.'));
   }
 
+  renderTiles(nodes.tiles, loaded);
+  renderDays(nodes.days, nodes.dayRows, loaded.payouts);
+
   return standing;
+}
+
+/**
+ * The three figures a holder came for, above everything else.
+ *
+ * Only ever three, and each is absent rather than zero when there is nothing
+ * to say: a tile reading `0 SOL` asserts that nothing is owed, which is a
+ * different claim from having no settled history to look at.
+ *
+ * **Amber is reserved for money that is actually stuck.** It used to fire on
+ * `owed > 0`, which painted the ordinary "settled today, the airdrop runs
+ * after the challenge window" state as a fault — the single most common state
+ * there is. Now only `needsAttention` (a recorded airdrop *failure*) is amber.
+ */
+function renderTiles(container, loaded) {
+  if (!container) return;
+  container.replaceChildren();
+
+  const payouts = loaded.payouts;
+  const settled = payouts && payouts.rows.length > 0;
+  const tiles = [];
+
+  if (settled) {
+    tiles.push({
+      label: 'Paid so far',
+      lamports: payouts.paid,
+      note: 'Delivered on settled days.',
+    });
+    tiles.push({
+      label: 'Owed',
+      lamports: payouts.owed,
+      warn: payouts.needsAttention,
+      note: payouts.needsAttention
+        ? 'An airdrop failed. It stays claimable — nobody has to do anything for it to remain yours.'
+        : payouts.owed > 0n
+          ? 'Allocated and not yet sent. The airdrop runs after the challenge window.'
+          : 'Every settled day has paid out or correctly withheld.',
+    });
+  }
+
+  if (loaded.projected) {
+    tiles.push({
+      label: 'Estimated today',
+      lamports: loaded.projected.indicative,
+      approximate: true,
+      note: `Not owed and not promised — today has not settled. Your share of day ${loaded.projected.basisEpoch}, applied to the pool as it stands now.`,
+    });
+  }
+
+  container.hidden = tiles.length === 0;
+  if (tiles.length === 0) return;
+
+  for (const tile of tiles) {
+    const item = document.createElement('div');
+    item.className = tile.warn ? 'tile tile-warn' : 'tile';
+
+    const dt = document.createElement('dt');
+    dt.textContent = tile.label;
+
+    const dd = document.createElement('dd');
+    dd.className = 'tile-value';
+    dd.textContent = `${tile.approximate ? '≈ ' : ''}${solText(tile.lamports)}`;
+    // Short for reading, exact for checking. Never one without the other.
+    dd.title = exactTitle(tile.lamports);
+
+    const note = document.createElement('p');
+    note.className = 'tile-note';
+    note.textContent = tile.note;
+
+    item.append(dt, dd, note);
+    container.append(item);
+  }
+}
+
+/**
+ * The per-day history, as its own block rather than more table rows.
+ *
+ * Appended to the facts table it read as further properties of the wallet —
+ * "day 2" sitting between "balance now" and "the account being read" — when it
+ * is a list of days and wants a heading saying so.
+ */
+function renderDays(section, tbody, payouts) {
+  if (!section || !tbody) return;
+  tbody.replaceChildren();
+
+  const rows = payouts?.rows ?? [];
+  section.hidden = rows.length === 0;
+  if (rows.length === 0) return;
+
+  for (const entry of rows.slice(0, 7)) {
+    const dayCell = document.createElement('span');
+    // Only a mechanical failure is a warning. A refusal is the mechanic
+    // working and a pending day is simply early.
+    if (entry.state === DELIVERY.failed) dayCell.className = 'warn';
+    dayCell.textContent = describeDelivery(entry, solText);
+    dayCell.title = exactTitle(entry.amount);
+    tbody.append(row(`day ${entry.epoch}`, dayCell));
+  }
 }
 
 /** The failure path, kept separate so a partial answer is never dressed up. */

@@ -39,7 +39,9 @@ import {
   isClaimed,
 } from '../../site/js/program.js';
 import { decodeBase58, encodeBase58 } from '../../site/js/base58.js';
-import { standingFor, formatSol, formatTokens, countdown, utcTime } from '../../site/js/standing.js';
+import {
+  standingFor, formatSol, formatSolShort, exactTitle, formatTokens, countdown, utcTime,
+} from '../../site/js/standing.js';
 import * as clocksModule from '../../site/js/clocks.js';
 import { dailyState, epochAt, firstRecordNote, freshnessNote, hourlyState, windowFor } from '../../site/js/clocks.js';
 import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
@@ -957,4 +959,37 @@ test('an hour is "an hour", not "1 hours"', () => {
   const start = 1_760_000_000 - (1_760_000_000 % DAY);
   const window = { start, end: start + DAY };
   assert.match(firstRecordNote({ now: start + DAY - 3600, window }), /about an hour from now/);
+});
+
+// ── the short SOL figure ───────────────────────────────────────────────────
+//
+// Nine decimals is unscannable, so the panel shows four and hangs the exact
+// value off the element's title. Everything below guards the one way that can
+// go wrong: a number that reads as less than it is.
+
+test('four decimals for reading, and nothing that matters is lost', () => {
+  assert.equal(formatSolShort(0n), '0');
+  assert.equal(formatSolShort(1_000_000_000n), '1');
+  assert.equal(formatSolShort(1_500_000_000n), '1.5');
+  assert.equal(formatSolShort(1_249_998_750n), '1.25');
+  assert.equal(formatSolShort(2_999_774_780n), '2.9998');
+});
+
+test('a real balance never renders as zero', () => {
+  // The rounding error that would matter to the person owed it: 1 lamport is
+  // not 0 SOL, and a holder reading "0" would think they had been paid nothing.
+  assert.equal(formatSolShort(1n), '<0.0001');
+  assert.equal(formatSolShort(49_999n), '<0.0001');
+  assert.equal(formatSolShort(50_000n), '0.0001');
+});
+
+test('a missing figure is a dash, not a zero', () => {
+  assert.equal(formatSolShort(null), '—');
+  assert.equal(formatSolShort(undefined), '—');
+});
+
+test('the exact value is always available beside the short one', () => {
+  assert.equal(exactTitle(2_999_774_780n), '2.99977478 SOL exactly');
+  assert.equal(exactTitle(1n), '0.000000001 SOL exactly');
+  assert.equal(exactTitle(null), '');
 });

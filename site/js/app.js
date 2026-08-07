@@ -776,7 +776,10 @@ function wireCalculator(config) {
     result: el('position-result'),
     headline: el('position-headline'),
     detail: el('position-detail'),
+    tiles: el('position-tiles'),
     facts: el('position-facts'),
+    days: el('position-days'),
+    dayRows: el('position-day-rows'),
   };
 
   form.addEventListener('submit', async (event) => {

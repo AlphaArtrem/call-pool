@@ -301,3 +301,43 @@ export function countdown(seconds) {
   const ss = String(s).padStart(2, '0');
   return h > 0 ? `${h}h ${mm}m ${ss}s` : `${m}m ${ss}s`;
 }
+
+/**
+ * Lamports → SOL at four decimals, for reading rather than auditing.
+ *
+ * Nine decimals is the honest figure and it is unscannable: `2.99977478 SOL`
+ * beside `1.24999875 SOL` takes a moment to compare, and every panel on this
+ * page is read at a glance. So the display is short and the exact value is
+ * always one hover away — `exactTitle` puts it in the `title`, and no number
+ * is ever shown short *without* it.
+ *
+ * Two rules keep it from lying:
+ *
+ *   * A non-zero amount never renders as `0`. Below the fourth decimal it says
+ *     `<0.0001`, because a real balance shown as zero is the one rounding
+ *     error that would matter to the person owed it.
+ *   * Rounding is half-up on the fourth decimal, so the short form can read
+ *     very slightly high — which is why it never appears alone. Anything being
+ *     reconciled uses `formatSol`.
+ */
+export function formatSolShort(lamports) {
+  if (lamports == null) return '—';
+  if (lamports === 0n) return '0';
+
+  const negative = lamports < 0n;
+  const value = negative ? -lamports : lamports;
+
+  // Round half-up at the 4th decimal: 1e9 lamports per SOL, so 1e5 per step.
+  const steps = (value + 50_000n) / 100_000n;
+  if (steps === 0n) return negative ? '>-0.0001' : '<0.0001';
+
+  const whole = steps / 10_000n;
+  const fraction = (steps % 10_000n).toString().padStart(4, '0').replace(/0+$/, '');
+  const body = fraction === '' ? whole.toString() : `${whole}.${fraction}`;
+  return negative ? `-${body}` : body;
+}
+
+/** The full-precision string, for the `title` beside a shortened one. */
+export function exactTitle(lamports) {
+  return lamports == null ? '' : `${formatSol(lamports)} SOL exactly`;
+}

@@ -588,7 +588,23 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
         <div id="position-result" class="standing" hidden>
           <p id="position-headline" class="standing-headline"></p>
           <ul id="position-detail" class="standing-detail"></ul>
+
+          <!-- The three figures a holder came for. Rendered above the detail
+               because in the flat list they carried the same weight as "the
+               account being read", and money does not. Hidden entirely when
+               there is nothing settled to report — an empty tile row would
+               imply a zero rather than an absence. -->
+          <dl id="position-tiles" class="standing-tiles" hidden></dl>
+
           <table class="facts"><tbody id="position-facts"></tbody></table>
+
+          <!-- Per-day history, in its own block. It used to be appended to the
+               table above, where "day 2" read as another property of the
+               wallet rather than as a list of days. -->
+          <div id="position-days" class="standing-days" hidden>
+            <h3 class="standing-days-heading">Your days</h3>
+            <table class="facts"><tbody id="position-day-rows"></tbody></table>
+          </div>
         </div>
       </section>
 
