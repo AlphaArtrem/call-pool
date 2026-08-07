@@ -1,0 +1,21 @@
+# CALLPOOL — when the crank tick fires (rehearsal cadence).
+#
+# :20 past each 5-minute boundary, so the epoch has actually closed before the
+# tick asks about it — the program refuses an early root, and firing on the
+# boundary itself races the clock for nothing.
+#
+# ⚠️ Rehearsal cadence. 300-second epochs are the rehearsal's clock; mainnet
+# epochs are a UTC day (L14), and this line is the one to change.
+
+[Unit]
+Description=CALLPOOL — settle outstanding epochs every 5 minutes (rehearsal)
+Documentation=https://github.com/AlphaArtrem/call-pool
+
+[Timer]
+OnCalendar=*:0/5:20
+AccuracySec=1s
+Persistent=true
+Unit=callpool-rehearsal.service
+
+[Install]
+WantedBy=timers.target
