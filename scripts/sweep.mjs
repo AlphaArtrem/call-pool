@@ -139,19 +139,24 @@ export function instructionFrom({ programId, keys, data }) {
 }
 
 /**
- * What pump will and will not distribute right now, in words.
+ * What pump says it will distribute right now, in words. **Advisory only.**
  *
  * `canDistribute: false` has two causes that look identical from here: the
  * accrued fee is genuinely below `minimumRequired`, or the SDK's simulation
  * errored and it returned zeroes rather than raising. Neither is a reason to
- * stop — the wSOL half may still have something in it — so this reports rather
- * than throws, and the balance delta at the end is what settles the question.
+ * stop, and — measured 2026-08-07 — the second is not hypothetical: a coin with
+ * 8,017,920 lamports of accrued fees reported `0` against a minimum of `0` and
+ * distributed 5,204,484 lamports when asked anyway.
+ *
+ * So this describes and decides nothing. The distribute is attempted either way
+ * and the pool's balance delta settles the question.
  */
 export function describeDistributable({ minimumRequired, distributableFees, canDistribute }) {
   if (canDistribute) return `distributable now: ${sol(distributableFees)}`;
   return (
-    `NOT distributable: ${sol(distributableFees)} accrued against a minimum of ` +
-    `${sol(minimumRequired)}. Fees roll forward — nothing is lost.`
+    `pump reports NOT distributable: ${sol(distributableFees)} accrued against a minimum of ` +
+    `${sol(minimumRequired)}. Trying anyway — this reading is unreliable, and a zero/zero ` +
+    'answer has meant 0.005 SOL sitting there. The delta below is the real answer.'
   );
 }
 
@@ -262,18 +267,41 @@ async function main() {
       { commitment: 'confirmed' },
     );
 
-  if (minimum?.canDistribute) {
-    try {
-      const { instructions } = await pump.buildDistributeInstructions(args.rpc, mint);
-      // Rebuilt here, from base58 and bytes, with our own web3.
-      const signature = await send(instructions.map(instructionFrom));
-      console.log(`distribute ${signature}`);
-    } catch (error) {
-      faults.push(`distribute failed — ${explainPumpFailure(error.message)}`);
-      console.log(`distribute FAILED — ${error.message}`);
-    }
-  } else {
-    console.log(`distribute skipped — ${minimum ? "below pump's minimum" : 'pump could not be read'}, see above`);
+  // ── always attempt the distribute ────────────────────────────────────────
+  //
+  // **`canDistribute` is not a gate, and treating it as one silently stops the
+  // pool from ever being paid.** Measured on devnet 2026-08-07 with a real
+  // pump.fun coin: the fee-sharing config held 8,017,920 lamports with the
+  // 9000/1000 split correct and `admin_revoked` set, and
+  // `getMinimumDistributableFee` returned `distributableFees: 0`,
+  // `minimumRequired: 0`, `canDistribute: false`. Sending the distribute anyway
+  // moved 5,204,484 lamports into the pool.
+  //
+  // So this file's own header was right and this branch was wrong: the SDK
+  // reports `canDistribute: false` for a *failed simulation* as well as for a
+  // genuinely small balance, swallowing the error and returning zeroes. Gating
+  // on it meant step 0 skipping every epoch, forever, on a coin whose fees were
+  // accruing perfectly well — and skipping it *quietly*, as a normal quiet day.
+  //
+  // Attempting costs one transaction that either moves money or does not. Below
+  // pump's real minimum the instruction succeeds and moves nothing (F4), which
+  // is already handled and is not an error. A genuine failure is caught,
+  // reported as a fault, and does not stop the wSOL half.
+  //
+  // The pool's balance before and after remains the only honest statement about
+  // whether money moved. `canDistribute` is now printed as information and
+  // decides nothing.
+  try {
+    const { instructions } = await pump.buildDistributeInstructions(args.rpc, mint);
+    // Rebuilt here, from base58 and bytes, with our own web3.
+    const signature = await send(instructions.map(instructionFrom));
+    console.log(
+      `distribute ${signature}` +
+        (minimum?.canDistribute === false ? '   (sent despite canDistribute:false — see the delta)' : ''),
+    );
+  } catch (error) {
+    faults.push(`distribute failed — ${explainPumpFailure(error.message)}`);
+    console.log(`distribute FAILED — ${error.message}`);
   }
 
   // Re-read: on a graduated coin the distribute that just landed is itself a

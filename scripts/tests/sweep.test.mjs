@@ -22,15 +22,19 @@ import { PROGRAM_ID, configPda, poolPda, poolWsolAta, sweepWsolIx } from '../lib
 
 // ── what the operator is told ──────────────────────────────────────────────
 
-test('a below-minimum accrual is reported as roll-forward, not as failure', () => {
+test('a below-minimum accrual is reported as pump\'s claim, and as one to be tried anyway', () => {
   const text = describeDistributable({
     minimumRequired: 1_880_747n,
     distributableFees: 400_000n,
     canDistribute: false,
   });
-  assert.match(text, /NOT distributable/);
-  assert.match(text, /roll forward/);
-  assert.match(text, /nothing is lost/i);
+  assert.match(text, /pump reports NOT distributable/);
+  assert.match(text, /Trying anyway/);
+  // The reading must never be presented as a decision. Measured 2026-08-07: a
+  // coin with 8,017,920 lamports accrued reported 0 against a minimum of 0 and
+  // then distributed 5,204,484 when asked. Gating on this emptied no pool
+  // loudly and every pool quietly.
+  assert.match(text, /unreliable/);
 });
 
 test('the minimum and the accrual are both named, so the gap is readable', () => {
