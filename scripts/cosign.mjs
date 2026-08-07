@@ -434,24 +434,68 @@ async function main() {
       instructions: [expectedIx],
     });
 
-    const createSig = await multisig.rpc.vaultTransactionCreate({
-      connection,
-      feePayer: member,
-      multisigPda,
-      transactionIndex: BigInt(index),
-      creator: member.publicKey,
-      vaultIndex: 0,
-      ephemeralSigners: 0,
-      transactionMessage: message,
-      memo: `callpool post_epoch_root epoch ${epoch}`,
-    });
+    // ── both signers may propose, so both may propose at once ──────────────
+    //
+    // Every member runs this same command on its own timer, and either can be
+    // first. Between the `findProposal` scan above and this create, the other
+    // host can take the index — and then this fails with
+    // `AnchorError#ConstraintSeeds`, because the PDA for that index already
+    // exists.
+    //
+    // Measured 2026-08-07: box B's minute timer created index 5, box A's crank
+    // collided a second later, and the crank exited "no root was posted". Epoch
+    // 4 then sat at **1-of-2 forever** — the proposal existed and was approved
+    // by exactly one member, and neither host was going to revisit it. That is
+    // the same stuck-at-one-approval symptom the runbook attributes to a
+    // firewall, reached by a completely different route and with every service
+    // healthy.
+    //
+    // Losing the race is not an error. The other host built the same bytes from
+    // the same published inputs — and if it did not, the re-scan below will not
+    // match and this refuses exactly as it should. So: look again, and approve
+    // what is there.
+    let createSig = null;
+    try {
+      createSig = await multisig.rpc.vaultTransactionCreate({
+        connection,
+        feePayer: member,
+        multisigPda,
+        transactionIndex: BigInt(index),
+        creator: member.publicKey,
+        vaultIndex: 0,
+        ephemeralSigners: 0,
+        transactionMessage: message,
+        memo: `callpool post_epoch_root epoch ${epoch}`,
+      });
+    } catch (error) {
+      const raced = /ConstraintSeeds|already in use|InvalidTransactionIndex/i.test(
+        `${error.message}${error.logs?.join(' ') ?? ''}`,
+      );
+      if (!raced) throw error;
 
-    // `proposalCreate` refuses an index the multisig has not reached yet, and
-    // the SDK's send does not wait for the account to reflect it. Without this
-    // the propose leg fails with `InvalidTransactionIndex` on a fast local
-    // validator and, intermittently, on a real one.
-    await connection.confirmTransaction(createSig, 'confirmed');
-    await waitForIndex(connection, multisigPda, index);
+      console.log(`proposal     index ${index} was taken while we were building it — re-scanning`);
+      const fresh = await multisig.accounts.Multisig.fromAccountAddress(connection, multisigPda);
+      const now = await findProposal(connection, multisigPda, fresh, expectedIx, vault);
+      if (!now) {
+        throw new Error(
+          `index ${index} is taken, but no proposal on this multisig carries the bytes derived ` +
+            `here for epoch ${epoch} — NOT signing.\n` +
+            '  Another member proposed something this host did not derive. That is the case the ' +
+            'byte comparison exists for; do not approve it by hand to clear the queue.',
+        );
+      }
+      index = now.index;
+      console.log(`proposal     index ${index}, and its bytes are the bytes derived here ✓`);
+    }
+
+    if (createSig) {
+      // `proposalCreate` refuses an index the multisig has not reached yet, and
+      // the SDK's send does not wait for the account to reflect it. Without this
+      // the propose leg fails with `InvalidTransactionIndex` on a fast local
+      // validator and, intermittently, on a real one.
+      await connection.confirmTransaction(createSig, 'confirmed');
+      await waitForIndex(connection, multisigPda, index);
+    }
   }
 
   // The vault transaction and its proposal are two accounts created by two
