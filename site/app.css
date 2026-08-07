@@ -91,23 +91,6 @@
 
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
 
-  /* The reading measure, and the reason the shell can be wide without the page
-   * becoming unreadable. `.wrap` grows with the viewport so grids, tables and
-   * card rows get the room; every block that is a SENTENCE rather than a layout
-   * caps itself here instead. Without it the notes and callouts ran to 150–170
-   * characters a line on a laptop.
-   *
-   * It is also what keeps the page's left edge: capped blocks stay
-   * left-aligned, so every heading and every sentence still starts at the same
-   * x down the whole page. Centring them would undo that.
-   *
-   * `em`, NOT `rem`, and that is the whole point of the unit. A custom property
-   * is substituted where it is used, so `em` resolves against the font-size of
-   * the block being capped — every one of them lands at ~80 characters whatever
-   * size it is set in. In `rem` this was one fixed width, and `.note` at 0.875rem
-   * simply fitted more characters into it and stayed over measure at 101. */
-  --measure: 40em;
-
   /* The hero's right-hand column is ONE block: the headline, the sentence under
    * it and the button stack are all this wide, so the text ends where the
    * buttons end instead of running past them into the empty half of the column.
@@ -562,9 +545,20 @@ pre code {
   margin: 0;
 }
 
+/* The only reading-measure cap left on the page; everything else — callouts,
+ * section ledes, notes — was deliberately set to run the full width instead.
+ *
+ * It earns its place in one narrow band. Above 46rem `.hero-copy` caps this at
+ * `--hero-block` (448px) and 40em never binds; below about 43rem the column is
+ * narrower than 40em and it never binds either. Between them — a single-column
+ * hero in a ~700px window — this is what stops the sentence running the whole
+ * width while the buttons under it do not.
+ *
+ * `em` and not `rem` so the cap tracks this block's own 1.0625rem type and
+ * lands at ~80 characters rather than at a fixed pixel width. */
 .lede {
   font-size: 1.0625rem;
-  max-width: var(--measure);
+  max-width: 40em;
   color: var(--muted);
 }
 
@@ -671,11 +665,13 @@ pre code {
  * letter-spacing from `.eyebrow`; only the size and colour come from here, and
  * that is deliberate — a section label is a heading-scale thing, not the 11px
  * the hero's eyebrow is. */
+/* No measure cap: the section lede runs the full width of its column, so it
+ * lines up with the cards and tables underneath rather than stopping short of
+ * them. The 10rem label rail already holds its left edge. */
 .section-head p {
   color: var(--muted);
   margin: 0;
   font-size: 1.0625rem;
-  max-width: var(--measure);
 }
 
 /* The icon chip beside each section heading. Decorative — every one is
@@ -825,10 +821,13 @@ pre code {
 
 /* One sentence that has to survive skim-reading. Used where the page would
  * otherwise bury a rule with money attached in a paragraph. */
-/* The cap is on the BOX, not just the text inside it, so the callout stays a
- * callout — a full-bleed bar with a 44rem column of text floating in it reads as
- * a layout bug. Padding is added on top of the measure so the text column itself
- * is still the measure. */
+/* Full width of its section, and the text inside runs the full width with it —
+ * no reading-measure cap on either. A callout is a bar across the section it
+ * interrupts; sized to a text measure it stops looking like a bar and starts
+ * looking like a card that failed to stretch.
+ *
+ * These run long on a wide monitor as a result. That is accepted for callouts
+ * specifically: each is two or three sentences read once, not body copy. */
 .highlight {
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
@@ -837,7 +836,6 @@ pre code {
   padding: 1rem 1.125rem;
   margin: 1.5rem 0;
   font-size: 1rem;
-  max-width: calc(var(--measure) + 2.25rem);
 }
 
 .highlight strong {
@@ -1268,14 +1266,28 @@ summary:focus-visible {
   min-width: min(var(--hero-block), 100%);
 }
 
-/* 50/50, always. Two equal halves are both reachable with one thumb, and equal
- * widths mean neither label's length decides the layout. The trade button
- * spans both columns above them — it is the loudest ask on the page, and a
- * full-width row is how it stays the loudest without unbalancing the pair. */
+/* 50/50 is the PHONE layout, and stays: two equal halves are both reachable
+ * with one thumb, and equal widths mean neither label's length decides where
+ * the split falls. The trade button spans both columns above them — it is the
+ * loudest ask on the page, and a full-width row is how it stays the loudest
+ * without unbalancing the pair. */
 .hero-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.75rem;
+}
+
+/* On a pointer-sized screen the thumb argument does not apply, so the primary
+ * gets twice the secondary. "Check your wallet" is the action this page is
+ * asking for; "How it works" is a way back into the copy someone has already
+ * scrolled past.
+ *
+ * 2fr/1fr, not a fixed pair of widths, so the ratio survives `--hero-block`
+ * changing — the row is still exactly as wide as the block above it. */
+@media (min-width: 46rem) {
+  .hero-buttons {
+    grid-template-columns: 2fr 1fr;
+  }
 }
 
 .hero-buttons .trade-hero {
@@ -1930,7 +1942,6 @@ input[type="text"]::placeholder {
 
 .failure-detail {
   font-size: 0.9375rem;
-  max-width: var(--measure);
 }
 
 .failure-technical {
