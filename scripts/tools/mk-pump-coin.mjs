@@ -67,9 +67,11 @@ const PUMP_FEES = '../../tools/sweep/pump-fees.mjs';
 function parseArgs(argv) {
   const args = {
     rpc: DEFAULT_RPC_URL,
-    name: 'CALLPOOL REHEARSAL',
+    // Short on purpose — all three ride in the create bundle, which sits ~20
+    // bytes under the transaction limit. See the send below.
+    name: 'CPR',
     symbol: 'CPR',
-    uri: 'https://callpool.fun/rehearsal.json',
+    uri: 'https://callpool.fun/r.json',
     devBuy: '0.05',
     dryRun: false,
   };
@@ -177,12 +179,34 @@ async function main() {
   }
 
   // ── one transaction: create, config, shares ──────────────────────────────
-  const createTx = new Transaction().add(
-    ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNIT_LIMIT }),
-    ...built.create.map(instructionFrom),
-  );
+  //
+  // **No ComputeBudget instruction here, and that is not an oversight.** F6
+  // measured these three fitting in one transaction with very little room: the
+  // bundle lands around 1,250 of the 1,232-byte limit before anything else is
+  // added, so a 40-byte compute-budget prefix is the difference between working
+  // and `Transaction too large: 1293 > 1232`. Measured on 2026-08-07 by hitting
+  // it. The create path does not need the extra units; the dev buy below gets
+  // them because it can afford the bytes.
+  //
+  // Bundling is worth this fussiness. Splitting the three would reopen F5's
+  // window — every lamport of fee accruing before the config exists is
+  // unreachable through it forever, recoverable only by the creator's own
+  // `collect_creator_fee`.
+  const createTx = new Transaction().add(...built.create.map(instructionFrom));
   const createSig = await sendAndConfirmTransaction(connection, createTx, [payer, mintKeypair], {
     commitment: 'confirmed',
+  }).catch((error) => {
+    if (/too large/i.test(error.message)) {
+      throw new Error(
+        `${error.message}\n\n` +
+          '  The create bundle is within ~20 bytes of the limit by design (F6), so the usual\n' +
+          '  cause is metadata length. --name, --symbol and --uri are all in the transaction:\n' +
+          `  name=${args.name.length}ch symbol=${args.symbol.length}ch uri=${args.uri.length}ch.\n` +
+          '  Shorten them. Do NOT "fix" this by splitting the bundle — that reopens F5, where\n' +
+          '  fees accruing before the fee-sharing config exists can never be routed through it.',
+      );
+    }
+    throw error;
   });
   console.log(`\ncreated    ${createSig}`);
   console.log('           fee split is locked in the same transaction — F5\'s window is closed');
