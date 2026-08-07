@@ -65,6 +65,29 @@ export function standingFor(facts) {
     };
   }
 
+  // L16 — before the two "you do not hold enough" answers, because both of
+  // them are true here and neither is the answer this reader needs. Their
+  // balance visibly dropped and they can see it; told only "below the minimum",
+  // the reasonable conclusion is that the 7-day lockout was applied and the
+  // page is not saying so. Naming the rule they met is the whole point.
+  //
+  // `!lockout.locked` so a wallet that supplied liquidity *and* sold still gets
+  // the lockout answer — the exemption covers the deposit, not the sale.
+  if (!lockout.locked && (lockout.lpDeposits ?? []).length > 0 && holdRaw < minHoldRaw) {
+    return {
+      state: 'supplied-liquidity',
+      severity: SEVERITY.action,
+      eligible: false,
+      headline: 'These tokens are in the pool, not in this wallet.',
+      detail: [
+        'You supplied liquidity to this coin’s pump.fun pool. That is NOT counted as selling, so you are not locked out for the week.',
+        'But tokens in the pool are not tokens in your wallet, so they do not count toward the minimum and earn nothing while they are there.',
+        `Withdraw them and this wallet is eligible again the same day, once it holds ${MIN_HOLD_TOKENS.toLocaleString('en-US')} CALLPOOL through a whole day.`,
+        'Only this coin’s pump.fun pool is recognised. Liquidity supplied anywhere else cannot be told apart from a sale and does lock you out.',
+      ],
+    };
+  }
+
   if (currentRaw === 0n && holdRaw === 0n) {
     return {
       state: 'not-a-holder',

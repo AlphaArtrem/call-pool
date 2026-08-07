@@ -9,7 +9,7 @@
 // rather than a dashboard: the confirmation that a callout exists does not
 // depend on our snapshot being right.
 
-import { computeHold, decreasesIn, TimelineError } from '../../scripts/lib/timeline.mjs';
+import { computeHold, computeLocked, TimelineError } from '../../scripts/lib/timeline.mjs';
 import { lockoutWindow } from '../../scripts/lib/epoch.mjs';
 import { calloutTime, countable, fetchWalletCallouts, isForMint } from '../../scripts/lib/callouts.mjs';
 import { LOCKOUT_EPOCHS, MINT_DECIMALS } from '../../scripts/lib/config.mjs';
@@ -20,7 +20,7 @@ import {
   currentBalanceRaw,
   tokenProgramForMint,
 } from './chain.js';
-import { associatedTokenAddress } from './addresses.js';
+import { associatedTokenAddress, lpMint } from './addresses.js';
 import { explorerUrl, snapshotUrl } from './config.js';
 import { DELIVERY, describeDelivery, loadPayoutTrail, payoutHistory, projectedShare } from './payouts.js';
 import { formatSol, formatTokens, standingFor, utcDate } from './standing.js';
@@ -52,7 +52,10 @@ export async function loadPosition({
   const [currentRaw, accounts, events, calloutResult, trail] = await Promise.all([
     currentBalanceRaw(connection, ata),
     allTokenAccounts(connection, address, config.mint, tokenProgram),
-    balanceEventsFor(connection, ata, lockout.start),
+    // L16 — the same LP mint the crank derives, from the same pure function,
+    // so this page and the settlement job cannot disagree about whether a
+    // wallet supplied liquidity or sold.
+    balanceEventsFor(connection, ata, lockout.start, { lpMint: lpMint(config.mint) }),
     loadCallouts({ config, address, window: epochWindow }),
     // The audit trail. Fetched, not trusted — these are the same files a
     // stranger checks the epoch with. Failure here must not cost the holder
@@ -64,7 +67,12 @@ export async function loadPosition({
   ]);
 
   const held = computeHold(events, epochWindow, { currentBalance: currentRaw });
-  const decreases = decreasesIn(events, lockout);
+  // `computeLocked`, not `decreasesIn` — it is the one that applies L16's
+  // exemption. Calling `decreasesIn` here would have this page tell a holder
+  // they are locked out while the crank pays them, which is a worse failure
+  // than either answer alone: the page exists to be checkable against the
+  // settlement, and a page that disagrees with it is a page nobody can use.
+  const { locked, decreases, lpDeposits } = computeLocked(events, lockout);
 
   const payouts = payoutHistory(trail, address.toBase58 ? address.toBase58() : String(address));
   // The basis for today is the newest settled tree the wallet appears in.
@@ -84,12 +92,16 @@ export async function loadPosition({
     held,
     events,
     lockout: {
-      locked: decreases.length > 0,
+      locked,
       lastDecreaseAt: decreases.length > 0 ? decreases[decreases.length - 1].blockTime : null,
       // The lockout runs from the epoch after the decrease, so it lifts at the
       // start of the epoch LOCKOUT_EPOCHS after the one the decrease fell in.
       liftsAt: decreases.length > 0 ? liftsAt(decreases[decreases.length - 1], epochWindow) : null,
       decreases,
+      // Kept so the page can say *why* a wallet whose balance visibly dropped
+      // is not locked out. Without it the exemption looks like a bug to the one
+      // person best placed to report it.
+      lpDeposits,
     },
     callout: calloutResult,
     now,

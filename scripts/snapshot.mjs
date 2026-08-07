@@ -237,6 +237,11 @@ async function main() {
             closing: h.closing,
             windowEvents: h.windowEvents,
             lockoutDecreases: h.lockoutDecreases,
+            // L16 — the decreases that were NOT counted as sales, because the
+            // same transaction minted the pool's LP tokens back to this wallet.
+            // Published because an exemption nobody can see is an exemption
+            // nobody can check, and this one decides whether a wallet is paid.
+            lpDeposits: h.lpDeposits,
           },
         ]),
       ),

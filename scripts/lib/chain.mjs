@@ -112,8 +112,9 @@ export async function signaturesSince(connection, account, since) {
  *
  * @returns {import('./timeline.mjs').BalanceEvent[]} oldest first
  */
-export async function balanceEventsFor(connection, account, since, { chunkSize = 25 } = {}) {
+export async function balanceEventsFor(connection, account, since, { chunkSize = 25, lpMint = null } = {}) {
   const accountKey = new PublicKey(account).toBase58();
+  const lpMintKey = lpMint == null ? null : new PublicKey(lpMint).toBase58();
   const signatures = await signaturesSince(connection, account, since);
 
   // getSignaturesForAddress returns newest first; the timeline is oldest first,
@@ -142,7 +143,7 @@ export async function balanceEventsFor(connection, account, since, { chunkSize =
       // and must not appear as a step in the timeline.
       if (tx.meta?.err) continue;
 
-      const event = extractBalanceEvent(tx, accountKey, chunk[j].signature);
+      const event = extractBalanceEvent(tx, accountKey, chunk[j].signature, { lpMint: lpMintKey });
       if (event) events.push(event);
     }
   }

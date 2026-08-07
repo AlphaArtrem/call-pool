@@ -10,12 +10,11 @@
 // and folding them together is the mistake that chart exists to prevent: money
 // in the pool can be divided now, money still in the creator vault cannot.
 //
-// ⚠️ **This is a stand-in, not the sweep.** Step 0 — the real pump.fun fee
-// sweep — is not automated, because it needs pump's own instruction account
-// layouts and guessing them would be worse than leaving it out. A plain SOL
+// ⚠️ **This is a stand-in, not the sweep.** The real one is `scripts/sweep.mjs`
+// and it needs a coin with a pump.fun fee-sharing config behind it. A plain SOL
 // transfer between two accounts we control proves the *website* renders an
-// accruing vault and a growing pool. It proves nothing about pump.fun, and
-// devnet proofs 1, 3 and 12b are still the only things that will.
+// accruing vault and a growing pool, on a cluster where no such coin exists. It
+// proves nothing about pump.fun.
 
 import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { connect } from '../lib/rpc.mjs';

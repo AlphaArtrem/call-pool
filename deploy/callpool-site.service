@@ -61,6 +61,26 @@ Environment="NODE_OPTIONS=--dns-result-order=ipv4first --no-network-family-autos
 # once. With it, the limiter reads the real client from X-Forwarded-For.
 Environment=CALLPOOL_TRUST_PROXY=1
 
+# Serve only site/, scripts/lib/ and snapshots/ — the same three trees the
+# Caddyfile allows — and 404 everything else.
+#
+# Caddy is still the documented gate and the one verified from outside, so this
+# is redundant on a correctly configured box. That is the point. Without it,
+# `serve-site.mjs` resolves any path under the repository root, and the
+# repository root is also `.env`, `.callout-auth`, `.git/`,
+# `epochs/callout-store.json` and any signing key left beside the scripts during
+# a manual crank. The containment check in site-paths.mjs stops traversal
+# *above* the root and deliberately permits everything below it.
+#
+# So the exposure is one Caddyfile edit away: delete or mistype a `handle`
+# block and every request falls through to this process, which will happily
+# serve all of it. `ReadOnlyPaths` does not help — reading is the problem — and
+# neither does binding 127.0.0.1, because Caddy is the thing forwarding.
+#
+# The allowlist has existed in the code since Phase 07 and nothing turned it on.
+# One line, and the braces are actually worn.
+Environment=CALLPOOL_PUBLIC=1
+
 # CALLPOOL_RPC_URL_MAINNET lives here, root-owned and 0600, NOT in the
 # repository — the provider key is in that URL's path, and anything under
 # /srv/callpool is a directory a web server is pointed at. CALLPOOL_RPC_URL_DEVNET

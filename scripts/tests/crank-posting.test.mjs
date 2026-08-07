@@ -27,7 +27,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
-import { confirmPosted, postStep } from '../crank.mjs';
+import { confirmPosted, postStep, sweep } from '../crank.mjs';
 import { parseArgs as postRootArgs } from '../post-root.mjs';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../..');
@@ -71,6 +71,45 @@ test('a single signer still posts directly', () => {
 
 test('no key at all is refused rather than routed anywhere', () => {
   assert.throws(() => postStep({ epoch: 7, rpc: RPC }), /cannot settle/);
+});
+
+// ── step 0 ─────────────────────────────────────────────────────────────────
+//
+// The sweep is the one step whose failure must NOT stop the run. Unswept fees
+// stay in pump's creator vault and roll into the next epoch; an epoch that
+// refuses to settle because of them costs the payout as well as the fees. The
+// asymmetry is the whole design, so it is tested rather than commented.
+
+test('the sweep runs in its own process, with the gas-only payer', () => {
+  const calls = [];
+  sweep({ rpc: RPC, payer: '/etc/callpool/payer.json' }, (script, args) => {
+    calls.push({ script, args });
+    return { status: 0 };
+  });
+
+  assert.deepEqual(calls, [
+    { script: 'sweep.mjs', args: ['--rpc', RPC, '--keypair', '/etc/callpool/payer.json'] },
+  ]);
+});
+
+test('the snapshot key is never what step 0 is handed', () => {
+  const calls = [];
+  sweep({ rpc: RPC, payer: '/etc/callpool/payer.json', keypair: '/etc/callpool/signerA.json' },
+    (script, args) => { calls.push(args); return { status: 0 }; });
+
+  assert.ok(!calls[0].includes('/etc/callpool/signerA.json'));
+});
+
+test('a failed sweep does not stop the epoch', () => {
+  const result = sweep({ rpc: RPC, payer: '/etc/callpool/payer.json' }, () => ({ status: 1 }));
+  assert.deepEqual(result, { ran: true, ok: false }, 'reported as failed, and returned rather than thrown');
+});
+
+test('no payer skips the sweep instead of failing the run', () => {
+  let ran = false;
+  const result = sweep({ rpc: RPC }, () => { ran = true; return { status: 0 }; });
+  assert.equal(ran, false);
+  assert.deepEqual(result, { ran: false, ok: true });
 });
 
 // ── the read-back ──────────────────────────────────────────────────────────

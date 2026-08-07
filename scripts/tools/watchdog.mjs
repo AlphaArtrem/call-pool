@@ -11,7 +11,14 @@
 //   node scripts/tools/watchdog.mjs --grace 900
 //   ... --min-vault 0.05   alert when the vault cannot fund many more epochs
 //   ... --heartbeat 86400  how often to say "still alive" when all is well
+//   ... --stale-after 900  past this, an overdue epoch needs a rebuild, not a
+//                          restart. Defaults to grace + one epoch.
 //   ... --once             check and exit (this is what a timer runs)
+//
+// An unsettled epoch is one of three things and they want opposite remedies,
+// so they are counted and alerted separately rather than summed — see
+// `classifyOverdue`. Summing them meant one outage pinned the total non-zero
+// forever, and a number that can never reach zero is a number nobody reads.
 //
 // **Run it somewhere else.** A watchdog on the machine it watches dies with
 // that machine, silently, which is the exact scenario it exists for. On the
@@ -26,7 +33,7 @@ import { dirname, resolve } from 'node:path';
 
 import { connect } from '../lib/rpc.mjs';
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
-import { PROGRAM_ID, fetchConfig, fetchEpoch } from '../lib/program.mjs';
+import { PROGRAM_ID, configPda, fetchConfig, fetchEpoch } from '../lib/program.mjs';
 import { alert } from '../lib/alert.mjs';
 import { iso } from '../lib/epoch.mjs';
 import {
@@ -63,6 +70,9 @@ function parseArgs(argv) {
     else if (argv[i] === '--repeat') args.repeat = Number(argv[++i]);
     else if (argv[i] === '--heartbeat') args.heartbeat = Number(argv[++i]);
     else if (argv[i] === '--lookback') args.lookback = Number(argv[++i]);
+    // Named explicitly: the generic branch below would store this as
+    // `stale-after`, and the default would silently apply forever.
+    else if (argv[i] === '--stale-after') args.staleAfter = Number(argv[++i]);
     else if (argv[i] === '--min-vault') args.minVault = Number(argv[++i]);
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
@@ -103,6 +113,96 @@ export async function overdueEpochs({ now, config, lookback, graceSeconds, hasRo
     if (!(await hasRoot(epoch))) overdue.push({ epoch, closedAt, lateBy: now - closedAt });
   }
   return overdue;
+}
+
+/**
+ * Split the overdue epochs into the three things they can actually be.
+ *
+ * Summing them was the bug. One outage pins the total non-zero forever — a
+ * stale epoch waits on a manual rebuild, and epoch 0 can never settle at all
+ * when the deploy landed inside its window (F20) — so the number only ever
+ * grows, "0 overdue" stops being reachable, and a count nobody can ever clear
+ * is a count everybody learns to ignore. Worse, the three want opposite
+ * remedies, and the 🔴 alert's first instruction is to restart services:
+ *
+ *   late        recent. Every ordinary cause is still live — a slow co-signer
+ *               tick, a restart mid-flight, an RPC blip — so looking and
+ *               restarting is the right first move, and waiting may fix it.
+ *   stale       the services have had a full epoch to recover on their own and
+ *               have not. Restarting does nothing: the snapshot was built
+ *               against a pool that has since been drained past it (F10), and
+ *               only `rebuildEpoch` re-derives it. Needs a person.
+ *   impossible  no inputs were ever captured, so there is nothing to rebuild
+ *               *from*. Worth saying once. Never worth saying twice, and never
+ *               worth keeping the headline count off zero.
+ *
+ * The line between late and stale is one whole epoch past the grace period,
+ * because that is exactly how long it takes for "it will sort itself out on the
+ * next tick" to stop being true.
+ *
+ * `impossible` is decided by the caller — it needs a fact about when the
+ * program was initialized that no amount of arithmetic here can supply.
+ */
+export function classifyOverdue(overdue, { staleAfterSeconds, impossible = [] }) {
+  const buckets = { late: [], stale: [], impossible: [] };
+  for (const entry of overdue) {
+    if (impossible.includes(entry.epoch)) buckets.impossible.push(entry);
+    else if (entry.lateBy >= staleAfterSeconds) buckets.stale.push(entry);
+    else buckets.late.push(entry);
+  }
+  return buckets;
+}
+
+/**
+ * Which epochs could never have been settled, because they predate the program.
+ *
+ * `initialize` accepts a genesis up to one whole epoch either side of the
+ * moment it runs (`GenesisOutOfRange`), so a deploy that lands mid-epoch sets
+ * epoch 0 to have started *before* the program existed. Nothing was polling the
+ * callout feed for that window and nothing ever will be — the epoch has no
+ * inputs, cannot be rebuilt, and will sit in the overdue count until it falls
+ * out of the lookback weeks later. F20.
+ *
+ * Only epoch 0 can be in this state: every later epoch begins after
+ * `initialize` has already run. So the question is a single comparison, and the
+ * only hard part is knowing when `initialize` landed — which is the oldest
+ * transaction the config account ever had.
+ *
+ * The answer never changes, so it is cached by the caller and this is asked
+ * once in the lifetime of a deployment.
+ */
+export function impossibleEpochs({ config, initializedAt }) {
+  if (initializedAt == null) return [];
+  return initializedAt > Number(config.genesisTs) ? [0] : [];
+}
+
+/**
+ * When `initialize` ran, read from the config account's own history.
+ *
+ * The config is written by `initialize` and then by every `post_epoch_root`, so
+ * its oldest signature is the initialization. Paged backwards to the end, which
+ * is one request per thousand epochs — on a daily clock, one request for the
+ * first three years.
+ *
+ * Returns null rather than throwing if the history cannot be walked. A watchdog
+ * that dies because it could not classify an epoch it was only going to mention
+ * once has traded a cosmetic problem for a real one.
+ */
+export async function initializedAt(connection, configAddress) {
+  try {
+    let before;
+    let oldest = null;
+    for (;;) {
+      const page = await connection.getSignaturesForAddress(configAddress, { limit: 1000, before });
+      if (page.length === 0) break;
+      oldest = page[page.length - 1];
+      before = oldest.signature;
+      if (page.length < 1000) break;
+    }
+    return oldest?.blockTime ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -187,6 +287,21 @@ async function check(args) {
     hasRoot,
   });
 
+  // Asked until it answers, then remembered forever: the answer is a fact about
+  // a deployment that already happened and cannot change. Only a real timestamp
+  // is cached — a failed history walk retries on the next tick rather than
+  // disabling this permanently over one bad RPC minute.
+  if (overdue.length > 0 && state.initializedAt == null) {
+    const at = await initializedAt(connection, configPda());
+    if (at != null) state = { ...state, initializedAt: at };
+  }
+  const impossible = impossibleEpochs({ config, initializedAt: state.initializedAt ?? null });
+
+  const buckets = classifyOverdue(overdue, {
+    staleAfterSeconds: args.staleAfter ?? args.grace + Number(config.epochSeconds),
+    impossible,
+  });
+
   const unpaid = await unpaidEpochs({
     now,
     config,
@@ -204,19 +319,19 @@ async function check(args) {
   const addProblem = (text, options = {}) => problems.push({ text, options });
   const keys = [];
 
-  if (overdue.length > 0) {
-    const key = `overdue-${overdue[0].epoch}`;
+  if (buckets.late.length > 0) {
+    const key = `overdue-${buckets.late[0].epoch}`;
     keys.push(key);
     if (shouldAlert(state, key, now, args.repeat)) {
-      const oldest = overdue[0];
-      const list = overdue
+      const oldest = buckets.late[0];
+      const list = buckets.late
         .slice(0, 8)
         .map((o) => `  epoch ${o.epoch}  closed ${iso(o.closedAt)}  (${minutes(o.lateBy)} ago)`)
         .join('\n');
 
       addProblem(
-        `🔴 CALLPOOL — ${overdue.length} epoch(s) closed with NO ROOT ON CHAIN\n\n` +
-          `${list}${overdue.length > 8 ? `\n  … and ${overdue.length - 8} more` : ''}\n\n` +
+        `🔴 CALLPOOL — ${buckets.late.length} epoch(s) closed with NO ROOT ON CHAIN\n\n` +
+          `${list}${buckets.late.length > 8 ? `\n  … and ${buckets.late.length - 8} more` : ''}\n\n` +
           `oldest late by   ${minutes(oldest.lateBy)}\n` +
           `program          ${PROGRAM_ID.toBase58()}\n` +
           `epoch clock      ${config.epochSeconds}s, challenge ${config.challengeSeconds}s\n` +
@@ -263,6 +378,79 @@ async function check(args) {
       );
       state = recordAlert(state, key, now);
     }
+  }
+
+  // Stale is a different alert because it has a different cure. The 🔴 above
+  // says "look, then restart"; here restarting is the one thing that provably
+  // does nothing, and saying it anyway is how an operator spends an hour
+  // bouncing healthy services. Still repeats — it needs a person, and it will
+  // not clear on its own.
+  if (buckets.stale.length > 0) {
+    const key = `stale-${buckets.stale[0].epoch}`;
+    keys.push(key);
+    if (shouldAlert(state, key, now, args.repeat)) {
+      const oldest = buckets.stale[0];
+      const list = buckets.stale
+        .slice(0, 8)
+        .map((o) => `  epoch ${o.epoch}  closed ${iso(o.closedAt)}  (${minutes(o.lateBy)} ago)`)
+        .join('\n');
+
+      addProblem(
+        `🟠 CALLPOOL — ${buckets.stale.length} epoch(s) are STALE and need rebuilding\n\n` +
+          `${list}${buckets.stale.length > 8 ? `\n  … and ${buckets.stale.length - 8} more` : ''}\n\n` +
+          `oldest late by   ${minutes(oldest.lateBy)}\n` +
+          `program          ${PROGRAM_ID.toBase58()}\n\n` +
+          'MEANING: these closed more than a full epoch ago and still have no root. Whatever ' +
+          'stopped them has had a complete cycle to recover on its own and has not, so this ' +
+          'is no longer a service that needs a kick.\n\n' +
+          'The usual cause is a cleared backlog. Every unsettled epoch was built against the ' +
+          'pool as it stood at build time, so N epochs waiting behind a blockage each claim ' +
+          'nearly the same money; when the blockage clears the first settles, drains the pool, ' +
+          'and the rest allocate more than exists. The co-signer refuses those correctly and ' +
+          'forever, and nothing re-derives them by itself.\n\n' +
+          '⚠️ REBUILD THEM IN ORDER, OLDEST FIRST. Dust carries forward per wallet, so a gap ' +
+          'in the chain makes every later epoch unbuildable — and do NOT reach for ' +
+          '--carry-reset to skip one, because that forfeits real balances owed to real ' +
+          'wallets. One at a time, in sequence.\n\n' +
+          'Removing the published directory is safe here and only here: these epochs have no ' +
+          'root, so nothing was promised to anyone and there is no audit trail to damage.',
+        {
+          commands: [
+            { what: `1 — rebuild the OLDEST stale epoch (${oldest.epoch}) and settle it`,
+              command: rebuildEpoch(t, oldest.epoch) },
+            { what: '2 — watch it land', command: readLog(t.crank, 40) },
+            { what: '3 — then the next one, and only then', command:
+                rebuildEpoch(t, oldest.epoch + 1) },
+          ],
+        },
+      );
+      state = recordAlert(state, key, now);
+    }
+  }
+
+  // Said once in the lifetime of a deployment, and then never again. There is
+  // nothing to fix — the inputs for this window were never captured and cannot
+  // be — so a repeating alert would be a permanent false alarm, and a permanent
+  // contribution to a count that can never reach zero.
+  //
+  // Deliberately NOT in `keys`: `forgetResolved` would drop the record on the
+  // next quiet tick and the alert would fire again forever.
+  const announced = state.impossibleAnnounced ?? [];
+  const unannounced = buckets.impossible.filter((o) => !announced.includes(o.epoch));
+  if (unannounced.length > 0) {
+    addProblem(
+      `⚪️ CALLPOOL — epoch ${unannounced.map((o) => o.epoch).join(', ')} can never be settled\n\n` +
+        `genesis          ${iso(Number(config.genesisTs))}\n` +
+        `initialized      ${state.initializedAt ? iso(state.initializedAt) : 'unknown'}\n` +
+        `program          ${PROGRAM_ID.toBase58()}\n\n` +
+        'MEANING: the deploy landed inside this epoch\'s window, so the callout feed was never ' +
+        'polled for it. There are no inputs, there is nothing to rebuild from, and no command ' +
+        'fixes it.\n\n' +
+        'NOTHING TO DO. This is said once and then dropped from the overdue count, so that ' +
+        '"0 overdue" stays a number that means something. To avoid it next time, start the ' +
+        'deploy on an epoch boundary.',
+    );
+    state = { ...state, impossibleAnnounced: [...announced, ...unannounced.map((o) => o.epoch)] };
   }
 
   if (unpaid.length > 0) {
@@ -325,17 +513,32 @@ async function check(args) {
 
   for (const { text, options } of problems) await alert(text, options);
 
+  // **`impossible` is deliberately absent from this.** That is the self-heal:
+  // an epoch nobody can ever settle must not hold the heartbeat off forever,
+  // or the one signal that says "everything is fine" can never be sent again
+  // and the daily green message quietly stops arriving.
   const quiet =
-    problems.length === 0 && overdue.length === 0 && unpaid.length === 0 && vaultSol >= args.minVault;
+    problems.length === 0 &&
+    buckets.late.length === 0 &&
+    buckets.stale.length === 0 &&
+    unpaid.length === 0 &&
+    vaultSol >= args.minVault;
+
   if (quiet && now - (state.lastHeartbeat ?? 0) >= args.heartbeat) {
     const current = epochAt(now, config);
+    const unsettleable = buckets.impossible.map((o) => o.epoch);
     await alert(
       `🟢 CALLPOOL — still settling.\n\n` +
         `epoch            ${current} in progress\n` +
         `settled through  ${current - 1}, every root posted\n` +
         `vault            ${vaultSol.toFixed(4)} SOL (~${Math.floor(vaultLamports / 1_461_600)} epochs)\n` +
-        `program          ${PROGRAM_ID.toBase58()}\n\n` +
-        'Nothing needs doing. This arrives once a day so that silence means something.',
+        `program          ${PROGRAM_ID.toBase58()}\n` +
+        // Named rather than hidden. It is excluded from the counts, and an
+        // exclusion nobody is told about is indistinguishable from a bug.
+        (unsettleable.length > 0
+          ? `excluded         epoch ${unsettleable.join(', ')} — predates the program, no inputs exist\n`
+          : '') +
+        '\nNothing needs doing. This arrives once a day so that silence means something.',
       { commands: [{ what: 'the run, if you want to look', command: readLog(t.crank, 40) }] },
     );
     state = { ...state, lastHeartbeat: now };
@@ -343,9 +546,14 @@ async function check(args) {
 
   writeState(statePath, state);
 
+  // Three numbers, not one total. Whoever reads this line — in journald, in a
+  // dashboard, at a glance — needs to know which of them wants a person, and
+  // "8 overdue" answers that question wrongly whichever way it is read.
   console.log(
-    `watchdog: epoch ${epochAt(now, config)}, ${overdue.length} overdue, ${unpaid.length} unpaid, ` +
-      `vault ${vaultSol.toFixed(4)} SOL, ${problems.length} alert(s) sent`,
+    `watchdog: epoch ${epochAt(now, config)}, ${buckets.late.length} late, ` +
+      `${buckets.stale.length} stale, ${buckets.impossible.length} unsettleable, ` +
+      `${unpaid.length} unpaid, vault ${vaultSol.toFixed(4)} SOL, ` +
+      `${problems.length} alert(s) sent`,
   );
 }
 

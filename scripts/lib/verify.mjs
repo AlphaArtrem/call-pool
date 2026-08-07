@@ -27,6 +27,7 @@ import { resolve } from 'node:path';
 import { emptyCarry, hashCarryFile, reconcile } from './carry.mjs';
 import { buildEpoch } from './epoch-build.mjs';
 import { readJson } from './store.mjs';
+import { lpMint } from './pump-addresses.mjs';
 import { computeHold, computeLocked } from './timeline.mjs';
 import { lockoutWindow } from './epoch.mjs';
 import { LOCKOUT_EPOCHS } from './config.mjs';
@@ -184,11 +185,18 @@ export async function recheckChain(dir, { connection, chain }) {
   const window = { start, end };
   const lockWindow = lockoutWindow(window, LOCKOUT_EPOCHS);
 
+  // L16 — derived here from the mint the epoch's own inputs name, not passed
+  // in. The verifier must reach the same lockout verdict as the builder, and
+  // the exemption is part of that verdict: a reproducer that did not know
+  // about it would call every LP'd wallet locked and refuse a correct epoch.
+  const poolLpMint = callouts.mint ? lpMint(callouts.mint) : null;
+
   for (const [wallet, published] of Object.entries(balances)) {
     const events = await chain.balanceEventsFor(
       connection,
       published.tokenAccount,
       lockWindow.start - (end - start),
+      { lpMint: poolLpMint },
     );
     const current = await chain.currentBalanceRaw(connection, published.tokenAccount);
 

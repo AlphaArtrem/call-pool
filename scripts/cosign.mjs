@@ -16,20 +16,33 @@
 //   node scripts/cosign.mjs --epoch 12 --keypair <MEMBER> --multisig <ADDRESS>
 //   ... --execute            # also execute once the threshold is met
 //   ... --dry-run            # verify and print, sign nothing
+//   ... --callout-store <PATH>   # corroborate callers against our own capture
 //
 // **This script's job is to refuse.** An automated co-signer that approves
 // whatever it is handed is a 1-of-3 wearing a costume: an attacker who owns
 // host 1 proposes a root paying themselves, and host 2 rubber-stamps it. So
 // before it approves anything it (a) reproduces the epoch from its own
-// published inputs with `verify-epoch.mjs --recheck-chain`, and (b) rebuilds
-// the instruction byte for byte and compares it with what the proposal actually
-// contains. Either check failing is a refusal, loudly, with the transaction
-// left unapproved for a human.
+// published inputs with `verify-epoch.mjs --recheck-chain`, (b) rebuilds the
+// instruction byte for byte and compares it with what the proposal actually
+// contains, and (c) with `--callout-store`, checks the epoch's credited callers
+// against its OWN independent capture of pump.fun's feed. Any check failing is
+// a refusal, loudly, with the transaction left unapproved for a human.
 //
-// That second check is the one that matters and the easy one to skip. A
+// The second check is the one that matters most and the easy one to skip. A
 // proposal is a blob in someone else's account; "it is for epoch 12" is not
 // something you can read off it safely. The only safe statement is "the bytes
 // in this proposal are the bytes I derived myself".
+//
+// The third exists because (a) and (b) together still trust box A about one
+// thing. Reproducing an epoch proves the root follows from the published
+// inputs; it cannot prove the inputs are real. `callouts.json` is the single
+// value in this system that no amount of chain reading can check (§5.1), so an
+// attacker owning box A could fabricate a capture naming wallets they control —
+// each holding `min_hold`, which is buyable — and the epoch would reproduce
+// perfectly and recheck perfectly against chain. `--callout-store` points this
+// at a feed capture box B polled itself, and a wallet credited here but never
+// seen there is a refusal. See `lib/corroborate.mjs` for what that can and
+// cannot say; it is not a total defence and the limits are written down.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -42,8 +55,9 @@ import * as multisig from '@sqds/multisig';
 
 import { connect } from './lib/rpc.mjs';
 import { DEFAULT_RPC_URL } from './lib/config.mjs';
+import { corroborateCallouts } from './lib/corroborate.mjs';
 import { fetchConfig, fetchEpoch, poolAvailable, postEpochRootIx } from './lib/program.mjs';
-import { REPO_ROOT, snapshotDir } from './lib/store.mjs';
+import { readJson, REPO_ROOT, snapshotDir } from './lib/store.mjs';
 
 function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL, execute: false, dryRun: false, yes: false };
@@ -51,6 +65,10 @@ function parseArgs(argv) {
     if (argv[i] === '--execute') args.execute = true;
     else if (argv[i] === '--dry-run') args.dryRun = true;
     else if (argv[i] === '--yes') args.yes = true;
+    // Named explicitly: the generic branch below would store this as
+    // `callout-store`, and the corroboration would then silently never run —
+    // which is the one failure mode this check must not have.
+    else if (argv[i] === '--callout-store') args.calloutStore = argv[++i];
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -109,6 +127,80 @@ function reproduce(epoch, rpc) {
         'This is the co-signer doing its job; do not override it.',
     );
   }
+}
+
+/**
+ * Check the epoch's credited callers against our own capture of the feed.
+ *
+ * The third refusal, and the only one that looks outside what box A published.
+ * Skipped when no store is configured — but skipped *loudly*, because a check
+ * that quietly does nothing is worse than one that was never written: it makes
+ * the topology look stronger than it is on every log line that omits it.
+ *
+ * A refusal here is expected to be transient. Box B polls every minute and this
+ * runs every minute, so the usual cause — a store that has not yet caught up
+ * past the window's end — clears itself on the next tick without anyone being
+ * woken up.
+ */
+function corroborate(epoch, storePath) {
+  if (!storePath) {
+    console.log(
+      '\ncallouts     NOT CORROBORATED — no --callout-store given.\n' +
+        '             This signer is checking that the root follows from box A\'s inputs, not\n' +
+        '             that those inputs are real. callouts.json cannot be re-derived from chain,\n' +
+        '             so without an independent capture a compromised box A can fabricate\n' +
+        '             callers and this will approve them. Point --callout-store at a store this\n' +
+        '             host polled itself.',
+    );
+    return;
+  }
+
+  const published = readJson(resolve(snapshotDir(epoch), 'callouts.json'));
+  const ownStore = readJson(resolve(storePath), { mint: null, updatedAt: 0, callouts: {} });
+
+  if (ownStore.mint && published.mint && ownStore.mint !== published.mint) {
+    throw new Error(
+      `this host's callout store holds records for ${ownStore.mint}, but epoch ${epoch} is for ` +
+        `${published.mint}. Corroborating one coin's callers against another's capture would ` +
+        'be worse than not corroborating at all — NOT signing.',
+    );
+  }
+
+  const result = corroborateCallouts({
+    published,
+    ownStore,
+    window: published.window,
+  });
+
+  console.log(
+    `\ncallouts     ${result.credited.length} credited, ` +
+      `${result.credited.length - result.unverified.length} corroborated by this host's own poll` +
+      `${result.truncated ? ' (feed was TRUNCATED here — check degraded)' : ''}`,
+  );
+  if (result.missed.length > 0) {
+    // Not a refusal. Box A holding more than we do is the ordinary shape of a
+    // poll race, and the direction that costs a caller their day rather than
+    // paying an attacker. Worth printing so a persistent pattern is visible.
+    console.log(
+      `             note: ${result.missed.length} wallet(s) we saw are NOT credited — ` +
+        `${result.missed.slice(0, 5).join(', ')}${result.missed.length > 5 ? ', …' : ''}`,
+    );
+  }
+
+  if (!result.ok) {
+    throw new Error(
+      `epoch ${epoch} credits callers this host cannot corroborate — NOT signing.\n` +
+        `  ${result.reason}\n` +
+        (result.unverified.length > 0
+          ? `  unverified: ${result.unverified.slice(0, 10).join(', ')}` +
+            `${result.unverified.length > 10 ? `, … (${result.unverified.length} total)` : ''}\n`
+          : '') +
+        '  If this host\'s poll is simply behind, the next tick clears it on its own. If it\n' +
+        '  persists, box A is claiming callouts pump.fun did not show this host — do not\n' +
+        '  override it, and do not "fix" it by pointing --callout-store at box A\'s store.',
+    );
+  }
+  if (result.reason) console.log(`             ⚠️  ${result.reason}`);
 }
 
 /** Block until the multisig account itself reports the new transaction index. */
@@ -211,8 +303,9 @@ async function main() {
     return;
   }
 
-  // ── the two refusals ─────────────────────────────────────────────────────
+  // ── the three refusals ───────────────────────────────────────────────────
   reproduce(epoch, args.rpc);
+  corroborate(epoch, args.calloutStore);
 
   const { root, leafCount, allocate } = publishedRoot(snapshotDir(epoch));
   const pool = await poolAvailable(connection, config);

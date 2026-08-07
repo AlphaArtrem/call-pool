@@ -21,6 +21,13 @@
 //   ... --epoch 12     one specific epoch instead of whatever is outstanding
 //   ... --lookback 30  how far back to search for an unsettled epoch
 //   ... --dry-run      fetch and reproduce, sign nothing
+//   ... --callout-store <PATH>   this host's OWN feed capture, for corroboration
+//
+// `--callout-store` is the one argument here that must never point at anything
+// fetched from `--base`. Everything else this script downloads is a claim to be
+// checked; that store is the thing doing the checking, and it is only worth
+// having because box A cannot write it. Point it at the store box B's own
+// `poll-callouts.mjs` timer maintains.
 //
 // **Fetching is not trusting.** Everything downloaded here is treated as a
 // claim: `cosign.mjs` recomputes the root from it and compares the proposal
@@ -54,6 +61,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') args.dryRun = true;
     else if (argv[i] === '--lookback') args.lookback = Number(argv[++i]);
+    // Named explicitly — the generic branch would store it as `callout-store`
+    // and the corroboration would silently never run.
+    else if (argv[i] === '--callout-store') args.calloutStore = argv[++i];
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -210,6 +220,7 @@ async function main() {
         '--epoch', String(epoch),
         '--rpc', args.rpc,
         '--multisig', args.multisig,
+        ...(args.calloutStore ? ['--callout-store', args.calloutStore] : []),
         ...(args.dryRun ? ['--dry-run'] : ['--keypair', args.keypair, '--execute', '--yes']),
       ],
       { stdio: 'inherit', cwd: REPO_ROOT },

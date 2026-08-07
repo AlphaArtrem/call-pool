@@ -176,12 +176,26 @@
         and this is deliberately not one.
       -->
       <div class="hero-art" aria-hidden="true">
-        <svg viewBox="0 0 460 400" focusable="false">
-          <ellipse class="art-orbit" cx="235" cy="210" rx="210" ry="80" transform="rotate(-12 235 210)"/>
-          <ellipse class="art-orbit art-orbit-2" cx="235" cy="205" rx="158" ry="58" transform="rotate(-12 235 205)"/>
+        <!--
+          The viewBox starts at -65, not 0. The outer orbit is 294 × 112 rotated
+          -12° about (235,210), which reaches from -59 to 529 — wider than the
+          460-unit box this used to have. Rather than let it paint outside the
+          viewport (which put it off the left edge of the page and underneath
+          the headline on tablets), the box was widened to hold it, with about
+          six units of margin at each end.
 
-          <path class="art-ring" d="M304.5 122.2 A95 95 0 1 0 304.5 277.8"/>
-          <circle class="art-drop" cx="341" cy="200" r="32"/>
+          Widening it is free: the CONTENT coordinates did not move, and the
+          heights did not change, so `.hero-art svg`'s max-width was scaled by
+          the same 600/460 to keep the rendered scale identical. Anything added
+          out past x=-59 or x=529 needs this box widened again, not an
+          `overflow` override.
+        -->
+        <svg viewBox="-65 0 600 400" focusable="false">
+          <ellipse class="art-orbit" cx="235" cy="210" rx="294" ry="112" transform="rotate(-12 235 210)"/>
+          <ellipse class="art-orbit art-orbit-2" cx="235" cy="205" rx="221.2" ry="81.2" transform="rotate(-12 235 205)"/>
+
+          <path class="art-ring" d="M324.6 93.5 A130 130 0 1 0 324.6 306.5"/>
+          <circle class="art-drop" cx="374.8" cy="200" r="44"/>
 
           <g class="art-coin">
             <circle cx="62" cy="146" r="18"/>
@@ -198,7 +212,10 @@
 
           <circle class="art-dot" cx="150" cy="330" r="4"/>
           <circle class="art-dot" cx="30" cy="230" r="3"/>
-          <circle class="art-dot" cx="245" cy="52" r="3.5"/>
+          <!-- Clear of the ring, not centred on anything. At the ring's old
+               radius this sat at (245,52); the enlarged ring reaches 153 units
+               from (250,200) and would have swallowed it whole. -->
+          <circle class="art-dot" cx="196" cy="42" r="3.5"/>
 
           <path class="art-spark" transform="translate(120 62)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
           <path class="art-spark" transform="translate(336 40) scale(0.7)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
@@ -311,9 +328,19 @@
           </li>
         </ol>
 
+        <!--
+          The second bold sentence is the whole of L18's copy on this page. It used
+          to carry two more clauses — that a wallet earns nothing while its tokens
+          are in the pool, and that liquidity supplied anywhere else still locks
+          you out — which the owner removed on 2026-08-07. See the note under
+          "Where it lives" in docs/DECISIONS-LOCKED.md §L18 for what that means and
+          where the two facts are still stated.
+        -->
         <p class="highlight">
           <strong>Selling locks you out for 7 days.</strong> Any decrease counts, however small —
           including moving tokens to another wallet you own. Buying back does not shorten it.
+          <strong>Supplying liquidity to this coin’s own pump.fun pool is the one exception and
+          does not lock you out.</strong>
         </p>
 
         <h3 class="subhead">What counts as selling</h3>

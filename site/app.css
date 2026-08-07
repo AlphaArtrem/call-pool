@@ -91,6 +91,23 @@
 
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
 
+  /* The reading measure, and the reason the shell can be wide without the page
+   * becoming unreadable. `.wrap` grows with the viewport so grids, tables and
+   * card rows get the room; every block that is a SENTENCE rather than a layout
+   * caps itself here instead. Without it the notes and callouts ran to 150–170
+   * characters a line on a laptop.
+   *
+   * It is also what keeps the page's left edge: capped blocks stay
+   * left-aligned, so every heading and every sentence still starts at the same
+   * x down the whole page. Centring them would undo that.
+   *
+   * `em`, NOT `rem`, and that is the whole point of the unit. A custom property
+   * is substituted where it is used, so `em` resolves against the font-size of
+   * the block being capped — every one of them lands at ~80 characters whatever
+   * size it is set in. In `rem` this was one fixed width, and `.note` at 0.875rem
+   * simply fitted more characters into it and stayed over measure at 101. */
+  --measure: 40em;
+
   /* Inter is pump.fun's typeface. It is NAMED, never fetched: a webfont link
    * is a third-party request on every page load, and this page's whole claim
    * is that nothing it renders passed through anyone else's server. Visitors
@@ -206,8 +223,25 @@ body {
   overflow-x: clip;
 }
 
+/* The gutter is HALF what a plain `max-width: 64rem` gave, at every width above
+ * 64rem, and that is what the calc says rather than approximates.
+ *
+ *   old gutter = (100vw - 64rem) / 2  =  50vw - 32rem
+ *   new gutter = (100vw - content) / 2 where content = 32rem + 50vw
+ *              = (50vw - 32rem) / 2   =  half the old one, exactly
+ *
+ * Below 64rem the calc evaluates to more than the viewport, so `max-width`
+ * stops binding and this is a no-op — phones and tablets render exactly as they
+ * did, which is the point: they were not the complaint.
+ *
+ * The 96rem ceiling only bites past ~2000px, where halving the gutter again
+ * would push the measure past anything readable. It is not reached on a laptop.
+ *
+ * Widening the shell does NOT widen the prose. Anything that is a paragraph
+ * rather than a grid carries its own cap — see `.lede` and `.highlight`. Take
+ * those off and the page grows 200-character lines on a big monitor. */
 .wrap {
-  max-width: 64rem;
+  max-width: min(calc(32rem + 50vw), 96rem);
   margin: 0 auto;
   padding: 0 1rem;
 }
@@ -519,7 +553,7 @@ pre code {
 
 .lede {
   font-size: 1.0625rem;
-  max-width: 44rem;
+  max-width: var(--measure);
   color: var(--muted);
 }
 
@@ -531,6 +565,7 @@ pre code {
   color: var(--muted);
   font-size: 0.875rem;
   margin: 0.25rem 0 0.75rem;
+  max-width: var(--measure);
 }
 
 
@@ -616,6 +651,7 @@ pre code {
   color: var(--muted);
   margin: 0;
   font-size: 1.0625rem;
+  max-width: var(--measure);
 }
 
 /* The icon chip beside each section heading. Decorative — every one is
@@ -765,6 +801,10 @@ pre code {
 
 /* One sentence that has to survive skim-reading. Used where the page would
  * otherwise bury a rule with money attached in a paragraph. */
+/* The cap is on the BOX, not just the text inside it, so the callout stays a
+ * callout — a full-bleed bar with a 44rem column of text floating in it reads as
+ * a layout bug. Padding is added on top of the measure so the text column itself
+ * is still the measure. */
 .highlight {
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
@@ -773,6 +813,7 @@ pre code {
   padding: 1rem 1.125rem;
   margin: 1.5rem 0;
   font-size: 1rem;
+  max-width: calc(var(--measure) + 2.25rem);
 }
 
 .highlight strong {
@@ -1008,9 +1049,21 @@ summary:focus-visible {
   margin-bottom: 0.75rem;
 }
 
+/* No `overflow` override, and there must not be one. The orbits are held by the
+ * viewBox itself (see the note on the <svg> in index.html), which is what keeps
+ * this correct at EVERY width rather than only where the columns happen to be
+ * wide. Letting the art paint outside its viewport instead is what put the
+ * orbit off the left edge of the page and under the headline on tablets: the
+ * columns are halves, so the narrower the window the less of the overhang the
+ * 2.5rem gap can absorb, and the further past the page edge the other side
+ * goes.
+ *
+ * The two max-widths below are 600/460 × what they used to be — the viewBox got
+ * wider by exactly that factor, so this keeps the rendered scale unchanged.
+ * Change one without the other and the artwork silently resizes. */
 .hero-art svg {
   width: 100%;
-  max-width: 15rem;
+  max-width: 19.5rem;
   height: auto;
   display: block;
 }
@@ -1025,7 +1078,7 @@ summary:focus-visible {
   }
 
   .hero-art svg {
-    max-width: 21rem;
+    max-width: 27.4rem;
   }
 }
 
@@ -1040,12 +1093,15 @@ summary:focus-visible {
   stroke: var(--line);
 }
 
-/* The favicon's proportions, kept: stroke ≈ 0.55 × radius is what makes the
- * big mark and the tab icon read as the same shape. */
+/* stroke ≈ 0.36 × radius. That is NOT the favicon's 0.55 — the big mark has
+ * always been drawn with thinner walls than the tab icon, and this rule used to
+ * claim otherwise. Enlarging the ring kept the ratio the page already had rather
+ * than quietly restyling it: r went 95 → 130, so the stroke went 34 → 46.5.
+ * Change one of those two numbers and the other has to move with it. */
 .art-ring {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 34;
+  stroke-width: 46.5;
   stroke-linecap: round;
 }
 
@@ -1053,10 +1109,19 @@ summary:focus-visible {
   fill: var(--accent);
 }
 
+/* The coins are the one warm thing in the artwork, and they are `--pumpfun` and
+ * not a literal orange so they track the theme: the light blocks swap that token
+ * for #7c2d12, which is the same ramp dark enough to hold its own on #fafafa. A
+ * hardcoded #fb923c looks right here and washes out there.
+ *
+ * `fill` stays an opaque token rather than `none`. The orbits pass behind the
+ * coins, and a transparent centre lets the marching dashes run straight through
+ * them — which flattens the artwork into one plane and makes the dashes look
+ * like a rendering fault rather than a path. */
 .art-coin circle {
   fill: var(--raised);
-  stroke: var(--faint);
-  stroke-width: 1.8;
+  stroke: var(--pumpfun);
+  stroke-width: 3;
 }
 
 .art-spark {
@@ -1072,12 +1137,14 @@ summary:focus-visible {
  * of it off.
  *
  * The orbits travel their own dashes rather than rotating. A rotation would
- * read well and then clip: the outer ellipse is 210 units of radius about a
- * centre 210 units down a 400-unit viewBox, so a quarter turn puts it outside
- * the viewport and an SVG clips to its viewport by default. Marching the dash
- * pattern around the path gives the same sense of orbit and never leaves the
- * box. The offset is a whole number of dash periods (5 + 7 = 12) so the loop
- * has no visible seam. */
+ * read well and then clip: the outer ellipse is 294 units of radius about a
+ * centre 210 units down a 400-unit box, so a quarter turn stands it on end and
+ * puts it outside the viewport — the box was widened for its WIDTH, not its
+ * height, and an SVG clips to its viewport. Marching the dash pattern around
+ * the path gives the same sense of orbit and never leaves the box. The offset
+ * is a whole number of dash periods (5 + 7 = 12) so the loop has no visible
+ * seam; that holds at any radius, because it depends on the period and not on
+ * the length of the path. */
 @keyframes art-orbit-travel {
   to {
     stroke-dashoffset: -48;
@@ -1827,6 +1894,7 @@ input[type="text"]::placeholder {
 
 .failure-detail {
   font-size: 0.9375rem;
+  max-width: var(--measure);
 }
 
 .failure-technical {

@@ -56,6 +56,12 @@ export function topology(env = process.env) {
     signer: env.CALLPOOL_SIGNER_KEYPAIR ?? '/etc/callpool/signerA.json',
     // Where the crank publishes epoch inputs for the co-signer to re-derive.
     publishPort: env.CALLPOOL_PUBLISH_PORT ?? '8100',
+    // The Solana CLI, materialised outside `/root` so the service user can
+    // execute it. The installer's own location cannot be used — see checkVault.
+    solanaBin: env.CALLPOOL_SOLANA_BIN ?? '/opt/solana-cli/bin',
+    // Which cluster the remediation commands should ask about. `mainnet-beta`
+    // is the default because that is what a wrong answer costs most on.
+    cluster: env.CALLPOOL_CLUSTER ?? 'mainnet-beta',
   };
 }
 
@@ -164,6 +170,25 @@ export function payEpoch(t, epoch) {
   );
 }
 
-/** What the vault holds, and where to send more. */
-export const checkVault = (t, address) =>
-  ssh(t.crank, `${t.repo}/../.local/share/solana/install/active_release/bin/solana balance ${address} --url devnet`);
+/**
+ * What the vault holds, and where to send more.
+ *
+ * Two things here were wrong until the alert was first made to fire, on
+ * 2026-08-07, and both would have shown up only during the outage they exist
+ * for — which is the whole failure mode F8 named:
+ *
+ *   * **The CLI path.** The installer puts binaries under `/root` at mode 700
+ *     and symlinks `active_release` back into it, so the path this built could
+ *     not be executed by anyone but root (F16). The working copy is a
+ *     `cp -rL` materialisation outside root's home.
+ *   * **`--url devnet`, hardcoded.** On mainnet that reports the devnet balance
+ *     of a mainnet address — which is zero, always, and looks exactly like the
+ *     emergency the alert was sent about. A command that answers confidently
+ *     and wrongly is worse than no command.
+ *
+ * The cluster is derived rather than configured: the alert already knows the
+ * RPC it read the balance from, and asking an operator to keep a second copy
+ * of that in sync is how it drifts again.
+ */
+export const checkVault = (t, address, cluster = t.cluster) =>
+  ssh(t.crank, `${t.solanaBin}/solana balance ${address} --url ${cluster}`);

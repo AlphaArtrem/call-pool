@@ -40,6 +40,11 @@ const state = {
   // at the point of failure, and reused everywhere a value would otherwise
   // have to invent its own explanation — see UNAVAILABLE.
   unavailable: null,
+  // Has the first read finished, however it finished? The calculator is wired
+  // before it has, so that pressing Check during load cannot navigate — and
+  // without this, "still reading" would be reported as "not launched yet",
+  // which is a different and untrue statement.
+  settled: false,
 };
 
 /**
@@ -222,7 +227,15 @@ function startTicking() {
   setInterval(tick, 1000);
 }
 
-async function main() {
+/**
+ * Boot, however it ends.
+ *
+ * Split from `main` only so that `state.settled` can be set on *every* way out
+ * — four early returns and a throw. The calculator is wired before any of them
+ * and reads that flag to tell "still reading" from "nothing to read", and a
+ * flag set at four of five exits is worse than no flag at all.
+ */
+async function boot() {
   const config = siteConfig();
   state.config = config;
 
@@ -230,6 +243,18 @@ async function main() {
   // social links must work on a page that cannot read a single number, which
   // is exactly the page someone lands on when the RPC is down.
   wireTopbar(config);
+
+  // And the calculator, for a third reason that is not obvious: this form has
+  // no `action`, so an unprevented submit is a **GET to the current path with
+  // the form's fields as the query string** — which navigates, reloads, and
+  // replaces `?cluster=devnet` with `?address=…`. An internal devnet session
+  // silently falls back to mainnet the first time anyone presses Check.
+  //
+  // It was wired on two of the four paths out of `main`, so on the pre-launch
+  // and unconfigured pages the button reloaded the page instead of answering.
+  // Wiring it once, early, fixes both: the handler always calls
+  // preventDefault(), and it already explains a state it cannot compute in.
+  wireCalculator(config);
 
   // Same reasoning for the contract strip: it renders a state on every path,
   // including the unconfigured one, rather than sitting as an empty slot.
@@ -283,12 +308,10 @@ async function main() {
   // launched yet". The state set above already says which it is.
   if (state.chainConfig == null) {
     resetLiveFields(state.unavailable ?? UNAVAILABLE.unreachable);
-    wireCalculator(config);
     return;
   }
 
   await refresh();
-  wireCalculator(config);
 }
 
 /**
@@ -769,6 +792,15 @@ function wireCalculator(config) {
       return;
     }
 
+    if (!state.settled) {
+      nodes.result.hidden = false;
+      nodes.result.className = 'standing standing-pending';
+      nodes.headline.textContent = 'Still reading Solana — try again in a moment.';
+      nodes.detail.replaceChildren();
+      nodes.facts.replaceChildren();
+      return;
+    }
+
     if (state.window == null || state.chainConfig == null) {
       nodes.result.hidden = false;
       failure(nodes.result, {
@@ -816,6 +848,8 @@ function wireCalculator(config) {
     }
   });
 }
+
+const main = () => boot().finally(() => { state.settled = true; });
 
 main().catch((error) => {
   // Anything that escapes to here means the page is not showing what it claims

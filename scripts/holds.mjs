@@ -30,6 +30,7 @@ import {
   MIN_HOLD_TOKENS,
 } from './lib/config.mjs';
 import { iso, lockoutWindow, windowForDay } from './lib/epoch.mjs';
+import { lpMint } from './lib/pump-addresses.mjs';
 import { computeHold, computeLocked, TimelineError } from './lib/timeline.mjs';
 import {
   associatedTokenAddress,
@@ -85,7 +86,10 @@ export async function holdsFor(connection, { wallet, mint, day, window: explicit
   // running short epochs would otherwise fetch seven days of history it has no
   // use for.
   const since = lockWindow.start - (window.end - window.start);
-  const events = await balanceEventsFor(connection, ata, since);
+  // L16 — the coin's own pool LP mint, so a deposit into it can be told apart
+  // from a sale. A pure PDA of the coin's mint: no RPC call, no trust, and no
+  // dependency on pump's SDK in a path that must stay web3.js-only.
+  const events = await balanceEventsFor(connection, ata, since, { lpMint: lpMint(mint) });
   const current = await currentBalanceRaw(connection, ata);
 
   const result = computeHold(events, window, { currentBalance: current });
@@ -106,6 +110,10 @@ export async function holdsFor(connection, { wallet, mint, day, window: explicit
     currentBalance: current,
     locked: lock.locked,
     lockoutDecreases: lock.decreases,
+    // Published alongside the decreases rather than folded into them: a
+    // verifier re-deriving this epoch has to be able to see which movements
+    // were exempted and check that judgement, not just inherit it (L16).
+    lpDeposits: lock.lpDeposits,
     meetsFloor: result.hold >= MIN_HOLD_RAW,
     points: result.points,
     windowEvents: result.events,

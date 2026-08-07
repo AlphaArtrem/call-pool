@@ -188,6 +188,10 @@ export function computeHold(events, window, options = {}) {
  * started with. Destination is irrelevant: sending to a second wallet you own
  * yourself is a sale (L6), and that is devnet proof 19.
  *
+ * **One exception, L16: supplying liquidity to the coin's own pump.fun pool.**
+ * See `computeLocked` for why that is the only exception and how it is told
+ * apart from a sale.
+ *
  * @param {BalanceEvent[]} events
  * @param {Window} window
  * @returns {BalanceEvent[]}
@@ -208,13 +212,45 @@ export function decreasesIn(events, window) {
  * Buying back does not shorten it and there is no proportional relief: this is
  * a hard cliff, ruled on deliberately in L1 and Decision 23.
  *
+ * ── L16: supplying liquidity is not selling ────────────────────────────────
+ *
+ * Depositing into the coin's pump.fun pool empties the wallet's token account,
+ * which every rule above reads as a transfer out and punishes with a 7-epoch
+ * lockout. That is a week's exclusion for doing the one thing that makes the
+ * coin tradeable, and it was never the intent.
+ *
+ * **The destination cannot be what distinguishes it.** Selling and depositing
+ * send the coin to the *same account* — the bonding curve before graduation,
+ * the AMM pool after it — so a rule of the form "exempt decreases whose
+ * counterparty is a known pool" exempts selling, which is the entire mechanic.
+ * That looks like the obvious implementation and it is the dangerous one.
+ *
+ * What actually separates them is what comes **back**: a deposit mints the
+ * pool's LP tokens to the depositor and a sale does not. LP tokens cannot be
+ * obtained without depositing, so this cannot be used to launder a sale. The LP
+ * mint is a pure PDA of the coin's mint (`pump-addresses.mjs`), so recognising
+ * one costs no extra RPC call and no trust.
+ *
+ * Deliberately narrow, and the site must say so in these words: **this exempts
+ * the lockout, not the exclusion.** While the tokens are in the pool the wallet
+ * holds ~0, so `hold` is ~0 and it earns ~nothing for those epochs regardless.
+ * What it no longer does is lose the following week as well. Crediting LP'd
+ * tokens toward `hold` is a different and much larger change, deliberately not
+ * made: it would open LP-and-withdraw cycling, which L1 currently closes.
+ *
+ * Only the coin's **canonical pump.fun pool** counts. Liquidity supplied
+ * anywhere else is indistinguishable from a sale from here, and is still a
+ * lockout — which is the safe direction for the boundary to fall.
+ *
  * @param {BalanceEvent[]} events
  * @param {Window} lockoutWindow  the `epochs` whole epochs before the epoch
- * @returns {{ locked: boolean, decreases: BalanceEvent[] }}
+ * @returns {{ locked: boolean, decreases: BalanceEvent[], lpDeposits: BalanceEvent[] }}
  */
 export function computeLocked(events, lockoutWindow) {
-  const decreases = decreasesIn(events, lockoutWindow);
-  return { locked: decreases.length > 0, decreases };
+  const all = decreasesIn(events, lockoutWindow);
+  const lpDeposits = all.filter((e) => e.lpDeposit === true);
+  const decreases = all.filter((e) => e.lpDeposit !== true);
+  return { locked: decreases.length > 0, decreases, lpDeposits };
 }
 
 /**
@@ -233,7 +269,7 @@ export function computeLocked(events, lockoutWindow) {
  *
  * @returns {BalanceEvent|null}
  */
-export function extractBalanceEvent(tx, accountKey, signature) {
+export function extractBalanceEvent(tx, accountKey, signature, { lpMint = null } = {}) {
   const keys = tx.transaction?.message?.accountKeys ?? [];
   const index = keys.findIndex((k) => (k.pubkey?.toBase58?.() ?? String(k.pubkey)) === accountKey);
   if (index === -1) return null;
@@ -247,11 +283,50 @@ export function extractBalanceEvent(tx, accountKey, signature) {
   const postRaw = post ? BigInt(post.uiTokenAmount.amount) : 0n;
   if (preRaw === postRaw) return null; // no step in a piecewise-constant timeline
 
-  return {
+  const event = {
     signature,
     slot: tx.slot,
     blockTime: tx.blockTime ?? null,
     pre: preRaw,
     post: postRaw,
   };
+
+  // L16. Only asked on the way down: a decrease is the only thing the lockout
+  // reads, and an increase that happens to arrive with LP tokens is not a
+  // question anyone has.
+  if (lpMint != null && postRaw < preRaw) {
+    // The owner is read off this account's own balance record rather than
+    // passed in. `balanceEventsFor` is given an ATA, not the wallet behind it,
+    // and re-deriving the owner would mean an extra RPC call per account for
+    // something the transaction already states.
+    const owner = post?.owner ?? pre?.owner ?? null;
+    if (owner != null) event.lpDeposit = isLpDeposit(tx, owner, lpMint);
+  }
+
+  return event;
+}
+
+/**
+ * Did this transaction mint the pool's LP tokens to `owner`?
+ *
+ * The test for L16, and the reason it is a test on what came *back* rather than
+ * on where the coin went: a sale and a deposit share a destination. LP tokens
+ * cannot be obtained without depositing, so an increase in them is evidence a
+ * sale cannot manufacture.
+ *
+ * Strictly an *increase*. A wallet that already held LP tokens and then sold
+ * the coin would otherwise be exempted by a balance it had all along.
+ *
+ * @param {object} tx        a parsed transaction
+ * @param {string} owner     the wallet, base58
+ * @param {string} lpMint    the pool's LP mint, base58
+ */
+export function isLpDeposit(tx, owner, lpMint) {
+  const of = (list) =>
+    (list ?? []).filter((b) => b.mint === lpMint && b.owner === owner);
+
+  const before = new Map(of(tx.meta?.preTokenBalances).map((b) => [b.accountIndex, BigInt(b.uiTokenAmount.amount)]));
+  return of(tx.meta?.postTokenBalances).some(
+    (b) => BigInt(b.uiTokenAmount.amount) > (before.get(b.accountIndex) ?? 0n),
+  );
 }

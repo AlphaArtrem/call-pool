@@ -1,0 +1,16 @@
+{
+  "name": "callpool-pump-fees",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "pump.fun's fee instructions, isolated from the repository that signs with the snapshot key",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test 'tests/**/*.test.mjs'"
+  },
+  "dependencies": {
+    "@pump-fun/pump-sdk": "1.36.0"
+  }
+}

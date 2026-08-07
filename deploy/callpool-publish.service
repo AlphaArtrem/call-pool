@@ -1,0 +1,92 @@
+# CALLPOOL — publish each epoch's inputs for the second signer to re-derive.
+#
+# Box B does not trust box A's arithmetic: `cosign.mjs` rebuilds every epoch
+# from its published inputs and refuses anything it cannot reproduce. This is
+# what it reproduces *from* — the same files a stranger auditing the pool would
+# read, served over HTTP so that box B fetches them the way a stranger would
+# rather than sharing a disk with the crank.
+#
+#   install -m 0644 deploy/callpool-publish.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now callpool-publish
+#
+# ── why the firewall rule is in this file ────────────────────────────────────
+#
+# It was a step in the runbook, and steps in runbooks are executed once. On
+# 2026-08-07 the rule was missing on a fresh box, and the symptom was the worst
+# one this system has: **both units looked perfectly healthy while nothing
+# settled.** The crank builds, proposes and self-approves without ever needing
+# box B, so every log on box A read normal, every log on box B read normal, and
+# each epoch sat at 1-of-2 forever (F13). It cost the whole run.
+#
+# Then the rule was added by hand — and by the time of this audit it was gone
+# again, because a hand-typed `ufw allow` does not survive a rebuild and nothing
+# noticed. Twice is a pattern, and a pattern is a missing mechanism.
+#
+# So the rule is an `ExecStartPre` on the service that needs it. Starting the
+# publisher opens the path; the two cannot be out of step, and a rebuilt box
+# gets both or neither.
+#
+# ⚠️ **Scoped to box B's address, deliberately.** This is an unauthenticated
+# `python3 -m http.server` with no TLS. It publishes pre-posting epoch inputs —
+# the ones inside the window where a bad root could still be challenged — and it
+# has no business facing the internet. `ufw allow 8100` without a `from` is the
+# mistake this comment exists to prevent.
+#
+# Tampering in transit fails safe rather than open, and it is worth knowing why:
+# box B reproduces the root from whatever it fetched, then compares it against
+# the on-chain proposal, which an attacker on the wire cannot touch. Altered
+# inputs therefore produce a mismatch and a refusal — a denial of service, never
+# an approval. Plain HTTP is acceptable here for that reason and no other.
+
+[Unit]
+Description=CALLPOOL — publish epoch inputs for the second signer
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=callpool
+Group=callpool
+
+# Who may reach the publisher, and where it serves from. Override both in
+# /etc/callpool/publish.env rather than editing this file — the co-signer's
+# address changes per deployment and the snapshots directory differs between a
+# devnet rehearsal (epochs/devnet/snapshots) and mainnet (snapshots).
+Environment=CALLPOOL_COSIGN_IP=155.138.236.181
+Environment=CALLPOOL_PUBLISH_PORT=8100
+Environment=CALLPOOL_PUBLISH_DIR=/srv/callpool/snapshots
+EnvironmentFile=-/etc/callpool/publish.env
+
+# `+` runs these as root even though the service itself does not. The rule is
+# idempotent, so a restart re-asserts it rather than stacking duplicates — which
+# also means a rule someone deleted by hand comes back on the next restart.
+ExecStartPre=+/usr/sbin/ufw allow from ${CALLPOOL_COSIGN_IP} to any port ${CALLPOOL_PUBLISH_PORT} proto tcp comment "callpool: co-signer fetches epoch inputs"
+
+ExecStart=/usr/bin/python3 -m http.server ${CALLPOOL_PUBLISH_PORT} \
+  --bind 0.0.0.0 --directory ${CALLPOOL_PUBLISH_DIR}
+
+Restart=always
+RestartSec=5
+
+# ── hardening ────────────────────────────────────────────────────────────
+#
+# It reads one directory and writes nothing. Everything else is denied.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadOnlyPaths=/srv/callpool
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

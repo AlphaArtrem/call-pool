@@ -12,6 +12,11 @@
 import { createHash } from 'node:crypto';
 
 import { PublicKey, SystemProgram, TransactionInstruction } from '@solana/web3.js';
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  NATIVE_MINT,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token';
 
 /** Set at deployment. Matches `declare_id!` and `Anchor.toml`. */
 export const PROGRAM_ID = new PublicKey(
@@ -57,6 +62,21 @@ export function configPda(programId = PROGRAM_ID) {
  */
 export function poolPda(programId = PROGRAM_ID) {
   return PublicKey.findProgramAddressSync([POOL_SEED], programId)[0];
+}
+
+/**
+ * The pool's wrapped-SOL ATA — where post-graduation creator fees land.
+ *
+ * `allowOwnerOffCurve` is true and has to be: the pool is a PDA, so it is off
+ * the ed25519 curve by construction and the default would refuse to derive it.
+ */
+export function poolWsolAta(programId = PROGRAM_ID) {
+  return getAssociatedTokenAddressSync(
+    NATIVE_MINT,
+    poolPda(programId),
+    /* allowOwnerOffCurve */ true,
+    TOKEN_PROGRAM_ID,
+  );
 }
 
 /**
@@ -242,6 +262,39 @@ export function claimIx({
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data,
+  });
+}
+
+/**
+ * `sweep_wsol` — permissionless, and the other half of step 0.
+ *
+ * Post-graduation the coin's creator fees can arrive as **wrapped SOL** in an
+ * ATA owned by the pool, and wSOL cannot be unwrapped in place: the only route
+ * back to lamports is `close_account`, signed by the ATA's owner (Phase 03
+ * §3.4a). The pool is that owner, so the program closes it into itself.
+ *
+ * `caller` pays gas and controls nothing — the destination is the pool, fixed
+ * by the account constraints, so submitting this cannot redirect a lamport.
+ * Same property that makes the airdrop safe to run from anywhere.
+ *
+ * The ATA does not survive the close, and this instruction cannot recreate it
+ * (the System Program will not fund an account out of one it does not own).
+ * Recreating it is the crank's job — D5 — and `sweep.mjs` does it in the same
+ * transaction.
+ */
+export function sweepWsolIx({ caller, programId = PROGRAM_ID }) {
+  return new TransactionInstruction({
+    programId,
+    keys: [
+      { pubkey: new PublicKey(caller), isSigner: true, isWritable: true },
+      { pubkey: configPda(programId), isSigner: false, isWritable: false },
+      { pubkey: poolPda(programId), isSigner: false, isWritable: true },
+      { pubkey: NATIVE_MINT, isSigner: false, isWritable: false },
+      { pubkey: poolWsolAta(programId), isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: discriminator('global', 'sweep_wsol'),
   });
 }
 

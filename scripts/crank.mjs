@@ -19,6 +19,7 @@
 //   node scripts/crank.mjs --day 2026-08-04 --keypair <SNAPSHOT_KEY>
 //   node scripts/crank.mjs --epoch 7 --keypair <SNAPSHOT_KEY>   # by chain index
 //   node scripts/crank.mjs --day 2026-08-04 --dry-run     # print the plan
+//   ... --payer <GAS_ONLY_WALLET>   # also run step 0, the pump fee sweep
 //   node scripts/crank.mjs --epoch 7 --carry-reset        # epoch 6 never
 //     settled: forfeit its carried dust and start a new carry chain. Deliberate
 //     and on the record — without it a missing ledger stops the crank.
@@ -43,6 +44,12 @@
 // and alert on the absence of a completed one (Phase 09 §9.3). `--and-pay`
 // collapses the two into one command by waiting the window out in-process,
 // which is only sensible when that window is seconds rather than a day.
+//
+// `--payer` is the same gas-only wallet in both places it appears — step 0's
+// sweep and `--and-pay`'s airdrop. Neither has any authority: the sweep's
+// destination is fixed by pump's fee-sharing config and the airdrop's is fixed
+// inside the merkle leaf. It must never be the snapshot key, and `sweep.mjs`
+// refuses if it is.
 
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -237,12 +244,9 @@ async function main() {
     return;
   }
 
-  // Step 0 — the fee sweep — belongs immediately before the pool is read, but
-  // it needs pump.fun's own instructions and is not implemented here yet. It is
-  // permissionless and anyone can run it, so a missed sweep costs a day's fees
-  // rolling forward rather than being lost.
-  console.log('step 0   sweep — NOT AUTOMATED YET (see Phase 03 / devnet proofs 1, 3, 12b).');
-  console.log('         Anything still in pump\'s creator_vault rolls into the next epoch.\n');
+  // Step 0 — the fee sweep — belongs immediately before the pool is read, so
+  // that today's snapshot divides today's fees rather than yesterday's.
+  sweep(args);
 
   // Addressed downstream exactly as it was addressed here. `--day` is not
   // interchangeable with `--epoch` inside snapshot.mjs: only the day carries the
@@ -296,6 +300,46 @@ async function main() {
 
   console.log('\nSettled. The airdrop runs separately, after the challenge window:');
   console.log(`  node scripts/airdrop.mjs --epoch ${epoch} --keypair <PAYER>\n`);
+}
+
+/**
+ * Step 0 — sweep pump's creator fees into the pool, in a separate process.
+ *
+ * Separate because the sweep genuinely is a separate thing: the instruction is
+ * permissionless, the gas payer controls nothing, and anyone can run it. This
+ * run's `--keypair` never reaches it.
+ *
+ * That process boundary is **not** what keeps pump's SDK away from the signing
+ * path — a boundary between processes decides what is resident at runtime, and
+ * the risk was what `npm ci` installs. `@pump-fun/pump-sdk` is therefore not a
+ * dependency of this repository at all; it lives in `tools/sweep/` behind its
+ * own lockfile, and `scripts/sweep.mjs` loads it from there.
+ *
+ * **A failed sweep does not stop the epoch.** Fees that were not swept sit in
+ * pump's creator vault and roll into the next one, so the cost of missing a
+ * sweep is a day's fees settling a day late — while refusing to settle would
+ * cost the day's *payout*. The failure is loud and the epoch continues.
+ */
+export function sweep(args, runner = run) {
+  if (!args.payer) {
+    console.log(
+      'step 0   sweep SKIPPED — no --payer <PATH>. Pass a gas-only wallet and this runs\n' +
+        '         itself. Anything left in pump\'s creator vault rolls into the next epoch.\n',
+    );
+    return { ran: false, ok: true };
+  }
+
+  const swept = runner('sweep.mjs', ['--rpc', args.rpc, '--keypair', args.payer], args);
+  if (swept.status !== 0) {
+    console.log(
+      '\n⚠️  step 0 FAILED — the fee sweep did not complete. Continuing anyway: unswept\n' +
+        '    fees stay in pump\'s creator vault and roll into the next epoch, so this\n' +
+        '    epoch simply divides less. Refusing to settle would cost the payout too.\n' +
+        '    Fix it before this becomes a habit — read the sweep output above.\n',
+    );
+    return { ran: true, ok: false };
+  }
+  return { ran: true, ok: true };
 }
 
 /**

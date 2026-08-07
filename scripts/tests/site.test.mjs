@@ -165,6 +165,25 @@ test('site and crank derive the same epoch address, in the same argument order',
   }
 });
 
+test('site and crank derive the same LP mint — L16 turns on this address', async () => {
+  // Second duplicated derivation, same reason as the epoch PDA above, and this
+  // one decides whether a wallet is locked out for a week. If the page derived
+  // a different LP mint from the crank, it would tell holders they are locked
+  // out while the settlement pays them — or the reverse, which is worse.
+  globalThis.solanaWeb3 ??= await import('@solana/web3.js');
+  const { lpMint: lpMintSite } = await import('../../site/js/addresses.js');
+  const { lpMint: lpMintNode } = await import('../lib/pump-addresses.mjs');
+
+  for (const mint of [
+    'Cg1hswfyVfnFaKHSEVyNdFWEj1bmnZoA8ZnWLVbApump',
+    'CXuAgy9E2Ynjrx9sPNSqpGg4asxm34Rrq78hoMShPAAK',
+    '9uAzrjSJBBYKwzQdHBSWrcdEVfwA6MbNjT1DbsT7TFFf',
+    '11111111111111111111111111111111',
+  ]) {
+    assert.equal(lpMintSite(mint).toBase58(), lpMintNode(mint).toBase58(), mint);
+  }
+});
+
 test('the site refuses to decode an account of the wrong type', async () => {
   await assert.rejects(() => decodeConfigSite(new Uint8Array(epochBytes())), /not a Config/);
   await assert.rejects(() => decodeEpochSite(new Uint8Array(configBytes())), /not an? Epoch/);
@@ -218,6 +237,61 @@ test('below the floor names the condition and explains it is the minimum, not th
   assert.equal(s.state, 'below-floor');
   assert.equal(s.eligible, false);
   assert.match(s.detail.join(' '), /lowest balance/i);
+});
+
+// L16. A wallet that supplied liquidity is below the floor for a reason that
+// is not the usual one, and the plain answer would be true and useless: its
+// owner can see their balance dropped, and "below the minimum" with no
+// explanation reads as the lockout having been applied silently.
+test('a wallet that supplied liquidity is told which rule it met, and which it did not', () => {
+  const s = standingFor(
+    facts({
+      holdRaw: 0n,
+      currentRaw: 0n,
+      lockout: { locked: false, lastDecreaseAt: null, liftsAt: null, lpDeposits: [{ signature: 'sig' }] },
+    }),
+  );
+
+  const text = `${s.headline} ${s.detail.join(' ')}`;
+  assert.equal(s.state, 'supplied-liquidity');
+  assert.match(text, /NOT counted as selling/);
+  assert.match(text, /not locked out/i);
+  // And the honest half — this removes the penalty, not the exclusion.
+  assert.match(text, /earn nothing while they are there/i);
+  assert.equal(s.eligible, false, 'tokens in the pool are not tokens in the wallet');
+});
+
+test('a partial deposit that drops the wallet under the floor says the same thing', () => {
+  const s = standingFor(
+    facts({
+      holdRaw: MIN_HOLD_RAW - 1n,
+      lockout: { locked: false, lastDecreaseAt: null, liftsAt: null, lpDeposits: [{ signature: 'sig' }] },
+    }),
+  );
+  assert.equal(s.state, 'supplied-liquidity');
+});
+
+test('supplying liquidity does not excuse a separate sale', () => {
+  // Both happened. The lockout is the answer, because the exemption covers the
+  // deposit and never the sale beside it.
+  const s = standingFor(
+    facts({
+      holdRaw: 0n,
+      lockout: { locked: true, lastDecreaseAt: NOW - 3600, liftsAt: NOW + 86_400, lpDeposits: [{ signature: 'sig' }] },
+    }),
+  );
+  assert.equal(s.state, 'locked-out');
+});
+
+test('a wallet below the floor for ordinary reasons is not told about liquidity', () => {
+  const s = standingFor(facts({ holdRaw: MIN_HOLD_RAW - 1n }));
+  assert.doesNotMatch(s.detail.join(' '), /liquidity/i);
+  assert.equal(s.state, 'below-floor');
+});
+
+test('a wallet that simply holds nothing is not told about liquidity either', () => {
+  const s = standingFor(facts({ currentRaw: 0n, holdRaw: 0n }));
+  assert.equal(s.state, 'not-a-holder');
 });
 
 test('lockout is reported before the floor, so a locked wallet is never told to buy more', () => {

@@ -64,6 +64,29 @@ fi
 echo "$js_out" | grep -E "^. (tests|pass|fail) " || true
 pass "js: timeline, merkle, program-client, crank and site tests"
 
+# `tools/sweep` is a SEPARATE package on purpose: pump's SDK must not appear in
+# the root lockfile, which pins the scripts that hold the snapshot key. The cost
+# of that split is that the one test needing the SDK as an oracle — do our
+# hand-rolled pump PDA derivations match pump's own? — cannot run in the suite
+# above. It is the check standing between L18 and silently treating every LP
+# deposit as a sale, so a deployment build may not skip it.
+if [ -d tools/sweep/node_modules ]; then
+  if ! sweep_out=$(cd tools/sweep && npm test --silent 2>&1); then
+    echo "$sweep_out"
+    fail "tools/sweep tests"
+  fi
+  echo "$sweep_out" | grep -E "^. (tests|pass|fail) " || true
+  pass "pump: PDA derivations checked against pump's own SDK"
+elif [ -n "${EXPECTED_INITIALIZER:-}" ]; then
+  # EXPECTED_INITIALIZER set means this is a deployment build.
+  fail "tools/sweep is not installed, so the pump PDA derivations were never checked
+  against pump's own SDK. That is the oracle for L18's LP mint. Run:
+    cd tools/sweep && npm ci"
+else
+  warn "tools/sweep not installed — pump PDA derivations UNCHECKED against the SDK"
+  warn "  cd tools/sweep && npm ci.  Required for a deployment build."
+fi
+
 # ── structure ──────────────────────────────────────────────────────────────
 echo
 echo "checking the program's shape"
@@ -76,6 +99,14 @@ ACTUAL_IX=$(node -p "require('./$IDL').instructions.map(i=>i.name).sort().join('
   expected  $EXPECTED_IX
   actual    $ACTUAL_IX"
 pass "exactly six instructions, unchanged"
+
+# And their shapes, not just their names. `scripts/lib/program.mjs` encodes
+# these by hand so a stranger can reproduce an epoch with web3.js alone, which
+# means a second copy of every account layout that no compiler compares with
+# the first. Reorder two accounts in a Rust struct and the client still builds,
+# signs and sends — it just sends the wrong thing.
+node scripts/tools/check-idl.mjs "$IDL" || fail "the JS client and the program disagree
+  about an instruction's shape — see above"
 
 # The checks below read *code*, not prose. Comments in this program discuss the
 # authorities it deliberately does not take, so a naive grep matches its own

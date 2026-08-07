@@ -10,8 +10,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { alert, clamp, composeHtml, redactSecrets } from '../lib/alert.mjs';
-import { payEpoch, reachability, readLog, rebuildEpoch, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
-import { epochAt, epochEnd, forgetResolved, minutes, overdueEpochs, recordAlert, shouldAlert, unpaidEpochs } from '../tools/watchdog.mjs';
+import { checkVault, payEpoch, reachability, readLog, rebuildEpoch, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
+import {
+  classifyOverdue, epochAt, epochEnd, forgetResolved, impossibleEpochs, minutes,
+  overdueEpochs, recordAlert, shouldAlert, unpaidEpochs,
+} from '../tools/watchdog.mjs';
 
 const CONFIG = { genesisTs: 1_000, epochSeconds: 300 };
 
@@ -20,10 +23,16 @@ const CONFIG = { genesisTs: 1_000, epochSeconds: 300 };
 test('an API key in a URL path is redacted, and the host is kept', () => {
   // The live shape: Ankr puts the key in the path, so redacting query strings
   // alone would have sent it in full.
-  const message = 'rpc https://rpc.ankr.com/solana_devnet/0031609f9fed053302d47e49c790d048fc';
+  //
+  // The fixture is deliberately a FAKE key. It used to be the live devnet one,
+  // copied here because it was what the failure looked like — which published a
+  // working credential to a public repository, in the test file for the
+  // function whose whole job is to stop exactly that. A redaction test only
+  // needs a string shaped like a key; it never needed a real one.
+  const message = 'rpc https://rpc.ankr.com/solana_devnet/EXAMPLEKEYNOTAREALCREDENTIAL0000';
   const out = redactSecrets(message);
 
-  assert.ok(!out.includes('0031609f'), 'the key must not survive');
+  assert.ok(!out.includes('EXAMPLEKEY'), 'the key must not survive');
   assert.ok(out.includes('rpc.ankr.com'), 'which provider failed is most of the diagnosis');
   assert.equal(out, 'rpc https://rpc.ankr.com/…');
 });
@@ -146,6 +155,83 @@ test('settled epochs are silent, unsettled ones are named', async () => {
     now, config: CONFIG, lookback: 50, graceSeconds: 0, hasRoot: async (e) => settled.has(e),
   });
   assert.deepEqual(overdue.map((o) => o.epoch), [2]);
+});
+
+// ── three states, not one total ────────────────────────────────────────────
+//
+// Summing them is what made the count unclearable: a stale epoch waits on a
+// person, epoch 0 can never settle at all, and both sat in the same number as
+// "the co-signer is four minutes behind". They also want opposite remedies —
+// the late alert's first instruction is to restart services, which is provably
+// useless on a stale one — so the split is about correctness as much as noise.
+
+const overdueEntry = (epoch, lateBy) => ({ epoch, closedAt: epochEnd(epoch, CONFIG), lateBy });
+
+test('a recently-closed epoch is late, and late is what gets restarted', () => {
+  const { late, stale, impossible } = classifyOverdue([overdueEntry(4, 950)], {
+    staleAfterSeconds: 1_200,
+  });
+  assert.deepEqual(late.map((o) => o.epoch), [4]);
+  assert.deepEqual(stale, []);
+  assert.deepEqual(impossible, []);
+});
+
+test('past a full epoch it is stale, because waiting has already been tried', () => {
+  const { late, stale } = classifyOverdue([overdueEntry(4, 1_200)], { staleAfterSeconds: 1_200 });
+  assert.deepEqual(late, [], 'restarting a service that has had a whole cycle proves nothing');
+  assert.deepEqual(stale.map((o) => o.epoch), [4]);
+});
+
+test('a backlog splits at the boundary rather than all landing in one bucket', () => {
+  // The 2026-08-07 shape: an old blockage plus epochs that closed since.
+  const backlog = [overdueEntry(1, 5_000), overdueEntry(2, 4_000), overdueEntry(9, 950)];
+  const { late, stale } = classifyOverdue(backlog, { staleAfterSeconds: 1_200 });
+
+  assert.deepEqual(stale.map((o) => o.epoch), [1, 2]);
+  assert.deepEqual(late.map((o) => o.epoch), [9]);
+});
+
+test('an unsettleable epoch is neither late nor stale, whatever its age', () => {
+  // It is the oldest and by far the latest, so age alone would put it at the
+  // top of the stale list with a rebuild command that cannot possibly work.
+  const { late, stale, impossible } = classifyOverdue(
+    [overdueEntry(0, 900_000), overdueEntry(9, 950)],
+    { staleAfterSeconds: 1_200, impossible: [0] },
+  );
+  assert.deepEqual(impossible.map((o) => o.epoch), [0]);
+  assert.deepEqual(stale, [], 'there is nothing to rebuild it from');
+  assert.deepEqual(late.map((o) => o.epoch), [9]);
+});
+
+test('with nothing but an unsettleable epoch, late and stale are both zero', () => {
+  // This is the self-heal. `quiet` is computed from late + stale, so this state
+  // lets the daily heartbeat resume — which it never could while one permanent
+  // +1 sat in the total.
+  const { late, stale, impossible } = classifyOverdue([overdueEntry(0, 900_000)], {
+    staleAfterSeconds: 1_200,
+    impossible: [0],
+  });
+  assert.equal(late.length + stale.length, 0);
+  assert.equal(impossible.length, 1);
+});
+
+test('epoch 0 is unsettleable exactly when the deploy landed inside its window', () => {
+  const config = { genesisTs: 1_000, epochSeconds: 300 };
+
+  // Deployed 40s into epoch 0: the callout feed was never polled for the first
+  // 40 seconds of that window, and no rebuild can invent them. F20.
+  assert.deepEqual(impossibleEpochs({ config, initializedAt: 1_040 }), [0]);
+
+  // Deployed on the boundary, or before it — the recommended launch order.
+  // Every epoch including the first is fully capturable.
+  assert.deepEqual(impossibleEpochs({ config, initializedAt: 1_000 }), []);
+  assert.deepEqual(impossibleEpochs({ config, initializedAt: 940 }), []);
+});
+
+test('an unknown initialization time claims nothing rather than guessing', () => {
+  // Better to keep counting epoch 0 as overdue than to silently drop a real
+  // one because a history lookup failed.
+  assert.deepEqual(impossibleEpochs({ config: CONFIG, initializedAt: null }), []);
 });
 
 // ── not becoming noise ─────────────────────────────────────────────────────
@@ -363,12 +449,41 @@ test('rebuild targets the same epoch the alert was sent about', () => {
 
 // ── F12: the deploy tooling used to print the provider key ─────────────────
 
+// ── the vault-low alert, fired for the first time on 2026-08-07 ────────────
+//
+// It had been built and never triggered, and triggering it found both of these.
+// An alert whose remediation has never been run is an alert whose remediation
+// is untested, and the moment it matters is the worst moment to find out.
+
+test('the balance check uses a CLI path the service user can actually execute', () => {
+  const t = topology({});
+  const command = checkVault(t, 'FESygEKjnkdNA4GxaRZr5pi8oThkfYcnH32q1At9CY8E');
+
+  // F16: the installer's own path is under /root at mode 700, and the symlink
+  // defeats a chmod on a copy. Anything rooted there is a command that fails.
+  assert.ok(!command.includes('.local/share/solana'), 'that path is not executable by the service user');
+  assert.ok(command.includes('/opt/solana-cli/bin/solana'));
+});
+
+test('the balance check asks about the cluster the vault is actually on', () => {
+  // Hardcoded `--url devnet` reported zero for every mainnet address, which is
+  // indistinguishable from the emergency being alerted about.
+  assert.match(checkVault(topology({}), 'ADDR'), /--url mainnet-beta/);
+  assert.match(checkVault(topology({ CALLPOOL_CLUSTER: 'devnet' }), 'ADDR'), /--url devnet/);
+});
+
+test('both are overridable, because a default that is right today drifts', () => {
+  const t = topology({ CALLPOOL_SOLANA_BIN: '/usr/local/bin', CALLPOOL_CLUSTER: 'devnet' });
+  assert.match(checkVault(t, 'ADDR'), /\/usr\/local\/bin\/solana balance ADDR --url devnet/);
+});
+
 test('a provider URL with a key in its path is redacted to scheme and host', () => {
   // The deploy tool logged the cluster URL verbatim, which lands in journald
   // under systemd, and told the operator to paste it into config.local.js —
   // a file every visitor fetches. Both sites now go through this.
-  const url = 'https://rpc.ankr.com/solana_devnet/0031609f9fed053302d47e49c790d048';
+  // Fake, for the reason given on the other redaction test above.
+  const url = 'https://rpc.ankr.com/solana_devnet/EXAMPLEKEYNOTAREALCREDENTIAL0000';
   const safe = redactSecrets(`cluster   ${url}`);
-  assert.ok(!safe.includes('0031609f'), 'the key must not survive redaction');
+  assert.ok(!safe.includes('EXAMPLEKEY'), 'the key must not survive redaction');
   assert.ok(safe.includes('rpc.ankr.com'), 'the host is kept — which provider failed is the diagnosis');
 });

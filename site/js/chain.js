@@ -104,8 +104,9 @@ export async function signaturesSince(connection, account, since, { pageLimit = 
  * Phase 05 §5.6's "most likely real bug", and on this page it is the
  * difference between "we can't show you this" and a wrong number.
  */
-export async function balanceEventsFor(connection, account, since, { chunkSize = 25 } = {}) {
+export async function balanceEventsFor(connection, account, since, { chunkSize = 25, lpMint = null } = {}) {
   const accountKey = new PublicKey(account).toBase58();
+  const lpMintKey = lpMint == null ? null : new PublicKey(lpMint).toBase58();
   const signatures = await signaturesSince(connection, account, since);
   const ordered = [...signatures].reverse();
   const events = [];
@@ -126,7 +127,7 @@ export async function balanceEventsFor(connection, account, since, { chunkSize =
         );
       }
       if (tx.meta?.err) continue;
-      const event = extractBalanceEvent(tx, accountKey, chunk[j].signature);
+      const event = extractBalanceEvent(tx, accountKey, chunk[j].signature, { lpMint: lpMintKey });
       if (event) events.push(event);
     }
   }
