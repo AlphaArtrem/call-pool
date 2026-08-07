@@ -10,7 +10,15 @@
 //
 // Usage:
 //   node scripts/tools/mk-multisig.mjs --payer <KEY> \
-//        --members <A.json,B.json,C.json> --rpc http://127.0.0.1:8899
+//        --members <A_PUBKEY,B_PUBKEY,C_PUBKEY> --rpc http://127.0.0.1:8899
+//
+// **Members are addresses, and a keypair file is accepted only as a
+// convenience.** Creating a multisig needs the members' public keys and nothing
+// else — no member signs its own creation. Requiring three secret files forced
+// all three onto one machine for the length of the command, which is precisely
+// the arrangement a 2-of-3 exists to prevent and precisely what L15 records as
+// the accepted-but-expiring risk. Passing pubkeys means signer B's secret can
+// stay on box B and C's can stay offline, which is what mainnet has to do.
 //
 // ⚠️ Rehearsal tooling. **Devnet or a local validator only, and it checks.**
 // The real mainnet multisig should be created through the Squads UI by the
@@ -20,7 +28,9 @@
 
 import { readFileSync } from 'node:fs';
 
-import { Keypair } from '@solana/web3.js';
+import { existsSync } from 'node:fs';
+
+import { Keypair, PublicKey } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
 
 import { connect } from '../lib/rpc.mjs';
@@ -41,14 +51,42 @@ function parseArgs(argv) {
 const load = (path) =>
   Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, 'utf8'))));
 
+/**
+ * A member, from an address or from a keypair file.
+ *
+ * The file form stays because a local-validator run generates three keys and
+ * has them all to hand anyway. The address form is what a real deployment uses,
+ * and it is the one that lets each secret stay where it belongs.
+ */
+export function memberPubkey(spec) {
+  const trimmed = spec.trim();
+  if (trimmed.endsWith('.json') || existsSync(trimmed)) return load(trimmed).publicKey;
+  try {
+    return new PublicKey(trimmed);
+  } catch {
+    throw new Error(
+      `--members entry ${JSON.stringify(trimmed)} is neither a base58 address nor a ` +
+        'readable keypair file.',
+    );
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const connection = connect(args.rpc);
   await assertNotMainnet(connection, 'mk-multisig.mjs');
 
   const payer = load(args.payer);
-  const members = args.members.split(',').map((p) => load(p.trim()));
+  const members = args.members.split(',').map(memberPubkey);
   const threshold = Number(args.threshold);
+
+  const unique = new Set(members.map((k) => k.toBase58()));
+  if (unique.size !== members.length) {
+    throw new Error(
+      `${members.length} members but only ${unique.size} distinct addresses. A multisig with a ` +
+        'repeated member has a lower real threshold than it claims.',
+    );
+  }
 
   if (members.length < threshold) {
     throw new Error(`threshold ${threshold} needs at least that many members`);
@@ -73,7 +111,7 @@ async function main() {
     rentCollector: null,
     treasury: programConfig.treasury,
     members: members.map((k) => ({
-      key: k.publicKey,
+      key: k,
       permissions: multisig.types.Permissions.all(),
     })),
     sendOptions: { skipPreflight: true },

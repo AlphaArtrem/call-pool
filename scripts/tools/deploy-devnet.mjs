@@ -98,10 +98,14 @@ function parseArgs(argv) {
     'vault-sol': '2',
     skipBuild: false,
     skipDeploy: false,
+    stopAfterPool: false,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--skip-build') args.skipBuild = true;
     else if (argv[i] === '--skip-deploy') args.skipDeploy = true;
+    // Named explicitly — the generic branch would store it as `stop-after-pool`
+    // and the flag would silently never fire.
+    else if (argv[i] === '--stop-after-pool') args.stopAfterPool = true;
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -263,51 +267,111 @@ async function main() {
   console.log('deployed\n');
   }
 
-  // ── the coin ─────────────────────────────────────────────────────────────
-  // The mint authority is kept rather than revoked: this is a rehearsal, and
-  // being able to top a wallet up is worth more here than matching pump.fun's
-  // post-launch authority state, which nothing in this system reads.
-  const mint = await createMint(connection, payer, payer.publicKey, null, MINT_DECIMALS);
-  console.log(`mint      ${mint.toBase58()}`);
-
-  const cast = [];
-  let distributed = 0n;
-  for (const member of CAST) {
-    const wallet = Keypair.generate();
-    const ata = (await getOrCreateAssociatedTokenAccount(connection, payer, mint, wallet.publicKey))
-      .address;
-    await mintTo(connection, payer, mint, ata, payer, raw(member.tokens));
-    distributed += member.tokens;
-
-    // A little SOL each: signing their own sale costs a fee, and a wallet that
-    // cannot sell cannot rehearse the lockout.
-    await fund(connection, payer, wallet.publicKey, BigInt(0.01 * LAMPORTS_PER_SOL));
-
-    const keypairPath = writeKeypair(resolve(KEYS_DIR, `${member.name}.json`), wallet);
-    cast.push({
-      name: member.name,
-      role: member.role,
-      address: wallet.publicKey.toBase58(),
-      tokenAccount: ata.toBase58(),
-      tokens: member.tokens.toString(),
-      aboveFloor: member.tokens >= MIN_HOLD_TOKENS,
-      keypair: keypairPath,
-    });
-    console.log(
-      `  ${member.name.padEnd(8)} ${wallet.publicKey.toBase58()}  ` +
-        `${member.tokens.toLocaleString('en-US')} tokens` +
-        `${member.tokens >= MIN_HOLD_TOKENS ? '' : '  (below the floor, on purpose)'}`,
-    );
+  // ── create_pool ──────────────────────────────────────────────────────────
+  // Before the coin, not after, and that ordering is the whole reason the pool
+  // is seeded on a CONSTANT rather than on the mint (§4.2): its address has to
+  // exist so it can be named as a fee recipient at coin creation. A synthetic
+  // mint does not care, but a real pump.fun coin is created *with* its
+  // fee-sharing config (F6) and cannot name a pool that does not exist yet.
+  //
+  // Harmless to run first in either path: the pool is a bare lamport account
+  // and fees accrue into it whether or not `initialize` has happened.
+  const poolExists = await connection.getAccountInfo(poolPda());
+  if (poolExists) {
+    console.log(`pool      ${poolPda().toBase58()}   (already created)`);
+  } else {
+    await send(connection, [createPoolIx({ payer: payer.publicKey })], [payer]);
+    console.log(`pool      ${poolPda().toBase58()}   created`);
   }
 
-  // The rest of the supply, so the mint's totals match config.mjs rather than
-  // only the part handed out.
-  const treasury = (await getOrCreateAssociatedTokenAccount(connection, payer, mint, payer.publicKey))
-    .address;
-  await mintTo(connection, payer, mint, treasury, payer, raw(TOTAL_SUPPLY_TOKENS - distributed));
+  // `--stop-after-pool` is how the real-coin path gets its turn. The pump coin
+  // must be created between `create_pool` and `initialize`, because
+  // `initialize` binds `config.mint` permanently and there is no second attempt:
+  //
+  //   1. deploy-devnet.mjs --stop-after-pool
+  //   2. mk-pump-coin.mjs                       ← the real coin + fee split
+  //   3. deploy-devnet.mjs --skip-build --skip-deploy --mint <MINT>
+  if (args.stopAfterPool) {
+    console.log(
+      '\n--stop-after-pool: the program is deployed and the pool exists.\n\n' +
+        'Next, create the coin and then finish the deployment against it:\n' +
+        `  node scripts/tools/mk-pump-coin.mjs --keypair ${args.keypair} --rpc <RPC>\n` +
+        '  node scripts/tools/deploy-devnet.mjs --skip-build --skip-deploy \\\n' +
+        `    --keypair ${args.keypair} --mint <MINT> --snapshot-key <VAULT> …\n`,
+    );
+    return;
+  }
 
-  // ── create_pool + initialize ─────────────────────────────────────────────
-  await send(connection, [createPoolIx({ payer: payer.publicKey })], [payer]);
+  // ── the coin ─────────────────────────────────────────────────────────────
+  // `--mint <ADDRESS>` adopts a coin that already exists — which on this
+  // cluster means a real pump.fun coin from `mk-pump-coin.mjs`. Its supply
+  // lives on the bonding curve and is bought, not minted, so the synthetic
+  // cast is skipped entirely: there is no mint authority to hand tokens out
+  // with, and pretending otherwise would produce balances no trade explains.
+  const adopted = args.mint ? new PublicKey(args.mint) : null;
+  const cast = [];
+
+  let mint;
+  if (adopted) {
+    const info = await connection.getParsedAccountInfo(adopted);
+    const parsed = info?.value?.data?.parsed;
+    if (!parsed || parsed.type !== 'mint') {
+      throw new Error(`--mint ${args.mint} is not a mint account on this cluster.`);
+    }
+    if (parsed.info.decimals !== MINT_DECIMALS) {
+      throw new Error(
+        `--mint ${args.mint} has ${parsed.info.decimals} decimals but config.mjs assumes ` +
+          `${MINT_DECIMALS}. The floor is derived from that constant, so initialize would ` +
+          'write a floor wrong by orders of magnitude — permanently.',
+      );
+    }
+    mint = adopted;
+    console.log(`mint      ${mint.toBase58()}   (adopted — real coin, supply on its curve)`);
+    console.log('cast      skipped: tokens are bought from the curve, not minted');
+  } else {
+    // The mint authority is kept rather than revoked: this is a rehearsal, and
+    // being able to top a wallet up is worth more here than matching pump.fun's
+    // post-launch authority state, which nothing in this system reads.
+    mint = await createMint(connection, payer, payer.publicKey, null, MINT_DECIMALS);
+    console.log(`mint      ${mint.toBase58()}   (synthetic)`);
+
+    let distributed = 0n;
+    for (const member of CAST) {
+      const wallet = Keypair.generate();
+      const ata = (await getOrCreateAssociatedTokenAccount(connection, payer, mint, wallet.publicKey))
+        .address;
+      await mintTo(connection, payer, mint, ata, payer, raw(member.tokens));
+      distributed += member.tokens;
+
+      // A little SOL each: signing their own sale costs a fee, and a wallet that
+      // cannot sell cannot rehearse the lockout.
+      await fund(connection, payer, wallet.publicKey, BigInt(0.01 * LAMPORTS_PER_SOL));
+
+      const keypairPath = writeKeypair(resolve(KEYS_DIR, `${member.name}.json`), wallet);
+      cast.push({
+        name: member.name,
+        role: member.role,
+        address: wallet.publicKey.toBase58(),
+        tokenAccount: ata.toBase58(),
+        tokens: member.tokens.toString(),
+        aboveFloor: member.tokens >= MIN_HOLD_TOKENS,
+        keypair: keypairPath,
+      });
+      console.log(
+        `  ${member.name.padEnd(8)} ${wallet.publicKey.toBase58()}  ` +
+          `${member.tokens.toLocaleString('en-US')} tokens` +
+          `${member.tokens >= MIN_HOLD_TOKENS ? '' : '  (below the floor, on purpose)'}`,
+      );
+    }
+
+    // The rest of the supply, so the mint's totals match config.mjs rather than
+    // only the part handed out.
+    const treasury = (await getOrCreateAssociatedTokenAccount(connection, payer, mint, payer.publicKey))
+      .address;
+    await mintTo(connection, payer, mint, treasury, payer, raw(TOTAL_SUPPLY_TOKENS - distributed));
+  }
+
+  // ── initialize ───────────────────────────────────────────────────────────
 
   // `--initializer <PATH>` for a build whose INITIALIZER constant is not the
   // committed throwaway — which is every deployment build, and is what the

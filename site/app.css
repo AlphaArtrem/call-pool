@@ -561,11 +561,24 @@ pre code {
   color: var(--fg);
 }
 
+/* Deliberately NOT capped to `--measure`, unlike the other prose on the page.
+ *
+ * A note is a footnote to the block above it — the history table, the footer —
+ * and it reads as belonging to that block only if it is the same width as it. At
+ * `--measure` the two long ones ended half the width of the thing they annotate,
+ * which looks like a wrapping bug rather than a caption.
+ *
+ * The cost is real and was accepted: those two run to ~170 characters a line on
+ * a 1920 monitor, well past a comfortable measure. It is tolerable HERE because
+ * both are two sentences of small print that nobody reads end to end — do not
+ * take this as licence to drop the cap on body copy.
+ *
+ * The other eleven `.note`s are already narrow: they sit inside stat blocks and
+ * cards whose columns constrain them, so this rule changes nothing for them. */
 .note {
   color: var(--muted);
   font-size: 0.875rem;
   margin: 0.25rem 0 0.75rem;
-  max-width: var(--measure);
 }
 
 
