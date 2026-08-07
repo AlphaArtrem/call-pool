@@ -130,6 +130,27 @@ function reproduce(epoch, rpc) {
 }
 
 /**
+ * Refuse an epoch directory that belongs to a different coin.
+ *
+ * Cheap, and it closes the one way a *correct* epoch can still be the wrong
+ * one. Everything else here asks "does this reproduce?"; nothing asked "is this
+ * ours?", and epoch directories are named by index, which every deployment
+ * reuses from 0.
+ */
+export function assertSameCoin(epoch, mint, dir = snapshotDir(epoch)) {
+  const callouts = readJson(resolve(dir, 'callouts.json'));
+  if (callouts.mint && callouts.mint !== mint) {
+    throw new Error(
+      `epoch ${epoch}'s published inputs are for ${callouts.mint}, but this program is bound to ` +
+        `${mint} — NOT signing.\n` +
+        '  An epoch directory left over from an earlier deployment sits at the same path this\n' +
+        '  one wants, because epochs are named by index and every deployment counts from 0.\n' +
+        '  Delete the stale directory; do not settle it.',
+    );
+  }
+}
+
+/**
  * Check the epoch's credited callers against our own capture of the feed.
  *
  * The third refusal, and the only one that looks outside what box A published.
@@ -304,6 +325,20 @@ async function main() {
   }
 
   // ── the three refusals ───────────────────────────────────────────────────
+  //
+  // Before any of them: is this directory even about the coin we are bound to?
+  //
+  // `snapshots/epoch-N/` is addressed by index alone, so a directory left behind
+  // by an EARLIER deployment sits at exactly the path this run wants — same
+  // name, plausible contents, different coin. Measured 2026-08-07: a previous
+  // rehearsal's `epoch-2` was still published, the co-signer fetched it, and
+  // spent the epoch refusing a stale snapshot instead of settling the real one.
+  //
+  // It refused, because the allocation could not be honoured — but that was
+  // luck, not design. Two deployments of the same coin, or a rerun after a wipe,
+  // would produce a directory that reproduces perfectly and pays the wrong
+  // people. The mint is in the epoch's own inputs; compare it.
+  assertSameCoin(epoch, mint);
   reproduce(epoch, args.rpc);
   corroborate(epoch, args.calloutStore);
 
