@@ -80,7 +80,17 @@ export function previousCarryFor({ epoch, path, carryReset = false }) {
   throw new Error(
     `no carry ledger for epoch ${epoch - 1}: ${path}\n` +
       `Epoch ${epoch - 1} has not settled, so every wallet's carried dust is unknown. ` +
-      'Settle it first, or pass --carry-reset to forfeit those balances and start a new chain.',
+      'Settle it first, or pass --carry-reset to forfeit those balances and start a new chain.' +
+      (epoch === 1
+        ? '\n\n' +
+          '  ⚠️ This is epoch 1, so the missing predecessor is epoch 0 — and epoch 0 is\n' +
+          '  unsettleable whenever the deploy landed inside its window (F20). Nothing polled\n' +
+          '  the callout feed for a window that closed before the program existed, so there\n' +
+          '  are no inputs and no amount of waiting produces any.\n' +
+          '  --carry-reset is the right answer here and forfeits nothing: epoch 0 paid nobody,\n' +
+          '  so there is no dust to carry. Set genesis to the NEXT epoch boundary on the next\n' +
+          '  deployment and this does not arise.'
+        : ''),
   );
 }
 

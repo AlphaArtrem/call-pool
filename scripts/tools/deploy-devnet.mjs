@@ -450,7 +450,24 @@ async function main() {
 
   const slot = await connection.getSlot('confirmed');
   const chainNow = await connection.getBlockTime(slot);
-  const genesisTs = Math.floor(chainNow / args.epochSeconds) * args.epochSeconds;
+  // The NEXT boundary, not the current one.
+  //
+  // Flooring put genesis in the past, which meant epoch 0 always began before
+  // `initialize` ran. Nothing polled the callout feed for that window, so epoch
+  // 0 had no inputs and could never be settled (F20) — and because the carry
+  // chain refuses to skip a predecessor, **epoch 1 then could not settle
+  // either** without a manual `--carry-reset`. Measured on 2026-08-07: even
+  // starting deliberately on a clean 5-minute boundary hits this, because
+  // `initialize` cannot land at the same instant as the boundary it names.
+  //
+  // On a daily clock that is launch day: the first crank fails, the first
+  // settlement needs a human, and the runbook does not mention it.
+  //
+  // Ceiling instead costs up to one epoch of waiting before epoch 0 opens, and
+  // buys an epoch 0 that has inputs, settles normally, and starts the carry
+  // chain where it should start. `initialize` accepts a genesis up to one whole
+  // epoch either side of now, so this is inside what the program allows.
+  const genesisTs = Math.ceil(chainNow / args.epochSeconds) * args.epochSeconds;
 
   await send(
     connection,
