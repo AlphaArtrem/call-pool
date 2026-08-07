@@ -72,18 +72,25 @@ export function epochAt(timestamp, { genesisTs, epochSeconds }) {
 }
 
 /**
- * The oldest closed epoch that still has no root, within the lookback.
+ * Every closed epoch with no root, within the lookback, oldest first.
  *
- * Oldest first, deliberately: epochs settle in order, and an older unsettled
- * epoch is the more urgent one — its challenge window has been open longer.
+ * Oldest first because epochs settle in order and an older unsettled epoch is
+ * the more urgent one — its challenge window has been open longer. But it is a
+ * *list*, not a pick, and that distinction is load-bearing: some unsettled
+ * epochs can never be signed. Epoch 0 is never snapshotted, and the rehearsal
+ * deliberately skips one to produce a "not posted" row. Returning only the
+ * oldest meant signer B chose epoch 0, failed to fetch it, and never looked at
+ * epoch 1 — one permanently unpublished epoch wedging every later one, forever.
+ *
  * `hasRoot` is injected so the choosing is testable without a chain.
  */
-export async function outstandingEpoch({ current, lookback, hasRoot }) {
+export async function outstandingEpochs({ current, lookback, hasRoot }) {
   const oldest = Math.max(0, current - lookback);
+  const epochs = [];
   for (let epoch = oldest; epoch < current; epoch++) {
-    if (!(await hasRoot(epoch))) return epoch;
+    if (!(await hasRoot(epoch))) epochs.push(epoch);
   }
-  return null;
+  return epochs;
 }
 
 /** Join a base URL and an epoch-relative path without doubling the slash. */
@@ -107,10 +114,15 @@ export async function fetchEpochInputs({ base, epoch, fetchFn = fetch, write = w
     const url = fileUrl(base, epoch, name);
     const response = await fetchFn(url);
     if (!response.ok) {
-      throw new Error(
+      // Marked, not just thrown. The caller needs to tell "this epoch has no
+      // published inputs" (try the next one) from "the fetch itself broke"
+      // (stop and say so). Both arrive here as an exception otherwise.
+      const error = new Error(
         `${url} returned ${response.status}. The epoch is not published yet, or not published ` +
           'completely — either way there is nothing here to reproduce, so nothing gets signed.',
       );
+      error.notPublished = true;
+      throw error;
     }
     write(resolve(dir, name), Buffer.from(await response.arrayBuffer()));
   }
@@ -140,44 +152,67 @@ async function main() {
 
   const hasRoot = async (epoch) => (await fetchEpoch(connection, mint, epoch)) != null;
 
-  let epoch;
+  let candidates;
   if (args.epoch !== undefined) {
-    epoch = Number(args.epoch);
-    if (await hasRoot(epoch)) {
-      console.log(`epoch ${epoch} already has a root on chain. Nothing to do.\n`);
-      return;
-    }
+    candidates = [Number(args.epoch)];
   } else {
-    const now = Math.floor(Date.now() / 1000);
-    const current = epochAt(now, config);
-    epoch = await outstandingEpoch({ current, lookback: args.lookback, hasRoot });
-    if (epoch == null) {
+    const current = epochAt(Math.floor(Date.now() / 1000), config);
+    candidates = await outstandingEpochs({ current, lookback: args.lookback, hasRoot });
+    if (candidates.length === 0) {
       console.log(`nothing outstanding in the last ${args.lookback} epochs (current ${current}).\n`);
       return;
     }
   }
 
-  console.log(`\nCALLPOOL — remote co-sign, epoch ${epoch}\n`);
+  console.log(`\nCALLPOOL — remote co-sign\n`);
   console.log(`published at ${args.base}`);
+  console.log(`outstanding  ${candidates.join(', ')}\n`);
 
-  const dir = await fetchEpochInputs({ base: args.base, epoch });
-  console.log(`fetched into ${dir}\n`);
+  for (const epoch of candidates) {
+    if (args.epoch !== undefined && (await hasRoot(epoch))) {
+      console.log(`epoch ${epoch} already has a root on chain. Nothing to do.\n`);
+      return;
+    }
 
-  // `cosign.mjs` owns every decision from here: it reproduces the epoch from
-  // what was just downloaded, rebuilds the instruction, and refuses unless the
-  // proposal's bytes are the bytes it derived.
-  const result = spawnSync(
-    'node',
-    [
-      resolve(REPO_ROOT, 'scripts/cosign.mjs'),
-      '--epoch', String(epoch),
-      '--rpc', args.rpc,
-      '--multisig', args.multisig,
-      ...(args.dryRun ? ['--dry-run'] : ['--keypair', args.keypair, '--execute', '--yes']),
-    ],
-    { stdio: 'inherit', cwd: REPO_ROOT },
-  );
-  if (result.status !== 0) throw new Error(`cosign.mjs exited ${result.status} for epoch ${epoch}`);
+    let dir;
+    try {
+      dir = await fetchEpochInputs({ base: args.base, epoch });
+    } catch (error) {
+      // Not published: either it has not been built yet — in which case the
+      // next tick of the timer finds it — or it never will be, and blocking on
+      // it forever would strand every later epoch behind one that cannot move.
+      if (error.notPublished) {
+        console.log(`epoch ${epoch}: ${error.message}\n         moving on to the next one.\n`);
+        continue;
+      }
+      throw error;
+    }
+    console.log(`epoch ${epoch}: fetched into ${dir}\n`);
+
+    // `cosign.mjs` owns every decision from here: it reproduces the epoch from
+    // what was just downloaded, rebuilds the instruction, and refuses unless
+    // the proposal's bytes are the bytes it derived.
+    const result = spawnSync(
+      'node',
+      [
+        resolve(REPO_ROOT, 'scripts/cosign.mjs'),
+        '--epoch', String(epoch),
+        '--rpc', args.rpc,
+        '--multisig', args.multisig,
+        ...(args.dryRun ? ['--dry-run'] : ['--keypair', args.keypair, '--execute', '--yes']),
+      ],
+      { stdio: 'inherit', cwd: REPO_ROOT },
+    );
+    if (result.status !== 0) throw new Error(`cosign.mjs exited ${result.status} for epoch ${epoch}`);
+    return;
+  }
+
+  // Nothing was signed, and that is a normal idle tick — every outstanding
+  // epoch is simply not published yet. This deliberately does NOT fail: the
+  // alarm for "a root never landed" belongs to the crank on the other host,
+  // which knows what it posted and reads the chain back to check. A second
+  // process shouting about the same thing from less information is noise.
+  console.log('nothing signable this tick — no outstanding epoch has published inputs.\n');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

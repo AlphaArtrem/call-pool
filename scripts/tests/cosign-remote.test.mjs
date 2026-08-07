@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 
 process.env.CALLPOOL_SNAPSHOTS_DIR = mkdtempSync(resolve(tmpdir(), 'callpool-remote-'));
 
-const { epochAt, fileUrl, fetchEpochInputs, outstandingEpoch } = await import('../tools/cosign-remote.mjs');
+const { epochAt, fileUrl, fetchEpochInputs, outstandingEpochs } = await import('../tools/cosign-remote.mjs');
 
 const CONFIG = { genesisTs: 1_000, epochSeconds: 300 };
 
@@ -28,32 +28,46 @@ test('the epoch index is derived from the genesis and the clock', () => {
   assert.equal(epochAt(4_000, CONFIG), 10);
 });
 
-test('the oldest unsettled epoch is chosen, not the newest', () => {
-  // 40 and 43 are both outstanding. 40's challenge window has been open
-  // longer, so it is the one that needs a signature.
+test('outstanding epochs come back oldest first, all of them', async () => {
+  // Every unsettled epoch is a candidate, not just the oldest. An epoch that
+  // can never be published — epoch 0, or one the run deliberately skipped —
+  // must not stand in front of the ones that can.
   const settled = new Set([41, 42]);
   const hasRoot = async (e) => settled.has(e) || e < 40;
 
-  return outstandingEpoch({ current: 45, lookback: 30, hasRoot }).then((epoch) => {
-    assert.equal(epoch, 40);
-  });
+  assert.deepEqual(await outstandingEpochs({ current: 45, lookback: 30, hasRoot }), [40, 43, 44]);
 });
 
 test('a fully settled window reports nothing outstanding', async () => {
-  assert.equal(await outstandingEpoch({ current: 10, lookback: 30, hasRoot: async () => true }), null);
+  assert.deepEqual(await outstandingEpochs({ current: 10, lookback: 30, hasRoot: async () => true }), []);
 });
 
-test('the current epoch is never chosen — it has not closed', async () => {
+test('the current epoch is never a candidate — it has not closed', async () => {
   // Only epoch 9 lacks a root, and 9 is `current`. Proposing a root for an
   // epoch still open is something the program rejects anyway.
   const hasRoot = async (e) => e < 9;
-  assert.equal(await outstandingEpoch({ current: 9, lookback: 30, hasRoot }), null);
+  assert.deepEqual(await outstandingEpochs({ current: 9, lookback: 30, hasRoot }), []);
 });
 
 test('the lookback bounds how far back it will reach', async () => {
   const hasRoot = async (e) => e !== 2;
-  assert.equal(await outstandingEpoch({ current: 50, lookback: 5, hasRoot }), null, 'epoch 2 is out of range');
-  assert.equal(await outstandingEpoch({ current: 50, lookback: 60, hasRoot }), 2);
+  assert.deepEqual(await outstandingEpochs({ current: 50, lookback: 5, hasRoot }), [], 'epoch 2 is out of range');
+  assert.deepEqual(await outstandingEpochs({ current: 50, lookback: 60, hasRoot }), [2]);
+});
+
+test('an unfetchable epoch is marked so the caller can move past it', async () => {
+  // The bug this pins: signer B chose epoch 0, which is never snapshotted,
+  // failed, and never looked at epoch 1 again — on every tick, forever.
+  await assert.rejects(
+    () =>
+      fetchEpochInputs({
+        base: 'http://h:8100',
+        epoch: 0,
+        fetchFn: async () => missing,
+        write: () => {},
+      }),
+    (error) => error.notPublished === true,
+  );
 });
 
 test('urls join without doubling the slash', () => {
