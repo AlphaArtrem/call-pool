@@ -23,6 +23,15 @@
 //     settled: forfeit its carried dust and start a new carry chain. Deliberate
 //     and on the record — without it a missing ledger stops the crank.
 //
+//   # mainnet's shape: the snapshot key is a 2-of-3 vault, not a keypair
+//   node scripts/crank.mjs --day 2026-08-04 \
+//     --multisig <SQUADS_ADDRESS> --keypair <THIS_HOST'S_MEMBER_KEY>
+//
+// With `--multisig`, `--keypair` is **this host's multisig member key**, not the
+// snapshot key — nobody holds the snapshot key, because it is a vault address.
+// The posting step becomes `cosign.mjs`, which reproduces the epoch and matches
+// the proposal byte for byte before it approves anything.
+//
 // `--day` is the mainnet ergonomic: one epoch is one UTC day, and a human
 // refers to it by date. `--epoch N` addresses the on-chain index instead and is
 // the only way to reach an epoch that is not a calendar day — a rehearsal
@@ -45,6 +54,18 @@ import { iso, windowForDay } from './lib/epoch.mjs';
 import { epochIndexFor, fetchConfig, fetchEpoch, windowForEpoch } from './lib/program.mjs';
 import { REPO_ROOT } from './lib/store.mjs';
 
+/** Seconds between polls while waiting for a root to show up on chain. */
+const ROOT_POLL_SECONDS = 5;
+
+/**
+ * How long the multisig path waits for the root, by default.
+ *
+ * The second signer runs on its own timer on another host, so the root lands a
+ * few minutes after this run proposes — not a few milliseconds. Set it shorter
+ * than one epoch, or a late root and a dead co-signer look the same.
+ */
+const DEFAULT_MULTISIG_WAIT_SECONDS = 600;
+
 function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL, dryRun: false, andPay: false, carryReset: false };
   for (let i = 0; i < argv.length; i++) {
@@ -52,11 +73,30 @@ function parseArgs(argv) {
     else if (argv[i] === '--and-pay') args.andPay = true;
     // Booleans, matched before the `--flag value` branch consumes what follows.
     else if (argv[i] === '--carry-reset') args.carryReset = true;
+    // Named explicitly: the generic branch would store this as `await-root`.
+    else if (argv[i] === '--await-root') args.awaitRoot = Number(argv[++i]);
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
   if (args.day && args.epoch !== undefined) {
     throw new Error('--day and --epoch address the same thing; pass one of them');
+  }
+  // A crank with no way to sign is a crank that cannot settle anything. It used
+  // to run anyway, produce an unsigned file, and report success.
+  if (!args.keypair && !args.dryRun) {
+    throw new Error(
+      '--keypair <PATH> is required: the snapshot key for a single-signer setup, or ' +
+        "this host's multisig member key alongside --multisig <ADDRESS>. Use --dry-run " +
+        'to print the plan without one.',
+    );
+  }
+  if (args.awaitRoot !== undefined && (!Number.isFinite(args.awaitRoot) || args.awaitRoot < 0)) {
+    throw new Error(`--await-root must be a non-negative number of seconds, got ${args.awaitRoot}`);
+  }
+  // A single signer's root is on chain before post-root.mjs returns, so there is
+  // nothing to wait for and waiting would only delay the alarm.
+  if (args.awaitRoot === undefined) {
+    args.awaitRoot = args.multisig ? DEFAULT_MULTISIG_WAIT_SECONDS : 0;
   }
   // Yesterday, in UTC — the epoch that most recently closed on a daily clock.
   // Only a default when nothing was asked for: `--epoch 0` is a real request.
@@ -99,6 +139,76 @@ function run(script, scriptArgs, { dryRun }) {
     stdio: 'inherit',
     cwd: REPO_ROOT,
   });
+}
+
+/**
+ * Which script posts this epoch's root, and with what arguments.
+ *
+ * Two shapes, and the second is the one mainnet runs. When `config.snapshot_key`
+ * is a Squads vault there is no keypair for it — that is the entire point of a
+ * multisig — so the root is posted *through* the multisig by `cosign.mjs`, and
+ * `--keypair` names this host's member key instead.
+ *
+ * This used to be three lines that appended `--keypair` only if one was given,
+ * and fell through to `post-root.mjs` regardless. In the multisig configuration
+ * that produced an unsigned file and exit 0, every epoch, forever.
+ */
+export function postStep({ epoch, rpc, keypair, multisig }) {
+  if (!keypair) throw new Error('no key to post with — this run cannot settle anything');
+
+  if (multisig) {
+    return {
+      script: 'cosign.mjs',
+      // `--execute` on both hosts: whichever one meets the threshold sends it.
+      args: ['--epoch', String(epoch), '--rpc', rpc, '--multisig', multisig,
+        '--keypair', keypair, '--execute', '--yes'],
+    };
+  }
+  return {
+    script: 'post-root.mjs',
+    args: ['--epoch', String(epoch), '--rpc', rpc, '--keypair', keypair, '--yes'],
+  };
+}
+
+/**
+ * Return the epoch account once it exists on chain, or throw.
+ *
+ * **This is the check that makes the class of bug impossible rather than fixed
+ * once.** A child process exiting 0 describes the child; only the chain
+ * describes the chain. Whatever the posting path, whatever it printed, the run
+ * has not settled an epoch until the account is readable — so read it.
+ *
+ * The wait is for the multisig path, where the root lands when the *other* host
+ * approves. A missing root at the deadline is the loud failure Phase 09 §9.3
+ * asks for: alert on the absence of a settlement, not only on errors.
+ */
+export async function confirmPosted(
+  readEpoch,
+  { epoch, awaitSeconds = 0, multisig, sleepFn = sleep, nowFn = () => Date.now() },
+) {
+  const deadline = nowFn() + awaitSeconds * 1000;
+  let announced = false;
+
+  for (;;) {
+    const onChain = await readEpoch();
+    if (onChain) return onChain;
+    if (nowFn() >= deadline) break;
+    if (!announced) {
+      console.log(`\n⏳ no root for epoch ${epoch} yet — waiting up to ${awaitSeconds}s for it\n`);
+      announced = true;
+    }
+    await sleepFn(ROOT_POLL_SECONDS);
+  }
+
+  throw new Error(
+    `epoch ${epoch} has NO ROOT ON CHAIN${awaitSeconds ? ` after ${awaitSeconds}s` : ''}, ` +
+      'even though the posting step reported success. This run settled nothing.\n' +
+      (multisig
+        ? '  The proposal may be sitting below the approval threshold: check the other ' +
+          "signer's timer, that both hosts name the same --multisig, and the vault's SOL balance."
+        : '  post-root.mjs exited 0 without posting. Check that --keypair really is the ' +
+          'snapshot key.'),
+  );
 }
 
 async function main() {
@@ -160,13 +270,26 @@ async function main() {
   // post-root handles a zero-leaf tree identically anyway. `post-root --empty`
   // stays: it is the documented manual path for posting a zeroed root when
   // there is no snapshot at all.
-  const postArgs = ['--epoch', String(epoch), '--rpc', args.rpc];
-  if (args.keypair) postArgs.push('--keypair', args.keypair, '--yes');
-  const posted = run('post-root.mjs', postArgs, args);
-  if (posted.status !== 0) throw new Error('post-root failed');
+  const { script, args: postArgs } = postStep({
+    epoch,
+    rpc: args.rpc,
+    keypair: args.keypair,
+    multisig: args.multisig,
+  });
+  const posted = run(script, postArgs, args);
+  if (posted.status !== 0) throw new Error(`${script} failed — no root was posted`);
+
+  // And now the only statement that means anything: ask the chain.
+  const onChain = args.dryRun
+    ? null
+    : await confirmPosted(() => fetchEpoch(connection, config.mint, epoch), {
+        epoch,
+        awaitSeconds: args.awaitRoot,
+        multisig: args.multisig,
+      });
+  if (onChain) console.log(`\nroot on chain: ${onChain.root.toString('hex')}`);
 
   if (args.andPay) {
-    const onChain = args.dryRun ? null : await fetchEpoch(connection, config.mint, epoch);
     await pay(connection, config, epoch, onChain, args);
     return;
   }

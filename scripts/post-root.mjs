@@ -8,8 +8,12 @@
 //
 // Read Phase 05 §5.5 before changing anything here. A stolen key takes the
 // pool's current balance and every future creator fee, permanently, because
-// there is no rotation — which is why the key is a 2-of-3 multisig (L3) and
-// why this script prefers `--unsigned` by default in that setup.
+// there is no rotation — which is why the key is a 2-of-3 multisig (L3).
+//
+// In that setup this script is not the one that runs: `cosign.mjs` posts
+// through the multisig, and the crank calls it. `--unsigned` remains the manual
+// path — hand the base64 to a signer yourself — but it must be **asked for**.
+// It is not what happens when `--keypair` is missing; that is an error.
 //
 // Usage:
 //   node scripts/post-root.mjs --epoch 12 --keypair <PATH>     # single signer
@@ -51,6 +55,17 @@ function parseArgs(argv) {
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
   if (args.epoch === undefined) throw new Error('--epoch is required');
+  // Emitting base64 instead of posting is a real mode, but it must be *asked
+  // for*. Falling into it because --keypair was forgotten is how this script
+  // came to write a file, post nothing, and exit 0 — which the crank read as a
+  // settled epoch.
+  if (!args.keypair && !args.unsigned) {
+    throw new Error(
+      'no --keypair, and --unsigned was not asked for. Pass --keypair <PATH> to sign and ' +
+        'send, or --unsigned to deliberately emit a base64 transaction for the multisig. ' +
+        'Posting nothing is never the default.',
+    );
+  }
   return args;
 }
 
@@ -135,9 +150,10 @@ async function main() {
     allocate,
   });
 
-  if (args.unsigned || !args.keypair) {
+  if (args.unsigned) {
     // The 2-of-3 layout signs through a multisig program, so the normal path is
-    // to hand the encoded transaction to it rather than to sign here.
+    // to hand the encoded transaction to it rather than to sign here. Reached
+    // only when `--unsigned` was passed: see parseArgs.
     const tx = new Transaction().add(ix);
     tx.feePayer = config.snapshotKey;
     tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
@@ -177,6 +193,8 @@ async function main() {
     console.log(`recorded in ${rootTxt}\n`);
   }
 }
+
+export { parseArgs };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {

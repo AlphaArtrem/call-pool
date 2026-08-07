@@ -10,6 +10,9 @@
 //   node scripts/tools/dry-run-loop.mjs --epochs 12
 //   node scripts/tools/dry-run-loop.mjs --no-schedule   # no sales, spam or gaps
 //
+//   # against a deployment whose snapshot key is a Squads vault — mainnet's shape
+//   node scripts/tools/dry-run-loop.mjs --multisig <ADDRESS> --signer <MEMBER_KEY>
+//
 // **It prints what it skipped and why.** A loop that silently stops settling
 // looks exactly like a working loop from the outside, and that is the failure
 // Phase 09 §9.3 is about — the thing most likely to kill this project is not a
@@ -62,7 +65,29 @@ function parseArgs(argv) {
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
+  if (args.multisig && !args.signer) {
+    throw new Error('--multisig <ADDRESS> needs --signer <PATH>: this host\'s multisig member key');
+  }
   return args;
+}
+
+/**
+ * How the loop's crank signs — and it is not always a snapshot key.
+ *
+ * A deployment made with `--snapshot-key <vault>` has no snapshot keypair
+ * anywhere, so `manifest.snapshotKey.keypair` is null and the loop must post
+ * through the multisig instead. Reading it blindly is how a rehearsal in
+ * mainnet's own shape ends up passing `--keypair null`.
+ */
+function postingArgs(args, manifest) {
+  if (args.multisig) return ['--multisig', args.multisig, '--keypair', args.signer];
+  if (!manifest.snapshotKey.keypair) {
+    throw new Error(
+      `this deployment's snapshot key ${manifest.snapshotKey.address} is external — a multisig ` +
+        'vault, with no keypair here. Pass --multisig <ADDRESS> --signer <PATH>.',
+    );
+  }
+  return ['--keypair', manifest.snapshotKey.keypair];
 }
 
 /**
@@ -209,23 +234,29 @@ async function main() {
       const cranked = run('scripts/crank.mjs', [
         '--epoch', String(epoch),
         '--rpc', args.rpc,
-        '--keypair', manifest.snapshotKey.keypair,
+        ...postingArgs(args, manifest),
         '--payer', manifest.payer.keypair,
         '--store', DEVNET_STORE_PATH,
         '--and-pay',
         ...(restarting ? ['--carry-reset'] : []),
       ]);
 
-      if (cranked.ok) {
-        const onChain = await fetchEpoch(connection, mint, epoch);
+      const onChain = cranked.ok ? await fetchEpoch(connection, mint, epoch) : null;
+
+      if (onChain) {
         record(
           epoch,
           'settled',
-          onChain
-            ? `root ${onChain.root.toString('hex').slice(0, 12)}…, ${onChain.claimedLamports} lamports claimed`
-            : 'but no epoch account was found afterwards — investigate',
+          `root ${onChain.root.toString('hex').slice(0, 12)}…, ${onChain.claimedLamports} lamports claimed`,
         );
         settled += 1;
+      } else if (cranked.ok) {
+        // The crank exited 0 and there is still no root. `crank.mjs` now checks
+        // this itself and should have thrown, so reaching here means something
+        // upstream lied — which is exactly the reason not to record it as a
+        // settlement on the strength of an exit code. This ledger's job is to
+        // count roots, not happy children.
+        record(epoch, 'FAILED', 'crank exited 0 but no epoch account exists — nothing settled');
       } else {
         // Not fatal, and not swallowed either. The next epoch is independent,
         // and a root can still be posted for this one later — that is exactly
