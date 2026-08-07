@@ -5,6 +5,13 @@
 //   node scripts/tools/pump-trade.mjs --buy 0.1  --keypair <WALLET> --rpc <RPC>
 //   node scripts/tools/pump-trade.mjs --sell all --keypair <WALLET> --rpc <RPC>
 //   node scripts/tools/pump-trade.mjs --sell 50% --keypair <WALLET>
+//   node scripts/tools/pump-trade.mjs --lp-deposit 50% --keypair <WALLET>   # L18
+//
+// **The bonding curve and the AMM are different programs, and this picks.** Once
+// a coin graduates the curve is closed: a sell against it fails with
+// `BondingCurveComplete` (6005), which is what happened mid-rehearsal and left
+// the lockout untested. Which side we are on is read from chain rather than
+// remembered, because graduation happens on somebody else's schedule.
 //
 // **Devnet only** — `assertNotMainnet`, by genesis hash, before anything is sent.
 //
@@ -42,8 +49,11 @@ function parseArgs(argv) {
     if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
-  if (!args.buy && !args.sell) throw new Error('pass --buy <SOL> or --sell <AMOUNT|all|N%>');
-  if (args.buy && args.sell) throw new Error('--buy and --sell are separate runs');
+  const actions = ['buy', 'sell', 'lp-deposit'].filter((a) => args[a] !== undefined);
+  if (actions.length === 0) {
+    throw new Error('pass --buy <SOL>, --sell <AMOUNT|all|N%>, or --lp-deposit <AMOUNT|all|N%>');
+  }
+  if (actions.length > 1) throw new Error(`${actions.join(' and ')} are separate runs`);
   if (!args.keypair) throw new Error('--keypair <PATH> is required');
   return args;
 }
@@ -94,19 +104,51 @@ async function main() {
   console.log(`wallet     ${wallet.publicKey.toBase58()}`);
   console.log(`holds      ${tokensBefore} raw units, ${sol(solBefore)}`);
 
+  // Which venue. Read from chain, never assumed: the AMM pool account exists
+  // only after graduation, and graduation happens on pump's schedule rather
+  // than ours. Getting this wrong is not subtle — the curve refuses with
+  // BondingCurveComplete — but it refuses *after* the transaction is built.
+  const ammPool = await pump.readAmmPool(args.rpc, mint);
+  const venue = ammPool.exists ? 'AMM (graduated)' : 'bonding curve';
+  console.log(`venue      ${venue}`);
+  if (ammPool.exists) console.log(`pool       ${ammPool.pool}`);
+
   let built;
-  if (args.buy) {
+  if (args.buy !== undefined) {
     const lamports = BigInt(Math.round(Number(args.buy) * LAMPORTS_PER_SOL));
     console.log(`action     BUY ${sol(lamports)}`);
-    built = await pump.buildBuyInstructions(args.rpc, mint, wallet.publicKey.toBase58(), lamports.toString());
-    console.log(`expecting  ~${built.tokenAmount} raw units`);
-  } else {
+    built = ammPool.exists
+      ? await pump.buildAmmBuyInstructions(args.rpc, mint, wallet.publicKey.toBase58(), lamports.toString())
+      : await pump.buildBuyInstructions(args.rpc, mint, wallet.publicKey.toBase58(), lamports.toString());
+    if (built.tokenAmount) console.log(`expecting  ~${built.tokenAmount} raw units`);
+  } else if (args.sell !== undefined) {
     const amount = resolveSellAmount(args.sell, tokensBefore);
     if (amount <= 0n) throw new Error('nothing to sell — the wallet holds no tokens');
     console.log(`action     SELL ${amount} raw units`);
     console.log('           ⚠️  this fires the 7-epoch lockout for this wallet (L1/L6)');
-    built = await pump.buildSellInstructions(args.rpc, mint, wallet.publicKey.toBase58(), amount.toString());
-    console.log(`expecting  ~${sol(built.solAmount)} back`);
+    built = ammPool.exists
+      ? await pump.buildAmmSellInstructions(args.rpc, mint, wallet.publicKey.toBase58(), amount.toString())
+      : await pump.buildSellInstructions(args.rpc, mint, wallet.publicKey.toBase58(), amount.toString());
+    if (built.solAmount) console.log(`expecting  ~${sol(built.solAmount)} back`);
+  } else {
+    // ── L18 ────────────────────────────────────────────────────────────────
+    // The case the whole ruling turns on. This empties the wallet's token
+    // balance exactly as a sale does, and sends the coin to the same account.
+    // What must distinguish it is that LP tokens come back.
+    if (!ammPool.exists) {
+      throw new Error(
+        'the coin has not graduated, so there is no pool to deposit into and no LP mint. ' +
+          'L18 cannot be exercised before graduation — that is the ruling\'s own scope.',
+      );
+    }
+    const amount = resolveSellAmount(args['lp-deposit'], tokensBefore);
+    if (amount <= 0n) throw new Error('nothing to deposit — the wallet holds no tokens');
+    console.log(`action     LP DEPOSIT ${amount} raw units`);
+    console.log(`lp mint    ${ammPool.lpMint}`);
+    console.log('           this must NOT fire the lockout (L18) — the wallet gets LP tokens back');
+    built = await pump.buildLpDepositInstructions(args.rpc, mint, wallet.publicKey.toBase58(), amount.toString());
+    console.log(`lp tokens  ~${built.lpToken} expected back`);
+    console.log(`sol side   ~${sol(built.quote)} also required — a pool is two-sided`);
   }
 
   const signature = await sendAndConfirmTransaction(

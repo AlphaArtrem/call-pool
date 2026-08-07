@@ -412,3 +412,106 @@ export function available() {
     return false;
   }
 }
+
+// ── after graduation: the AMM ──────────────────────────────────────────────
+//
+// Everything above this line talks to the bonding curve. Once a coin graduates
+// the curve is closed — `sellV2` fails with `BondingCurveComplete` (6005) — and
+// trading moves to PumpSwap. Two of CALLPOOL's never-verified behaviours only
+// exist on this side:
+//
+//   * `sweep_wsol`. Post-graduation creator fees arrive as **wrapped SOL** in an
+//     ATA owned by the pool, and wSOL cannot be unwrapped in place. Nothing
+//     accrues there until the AMM has taken fees.
+//   * **L18.** The LP mint does not exist before graduation, so an LP deposit
+//     cannot be made and `isLpDeposit` cannot be exercised against a real one.
+//
+// `@pump-fun/pump-swap-sdk` is already a transitive dependency of the fee SDK,
+// so this adds no package. The same boundary applies: primitives out, and
+// nothing the SDK built is ever signed.
+
+/** The AMM SDK pair, against this package's own Connection. */
+const amm = (rpcUrl) => {
+  const { Connection } = web3();
+  const swap = require_('@pump-fun/pump-swap-sdk');
+  const connection = new Connection(rpcUrl, 'confirmed');
+  return {
+    swap,
+    online: new swap.OnlinePumpAmmSdk(connection),
+    offline: new swap.PumpAmmSdk(),
+    connection,
+  };
+};
+
+/** The coin's canonical AMM pool, and whether it exists yet. */
+export async function readAmmPool(rpcUrl, mint) {
+  const { PublicKey } = web3();
+  const { swap, connection } = amm(rpcUrl);
+  const pool = swap.canonicalPumpPoolPda(new PublicKey(mint));
+  const info = await connection.getAccountInfo(pool);
+  return {
+    pool: pool.toBase58(),
+    lpMint: swap.lpMintPda(pool).toBase58(),
+    exists: info != null,
+  };
+}
+
+/**
+ * Buy on the AMM. What generates creator fees after graduation.
+ *
+ * `buyQuoteInput` takes the SOL to spend, which is the same shape as the
+ * bonding-curve buy above, so callers do not have to think about which side of
+ * graduation they are on beyond choosing the function.
+ */
+export async function buildAmmBuyInstructions(rpcUrl, mint, user, quoteLamports, slippageBps = 500) {
+  const { PublicKey } = web3();
+  const { swap, online, offline } = amm(rpcUrl);
+  const pool = swap.canonicalPumpPoolPda(new PublicKey(mint));
+  const state = await online.swapSolanaState(pool, new PublicKey(user));
+  const instructions = await offline.buyQuoteInput(state, bn(quoteLamports), slippageBps / 100);
+  return { instructions: instructions.map(plain), pool: pool.toBase58() };
+}
+
+/**
+ * Sell on the AMM. How a wallet triggers the lockout after graduation.
+ *
+ * This is the half that matters for L18's test: a sale and an LP deposit send
+ * the coin to the *same* pool, so the pair has to be produced from the same
+ * place to show that the discriminator tells them apart.
+ */
+export async function buildAmmSellInstructions(rpcUrl, mint, user, baseAmount, slippageBps = 500) {
+  const { PublicKey } = web3();
+  const { swap, online, offline } = amm(rpcUrl);
+  const pool = swap.canonicalPumpPoolPda(new PublicKey(mint));
+  const state = await online.swapSolanaState(pool, new PublicKey(user));
+  const instructions = await offline.sellBaseInput(state, bn(baseAmount), slippageBps / 100);
+  return { instructions: instructions.map(plain), pool: pool.toBase58() };
+}
+
+/**
+ * Deposit into the coin's canonical pool — **the L18 case.**
+ *
+ * The wallet's token balance goes to zero exactly as a sale would, and the coin
+ * goes to the same account. What separates them is that this mints the pool's LP
+ * tokens back to the depositor, which is what `isLpDeposit` looks for.
+ *
+ * `depositBaseInput` computes the matching quote side and the LP amount from the
+ * base amount, so the caller supplies only what it is putting in. The deposit
+ * needs SOL as well as tokens — it is a two-sided pool — and the returned
+ * `quote` says how much.
+ */
+export async function buildLpDepositInstructions(rpcUrl, mint, user, baseAmount, slippageBps = 500) {
+  const { PublicKey } = web3();
+  const { swap, online, offline } = amm(rpcUrl);
+  const pool = swap.canonicalPumpPoolPda(new PublicKey(mint));
+  const state = await online.liquiditySolanaState(pool, new PublicKey(user));
+  const quoted = offline.depositBaseInput(state, bn(baseAmount), slippageBps / 100);
+  const instructions = await offline.depositInstructions(state, quoted.lpToken, slippageBps / 100);
+  return {
+    instructions: instructions.map(plain),
+    pool: pool.toBase58(),
+    lpMint: swap.lpMintPda(pool).toBase58(),
+    lpToken: quoted.lpToken.toString(),
+    quote: quoted.quote?.toString() ?? quoted.maxQuote?.toString() ?? '0',
+  };
+}
