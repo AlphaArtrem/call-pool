@@ -220,6 +220,37 @@ their own user, with their own `SOLANA_RPC_URL`. The signing key goes in
 Signer B lives on a different provider entirely; two automated signers on one
 host is a 2-of-3 multisig wearing a costume.
 
+## The callout API key needs no configuration
+
+There is deliberately nothing to set. `x-api-key` for `api.coin-communities.xyz`
+is the public client key pump.fun ships to every visitor of `pump.fun/callouts`
+— not a secret, but *theirs*, with no API that hands it out and no notice when
+it changes. A rotation used to mean an hourly poll returning 401 until someone
+noticed and pasted a new value onto two boxes.
+
+`scripts/lib/callout-key.mjs` reads it out of pump.fun's own bundle, anchored on
+the `https://api.coin-communities.xyz` base URL that appears in the same
+`configureApi` call, and caches it in `epochs/callout-key.json`. It re-derives
+**only when the API actually returns 401 or 403**, because that is the one
+trustworthy signal that the key rotated — a timer would download 2.5 MB of
+someone else's JavaScript every hour to learn what a single rejection says for
+free. A recovered rotation still sends a Telegram alert: a change in a system we
+depend on should not pass silently just because it was survivable.
+
+Two things worth knowing before changing any of it:
+
+- **The bundle is never executed.** It is fetched as text and matched with
+  regexes — no `eval`, no `import()`, no `new Function`. Running pump.fun's
+  bundle to extract the key would give their CDN arbitrary code execution inside
+  the crank.
+- **A derived key is validated against the live API before it is cached.** A key
+  that parses but does not work turns a loud failure into a confusing one.
+
+Set `CALLOUT_API_KEY` to pin a specific key and disable the derivation entirely
+— useful when testing against a known one. A pinned key is never overwritten; if
+the API rejects it, the poll says so and stops rather than arguing with an
+explicit choice.
+
 ## Replacing INITIALIZER for a deployment build
 
 `INITIALIZER` is a compile-time constant and the only address that may call

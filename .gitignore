@@ -47,6 +47,10 @@ epochs/scratch/
 # The hourly poll's rolling memory. Working state between polls — every epoch's
 # raw capture is committed under snapshots/, which is the record that matters.
 epochs/callout-store.json
+# The derived pump.fun callout key and when it was derived. Not a secret — it
+# is in pump.fun's public bundle — but it is a cache, not a fact about us, and
+# committing it would make a stale key look like a decision.
+epochs/callout-key.json
 # The devnet dry run: its manifest, its throwaway keys, its fabricated callout
 # store and its snapshots. None of it is evidence of anything and a fake epoch
 # in the audit trail is worse than no audit trail.

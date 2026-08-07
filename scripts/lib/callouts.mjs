@@ -39,35 +39,40 @@ export class CalloutError extends Error {
   }
 }
 
-/**
- * The public client key pump.fun ships to every visitor.
- *
- * Read from the environment rather than committed. It is not a secret — it is
- * in pump.fun's own JS bundle — but it is *theirs*, it can rotate without
- * notice, and Phase 02 §2.6 risk 2 requires that a rotation be an **alerted**
- * failure rather than a silent one. Re-extract it by loading
- * `pump.fun/callouts` and grepping the same-origin scripts for
- * `coin-communities`.
- */
-export function apiKeyFromEnv(env = globalThis.process?.env ?? {}) {
-  const key = env.CALLOUT_API_KEY;
-  if (!key) {
-    throw new CalloutError(
-      'CALLOUT_API_KEY is not set. It is the public x-api-key from pump.fun\'s own ' +
-        'bundle — load pump.fun/callouts and grep the same-origin scripts for ' +
-        '"coin-communities".',
-    );
-  }
-  return key;
-}
+// The public client key pump.fun ships to every visitor lives in
+// `callout-key.mjs`, not here. It is not a secret — it is in pump.fun's own JS
+// bundle — but it is *theirs*, it rotates without notice, and there is no API
+// that hands it out, so it is derived from their bundle and re-derived when
+// this module sees a 401. `get()` below takes either a literal `apiKey` or a
+// `keySource`; the source is injected rather than imported so that the one
+// module that knows how to talk to the callout API stays free of any knowledge
+// of how its key was obtained.
 
-async function get(path, { apiKey, baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch }) {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    headers: { 'x-api-key': apiKey, accept: 'application/json' },
-  });
+async function get(path, { apiKey, keySource, baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch }) {
+  const send = (key) =>
+    fetchImpl(`${baseUrl}${path}`, {
+      headers: { 'x-api-key': key, accept: 'application/json' },
+    });
+
+  // A literal key still works exactly as it did, so every existing caller and
+  // every test that passes a string is unaffected. `keySource` is the opt-in.
+  let key = apiKey ?? (keySource ? await keySource.get() : undefined);
+  let response = await send(key);
+
+  if ((response.status === 401 || response.status === 403) && keySource && !apiKey) {
+    // Phase 02 §2.6 risk 2. This is the shape a key rotation takes — and it is
+    // the *only* trustworthy signal that one happened, which is why the key is
+    // re-derived here rather than refreshed on a timer. `refresh()` throws if
+    // it cannot produce a working key, so a genuine outage still fails loudly
+    // instead of retrying forever.
+    key = await keySource.refresh();
+    response = await send(key);
+  }
+
   if (response.status === 401 || response.status === 403) {
-    // Phase 02 §2.6 risk 2. This is the shape a key rotation takes, and the
-    // crank must stop loudly rather than settle an epoch with no callers.
+    // Either there was no key source to recover with, or recovery produced a
+    // key the API also refuses. Both mean: stop, rather than settle an epoch
+    // with no callers.
     throw new CalloutError(
       `the callout API rejected the public key (${response.status}) — it may have rotated`,
       { path, status: response.status },

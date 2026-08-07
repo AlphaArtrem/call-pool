@@ -13,14 +13,22 @@
 // job, because the fallback needs the holder list and that is a chain read.
 //
 // Usage:
-//   CALLOUT_API_KEY=... node scripts/poll-callouts.mjs --mint <MINT>
+//   node scripts/poll-callouts.mjs --mint <MINT>
 //   ... --day 2026-08-04     # which window to judge truncation against
+//
+// No key needs to be supplied. pump.fun's public callout key is derived from
+// their own bundle and cached (`lib/callout-key.mjs`), and re-derived when the
+// API rejects it — which is the only reliable signal that it rotated. Setting
+// `CALLOUT_API_KEY` pins a key instead and disables the derivation, which is
+// what you want when you are testing against a specific one.
 //
 // Exits non-zero on an API failure, so a scheduler alerts. Phase 09 §9.3 wants
 // the alert on the *absence* of a successful poll, not only on errors — that is
 // the runner's job, not this script's.
 
-import { apiKeyFromEnv, CalloutError, mergeById, pollMint } from './lib/callouts.mjs';
+import { alert } from './lib/alert.mjs';
+import { CalloutError, mergeById, pollMint } from './lib/callouts.mjs';
+import { createCalloutKeySource } from './lib/callout-key.mjs';
 import { LOCKOUT_EPOCHS } from './lib/config.mjs';
 import { iso, windowForDay } from './lib/epoch.mjs';
 import { readStore, STORE_PATH, writeStore } from './lib/store.mjs';
@@ -58,10 +66,11 @@ function parseArgs(argv) {
   return args;
 }
 
-export async function pollOnce({ mint, window, store, apiKey, baseUrl, fetchImpl, now }) {
+export async function pollOnce({ mint, window, store, apiKey, keySource, baseUrl, fetchImpl, now }) {
   const observedAt = now ?? Math.floor(Date.now() / 1000);
   const { records, truncated, feedSize } = await pollMint(mint, window, {
     apiKey,
+    keySource,
     baseUrl,
     fetchImpl,
   });
@@ -90,11 +99,27 @@ async function main() {
     );
   }
 
+  // No `apiKey` — the source resolves it, from the environment if an operator
+  // pinned one and by deriving it from pump.fun's bundle if not. A rotation
+  // mid-run is recovered from inside `get()` and alerted here.
   const result = await pollOnce({
     mint: args.mint,
     window,
     store: previous,
-    apiKey: apiKeyFromEnv(),
+    keySource: createCalloutKeySource({
+      mint: args.mint,
+      log: console.log,
+      onRotate: ({ previous: was, next, via }) =>
+        alert(
+          `pump.fun rotated the public callout key.\n\n` +
+            `The poll recovered on its own: the new key was derived from ` +
+            `pump.fun's bundle (via ${via}) and accepted by the API, so no ` +
+            `epoch was settled with an empty caller list.\n\n` +
+            `was ${was} → now ${next}\n\n` +
+            `Nothing to do. This is here because a change in someone else's ` +
+            `system that we depend on should never pass silently.`,
+        ),
+    }),
     baseUrl: args.baseUrl,
   });
   writeStore(result.store);

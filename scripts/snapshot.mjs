@@ -11,7 +11,7 @@
 // something to check during it.
 //
 // Usage:
-//   CALLOUT_API_KEY=... node scripts/snapshot.mjs --day 2026-08-04
+//   node scripts/snapshot.mjs --day 2026-08-04
 //   node scripts/snapshot.mjs --epoch 12        # by on-chain index instead
 //   ... --rpc <URL> --mint <MINT>     # mint defaults to the on-chain config
 //   ... --store <PATH>                # a callout store other than the poll's
@@ -34,7 +34,8 @@ import { resolve } from 'node:path';
 
 import { connect } from './lib/rpc.mjs';
 
-import { apiKeyFromEnv, collectByWallet, isTruncated, mergeById, recordsInWindow } from './lib/callouts.mjs';
+import { collectByWallet, isTruncated, mergeById, recordsInWindow } from './lib/callouts.mjs';
+import { createCalloutKeySource } from './lib/callout-key.mjs';
 import { DEFAULT_RPC_URL, LOCKOUT_EPOCHS } from './lib/config.mjs';
 import { previousCarryFor, reconcile } from './lib/carry.mjs';
 import { buildEpoch, payoutsCsv } from './lib/epoch-build.mjs';
@@ -78,7 +79,7 @@ const serialiseBig = (value) =>
  * list, and the right one is **holders above the floor** — enumerable from
  * chain — rather than callers, which are not.
  */
-async function resolveCallouts({ store, window, mint, apiKey, holdersAboveFloor }) {
+async function resolveCallouts({ store, window, mint, keySource, holdersAboveFloor }) {
   // The store wraps its records in `callouts` alongside the poll's own
   // bookkeeping; only the records are epoch input.
   const records = recordsInWindow(store.callouts ?? {}, window);
@@ -100,7 +101,7 @@ async function resolveCallouts({ store, window, mint, apiKey, holdersAboveFloor 
     );
   }
 
-  const recovered = await collectByWallet(holdersAboveFloor, mint, window, { apiKey });
+  const recovered = await collectByWallet(holdersAboveFloor, mint, window, { keySource });
   const merged = mergeById(
     Object.fromEntries(records.map((r) => [r.id, r])),
     recovered,
@@ -146,7 +147,9 @@ async function main() {
     store,
     window,
     mint,
-    apiKey: args.holders ? apiKeyFromEnv() : null,
+    // Only the fallback path talks to the callout API, so the key is only
+    // resolved when it is going to be used.
+    keySource: args.holders ? createCalloutKeySource({ mint, log: console.log }) : null,
     holdersAboveFloor: holdersFile,
   });
   const windowStore = Object.fromEntries(records.map((r) => [r.id, r]));
