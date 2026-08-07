@@ -515,3 +515,32 @@ export async function buildLpDepositInstructions(rpcUrl, mint, user, baseAmount,
     quote: quoted.quote?.toString() ?? quoted.maxQuote?.toString() ?? '0',
   };
 }
+
+/**
+ * Withdraw a wallet's whole LP position back into tokens and SOL.
+ *
+ * The other half of `buildLpDepositInstructions`, and the reason it exists is
+ * recovery rather than symmetry: devnet faucets are dry (F18), so SOL parked in
+ * a rehearsal LP position is SOL that has to be got back deliberately.
+ *
+ * Takes the LP amount to burn — `readLpBalance` supplies it for "all of it".
+ */
+export async function buildLpWithdrawInstructions(rpcUrl, mint, user, lpAmount, slippageBps = 500) {
+  const { PublicKey } = web3();
+  const { swap, online, offline } = amm(rpcUrl);
+  const pool = swap.canonicalPumpPoolPda(new PublicKey(mint));
+  const state = await online.liquiditySolanaState(pool, new PublicKey(user));
+  const instructions = await offline.withdrawInstructions(state, bn(lpAmount), slippageBps / 100);
+  return { instructions: instructions.map(plain), pool: pool.toBase58() };
+}
+
+/** How many LP tokens this wallet holds for the coin's canonical pool. */
+export async function readLpBalance(rpcUrl, mint, user) {
+  const { PublicKey } = web3();
+  const { swap, connection } = amm(rpcUrl);
+  const pool = swap.canonicalPumpPoolPda(new PublicKey(mint));
+  const lpMint = swap.lpMintPda(pool);
+  const ata = swap.lpMintAta(lpMint, new PublicKey(user));
+  const info = await connection.getTokenAccountBalance(ata).catch(() => null);
+  return { lpMint: lpMint.toBase58(), ata: ata.toBase58(), amount: info?.value?.amount ?? '0' };
+}

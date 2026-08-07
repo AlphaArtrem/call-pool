@@ -49,9 +49,11 @@ function parseArgs(argv) {
     if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
-  const actions = ['buy', 'sell', 'lp-deposit'].filter((a) => args[a] !== undefined);
+  const actions = ['buy', 'sell', 'lp-deposit', 'lp-withdraw'].filter((a) => args[a] !== undefined);
   if (actions.length === 0) {
-    throw new Error('pass --buy <SOL>, --sell <AMOUNT|all|N%>, or --lp-deposit <AMOUNT|all|N%>');
+    throw new Error(
+      'pass --buy <SOL>, --sell <AMOUNT|all|N%>, --lp-deposit <AMOUNT|all|N%>, or --lp-withdraw all',
+    );
   }
   if (actions.length > 1) throw new Error(`${actions.join(' and ')} are separate runs`);
   if (!args.keypair) throw new Error('--keypair <PATH> is required');
@@ -130,6 +132,15 @@ async function main() {
       ? await pump.buildAmmSellInstructions(args.rpc, mint, wallet.publicKey.toBase58(), amount.toString())
       : await pump.buildSellInstructions(args.rpc, mint, wallet.publicKey.toBase58(), amount.toString());
     if (built.solAmount) console.log(`expecting  ~${sol(built.solAmount)} back`);
+  } else if (args['lp-withdraw'] !== undefined) {
+    // Recovery. SOL parked in a rehearsal LP position is SOL the dry devnet
+    // faucets cannot replace, so getting it back is deliberate work (F18).
+    if (!ammPool.exists) throw new Error('no pool exists, so there is no LP position to withdraw');
+    const lp = await pump.readLpBalance(args.rpc, mint, wallet.publicKey.toBase58());
+    const amount = resolveSellAmount(args['lp-withdraw'], BigInt(lp.amount));
+    if (amount <= 0n) throw new Error(`this wallet holds no LP tokens (${lp.ata})`);
+    console.log(`action     LP WITHDRAW ${amount} of ${lp.amount} LP tokens`);
+    built = await pump.buildLpWithdrawInstructions(args.rpc, mint, wallet.publicKey.toBase58(), amount.toString());
   } else {
     // ── L18 ────────────────────────────────────────────────────────────────
     // The case the whole ruling turns on. This empties the wallet's token
