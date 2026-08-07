@@ -33,6 +33,7 @@ import { connect } from '../lib/rpc.mjs';
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
 import { iso } from '../lib/epoch.mjs';
 import { fetchConfig, fetchEpoch, windowForEpoch } from '../lib/program.mjs';
+import { redactSecrets } from '../lib/alert.mjs';
 import { REPO_ROOT } from '../lib/store.mjs';
 import { assertNotMainnet, DEVNET_DIR, DEVNET_STORE_PATH, readManifest } from './devnet.mjs';
 
@@ -146,7 +147,7 @@ async function main() {
   const limit = args.epochs === undefined ? Infinity : Number(args.epochs);
 
   console.log('\nCALLPOOL — the devnet dry run\n');
-  console.log(`cluster    ${args.rpc}`);
+  console.log(`cluster    ${redactSecrets(args.rpc)}`);
   console.log(`mint       ${mint}`);
   console.log(`epochs     ${config.epochSeconds}s, challenge window ${config.challengeSeconds}s`);
   console.log(`store      ${DEVNET_STORE_PATH}`);

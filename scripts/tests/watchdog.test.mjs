@@ -360,3 +360,15 @@ test('rebuild targets the same epoch the alert was sent about', () => {
   assert.ok(rebuildEpoch(t, 42).includes('epoch-42'));
   assert.ok(rebuildEpoch(t, 42).includes('--epoch 42'));
 });
+
+// ── F12: the deploy tooling used to print the provider key ─────────────────
+
+test('a provider URL with a key in its path is redacted to scheme and host', () => {
+  // The deploy tool logged the cluster URL verbatim, which lands in journald
+  // under systemd, and told the operator to paste it into config.local.js —
+  // a file every visitor fetches. Both sites now go through this.
+  const url = 'https://rpc.ankr.com/solana_devnet/0031609f9fed053302d47e49c790d048';
+  const safe = redactSecrets(`cluster   ${url}`);
+  assert.ok(!safe.includes('0031609f'), 'the key must not survive redaction');
+  assert.ok(safe.includes('rpc.ankr.com'), 'the host is kept — which provider failed is the diagnosis');
+});

@@ -61,6 +61,7 @@ import {
   poolPda,
   PROGRAM_ID,
 } from '../lib/program.mjs';
+import { redactSecrets } from '../lib/alert.mjs';
 import { REPO_ROOT } from '../lib/store.mjs';
 import {
   assertNotMainnet,
@@ -169,7 +170,9 @@ async function main() {
 
   // Before anything is built, let alone sent.
   const genesisHash = await assertNotMainnet(connection, 'deploy-devnet.mjs');
-  console.log(`cluster   ${args.rpc}`);
+  // Redacted: the provider key is a path segment, and this line lands in
+  // journald when the deploy runs under systemd.
+  console.log(`cluster   ${redactSecrets(args.rpc)}`);
   console.log(`genesis   ${genesisHash}`);
   console.log(`program   ${PROGRAM_ID.toBase58()}`);
   console.log(`epochs    ${args.epochSeconds}s, challenge window ${args.challengeSeconds}s\n`);
@@ -406,7 +409,13 @@ async function main() {
 
   console.log('─'.repeat(72));
   console.log('Paste into site/config.local.js, under devnet:\n');
-  console.log(`    rpc: '${args.rpc}',`);
+  // NOT `args.rpc`. `config.local.js` is fetched by every visitor, and a
+  // provider URL carries its key in the path — pasting it here would publish
+  // the key to every browser that loads the page, which is the exact failure
+  // `scripts/lib/rpc-proxy.mjs` exists to prevent. The page calls a
+  // same-origin path and `serve-site.mjs` forwards it using the URL in
+  // CALLPOOL_RPC_URL_DEVNET, which stays on the server.
+  console.log(`    rpc: '/rpc/devnet',`);
   console.log(`    mint: '${mint.toBase58()}',`);
   console.log(`    programId: '${PROGRAM_ID.toBase58()}',`);
   console.log(`    snapshotsBase: '/epochs/devnet/snapshots',`);
