@@ -76,7 +76,35 @@ export function runCosign({ epoch, rpc, multisig }) {
       '--multisig', multisig, '--dry-run'],
     { cwd: REPO_ROOT, encoding: 'utf8' },
   );
-  return { status: result.status, output: `${result.stdout}${result.stderr}` };
+  const output = `${result.stdout}${result.stderr}`;
+  return { status: result.status, output, verdict: classify(result.status, output) };
+}
+
+/**
+ * What the co-signer's exit code actually means.
+ *
+ * **Exit 0 is not agreement.** `cosign.mjs` returns 0 for several reasons that
+ * have nothing to do with the snapshot, and the most common one is
+ * "epoch N already has a root on chain. Nothing to do." — which it prints and
+ * exits *before reading the directory at all*.
+ *
+ * That is how this test came to report a catastrophic failure against a working
+ * co-signer on 2026-08-07: it ran against a settled epoch, the co-signer bailed
+ * out early twice, and the test read the second exit 0 as "accepted a tampered
+ * snapshot". Worse than the false alarm, the honest control passed for the same
+ * empty reason — so the whole test was inert, and had been inert every time it
+ * was reasoned about.
+ *
+ * A test that cannot tell a decision from an early return proves nothing in
+ * either direction. So the verdict comes from what the co-signer *said*, and
+ * anything unrecognised is `inconclusive` rather than a guess.
+ */
+export function classify(status, output) {
+  if (/already has a root on chain/i.test(output)) return 'skipped-settled';
+  if (status !== 0) return 'refused';
+  if (/--dry-run: proposal at index \d+ matches byte for byte/i.test(output)) return 'accepted';
+  if (/--dry-run: no matching proposal yet/i.test(output)) return 'accepted-no-proposal';
+  return 'inconclusive';
 }
 
 /**
@@ -130,15 +158,35 @@ async function main() {
     // ── 1. the control ─────────────────────────────────────────────────────
     console.log('── the honest snapshot ────────────────────────────────────────');
     const before = runCosign({ epoch, rpc: args.rpc, multisig: args.multisig });
-    if (before.status !== 0) {
+    if (before.verdict === 'skipped-settled') {
+      console.log(before.output);
+      throw new Error(
+        `epoch ${epoch} ALREADY HAS A ROOT ON CHAIN, so the co-signer exits before it reads the\n` +
+          '  directory at all — for the honest copy and the tampered one alike. Nothing is under\n' +
+          '  test here, in either direction.\n\n' +
+          '  This is how this test reported a catastrophic failure against a perfectly good\n' +
+          '  co-signer on 2026-08-07: two early exits, the second one read as "accepted".\n\n' +
+          '  Run it against an epoch that has CLOSED but NOT SETTLED. Stop the crank timer, let\n' +
+          '  an epoch close, build its snapshot with snapshot.mjs alone, and test that.',
+      );
+    }
+    if (before.verdict === 'refused') {
       console.log(before.output);
       throw new Error(
         'the co-signer refused the HONEST snapshot, so this test can prove nothing about the ' +
-          'tampered one. Something else is wrong — a wrong --multisig, an unreachable RPC, a ' +
-          'stale directory, or an epoch that already has a root. Fix that first.',
+          'tampered one. Something else is wrong — a wrong --multisig, an unreachable RPC, or a ' +
+          'stale directory. Fix that first.',
       );
     }
-    console.log('✔ accepted, as it must be for the rest of this to mean anything\n');
+    if (before.verdict === 'inconclusive') {
+      console.log(before.output);
+      throw new Error(
+        'the co-signer exited 0 on the honest snapshot without saying it matched anything. ' +
+          'Exit 0 is not agreement, and a test that cannot tell a decision from an early return ' +
+          'proves nothing. Read the output above before trusting any result from this tool.',
+      );
+    }
+    console.log(`✔ accepted (${before.verdict}), as it must be for the rest of this to mean anything\n`);
 
     // ── 2. the tamper ──────────────────────────────────────────────────────
     const payee = corruptTree(dir);
@@ -149,7 +197,18 @@ async function main() {
     const after = runCosign({ epoch, rpc: args.rpc, multisig: args.multisig });
     console.log(after.output);
 
-    if (after.status === 0) {
+    if (after.verdict === 'skipped-settled' || after.verdict === 'inconclusive') {
+      // Not a pass and emphatically not a failure — the co-signer never reached
+      // a decision. Saying either would be inventing a result.
+      console.log(
+        `⚠️  INCONCLUSIVE (${after.verdict}).\n\n` +
+          '   The co-signer did not reach a verdict on the tampered snapshot, so this run says\n' +
+          '   nothing about whether it would have refused. Do not record it as a pass.\n' +
+          `   ${after.verdict === 'skipped-settled'
+            ? 'The epoch settled underneath the test — run it against an unsettled one.'
+            : 'Read the output above: exit 0 arrived without a recognised verdict.'}\n`,
+      );
+    } else if (after.verdict !== 'refused') {
       console.log(
         '🔴 THE CO-SIGNER ACCEPTED A TAMPERED SNAPSHOT.\n\n' +
           '   The 2-of-3 is a 1-of-3 wearing a costume: whoever owns the crank host owns both\n' +
