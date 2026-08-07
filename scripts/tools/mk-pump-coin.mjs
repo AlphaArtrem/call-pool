@@ -32,7 +32,10 @@
 //      transaction (F6). Bundling closes F5's window, where fees accrued before
 //      the config exists are stranded in the creator vault and reachable only by
 //      the creator's own `collect_creator_fee`.
-//   3. the dev buy, separately — it does not fit (1485 bytes vs 1232).
+//   3. the dev buy, **built and sent after (2) confirms**. Not only because it
+//      does not fit (1485 bytes vs 1232), but because `createFeeSharingConfig`
+//      moves the creator vault — a buy built beforehand names the old one and
+//      dies with `ConstraintSeeds` (2006) on an account it never mentions.
 //
 // ⚠️ `updateFeeShares` sets `admin_revoked` (F7). **One shot**, even on devnet.
 // Get 9000/1000 right the first time; it is the same muscle memory mainnet needs.
@@ -171,7 +174,7 @@ async function main() {
   });
 
   console.log(`create     ${built.create.length} instruction(s): create + fee config + shares`);
-  console.log(`dev buy    ${built.devBuy.length} instruction(s), sent separately (F6: 1485 > 1232 bytes)`);
+  console.log("dev buy    built separately, AFTER create lands (the vault moves)");
 
   if (args.dryRun) {
     console.log('\n--dry-run: nothing was sent. The mint keypair above was NOT persisted.\n');
@@ -211,16 +214,36 @@ async function main() {
   console.log(`\ncreated    ${createSig}`);
   console.log('           fee split is locked in the same transaction — F5\'s window is closed');
 
-  // ── the dev buy, on its own ──────────────────────────────────────────────
-  if (built.devBuy.length > 0 && devBuyLamports > 0n) {
+  // ── the dev buy, on its own, and built AFTER the create landed ───────────
+  //
+  // Not just sent separately — **built** separately, and that is the part that
+  // is easy to get wrong. `createFeeSharingConfig` moves the creator vault: the
+  // coin's fees stop accruing to the plain creator-vault PDA and start accruing
+  // to the sharing config's. A buy instruction constructed from pre-create
+  // state names the old one and fails simulation with
+  //
+  //   AnchorError caused by account: creator_vault.
+  //   Error Code: ConstraintSeeds. Error Number: 2006.
+  //
+  // which says nothing about fee sharing and sends you looking at the buy.
+  // Measured 2026-08-07: the create bundle succeeded and the dev buy built
+  // alongside it failed exactly this way. Rebuilding against the chain as it now
+  // stands is the fix, and it costs one extra RPC round trip.
+  if (devBuyLamports > 0n) {
+    const buy = await pump.buildBuyInstructions(
+      args.rpc,
+      mintKeypair.publicKey.toBase58(),
+      payer.publicKey.toBase58(),
+      devBuyLamports.toString(),
+    );
     const buyTx = new Transaction().add(
       ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNIT_LIMIT }),
-      ...built.devBuy.map(instructionFrom),
+      ...buy.instructions.map(instructionFrom),
     );
     const buySig = await sendAndConfirmTransaction(connection, buyTx, [payer], {
       commitment: 'confirmed',
     });
-    console.log(`dev buy    ${buySig}`);
+    console.log(`dev buy    ${buySig}   (~${buy.tokenAmount} raw units)`);
   }
 
   // ── record it where every other tool looks ───────────────────────────────

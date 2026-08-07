@@ -177,9 +177,14 @@ const bn = (value) => {
  *     shareholder, and `updateFeeShares` requires the current list to match
  *     exactly. Passing an empty array fails `NotEnoughRemainingAccounts` (6013)
  *     — and it fails at *send* time, after the mint keypair is already spent.
- *   * **The dev-buy cannot be in this bundle.** With it the transaction is
- *     1485 bytes against a 1232-byte limit. It is returned separately and the
- *     caller sends it as its own transaction.
+ *   * **The dev-buy cannot be in this bundle, and cannot be built with it
+ *     either.** With it the transaction is 1485 bytes against a 1232-byte
+ *     limit — but the deeper reason is that `createFeeSharingConfig` MOVES the
+ *     creator vault. A buy built from pre-create state names the old vault and
+ *     fails simulation with `ConstraintSeeds` (2006) on `creator_vault`, an
+ *     error that mentions neither fee sharing nor ordering. So the dev buy is
+ *     not returned here at all: call `buildBuyInstructions` after the create
+ *     transaction has confirmed.
  *
  * ⚠️ `updateFeeShares` sets `admin_revoked` (F7). **There is no second
  * attempt**, on devnet or anywhere. The shares passed here are final.
@@ -192,8 +197,7 @@ const bn = (value) => {
  * @param {string} args.symbol
  * @param {string} args.uri
  * @param {Array<{address: string, shareBps: number}>} args.shareholders
- * @param {string|number|bigint} [args.devBuyLamports]  0 to skip the dev buy
- * @returns {Promise<{create: Array, devBuy: Array}>} primitives only
+ * @returns {Promise<{create: Array}>} primitives only. No dev buy — see above.
  */
 export async function buildCreateCoinInstructions(rpcUrl, args) {
   const { PublicKey } = web3();
@@ -213,11 +217,10 @@ export async function buildCreateCoinInstructions(rpcUrl, args) {
     );
   }
 
-  // `createV2AndBuyV2Instructions` returns create + buy together. The buy is
-  // split off here rather than asking for a zero-amount buy, because a zero buy
-  // is a different instruction with different failure modes and the point is to
-  // send the create half on its own.
-  const devBuyLamports = bn(args.devBuyLamports ?? 0);
+  // `createV2AndBuyV2Instructions` returns create + buy together. Only the
+  // create half is kept; the buy half is discarded rather than returned,
+  // because it is built against pre-config state and would name the wrong
+  // creator vault. See the note above.
   const createAndBuy = await offline.createV2AndBuyV2Instructions({
     global,
     mint,
@@ -227,12 +230,11 @@ export async function buildCreateCoinInstructions(rpcUrl, args) {
     creator,
     user: creator,
     amount: bn(0),
-    quoteAmount: devBuyLamports,
+    quoteAmount: bn(0),
     mayhemMode: false,
   });
 
-  // The create instruction is the first; everything after it is the dev buy.
-  const [createIx, ...devBuy] = createAndBuy;
+  const [createIx] = createAndBuy;
 
   const configIx = await offline.createFeeSharingConfig({ creator, mint, pool: null });
   const sharesIx = await offline.updateFeeShares({
@@ -249,7 +251,7 @@ export async function buildCreateCoinInstructions(rpcUrl, args) {
 
   return {
     create: [createIx, configIx, sharesIx].map(plain),
-    devBuy: devBuy.map(plain),
+
   };
 }
 
