@@ -106,9 +106,16 @@ export function fileUrl(base, epoch, name) {
  * half-checked. The one exception is the previous epoch's carry ledger, which
  * genuinely does not exist for a genesis epoch.
  */
-export async function fetchEpochInputs({ base, epoch, fetchFn = fetch, write = writeFileSync }) {
-  const dir = snapshotDir(epoch);
-  mkdirSync(dir, { recursive: true });
+export async function fetchEpochInputs({ base, epoch, fetchFn = fetch, write = writeFileSync, mkdir = mkdirSync }) {
+  // Everything is downloaded before anything is created, and that ordering is
+  // load-bearing rather than tidy. **An empty directory is not nothing.**
+  // `verifyOffline` reads the mere presence of `epoch-(n-1)/` as "that epoch
+  // was published", so a directory made for a fetch that then 404'd makes the
+  // next epoch look like a carry chain that restarted — and signer B refuses to
+  // sign a restart, correctly, for a reason that was never true. Creating state
+  // before knowing there is anything to put in it manufactured a refusal
+  // indistinguishable from a real one.
+  const pending = [];
 
   for (const name of EPOCH_FILES) {
     const url = fileUrl(base, epoch, name);
@@ -124,24 +131,28 @@ export async function fetchEpochInputs({ base, epoch, fetchFn = fetch, write = w
       error.notPublished = true;
       throw error;
     }
-    write(resolve(dir, name), Buffer.from(await response.arrayBuffer()));
+    pending.push({ dir: snapshotDir(epoch), name, bytes: Buffer.from(await response.arrayBuffer()) });
   }
 
   if (epoch > 0) {
-    const previous = snapshotDir(epoch - 1);
     const url = fileUrl(base, epoch - 1, 'carry.json');
     const response = await fetchFn(url);
     if (response.ok) {
-      mkdirSync(previous, { recursive: true });
-      write(resolve(previous, 'carry.json'), Buffer.from(await response.arrayBuffer()));
+      pending.push({ dir: snapshotDir(epoch - 1), name: 'carry.json', bytes: Buffer.from(await response.arrayBuffer()) });
     } else {
-      // Not fatal here. `verifyOffline` decides what a missing predecessor
-      // means; this only declines to invent one.
+      // Not fatal, and deliberately not a directory either. `verifyOffline`
+      // decides what a missing predecessor means; this only declines to invent
+      // one, or to leave behind an empty shell that answers for it.
       console.log(`note: no carry ledger published for epoch ${epoch - 1} (${response.status})`);
     }
   }
 
-  return dir;
+  for (const { dir, name, bytes } of pending) {
+    mkdir(dir, { recursive: true });
+    write(resolve(dir, name), bytes);
+  }
+
+  return snapshotDir(epoch);
 }
 
 async function main() {

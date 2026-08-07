@@ -65,9 +65,46 @@ test('an unfetchable epoch is marked so the caller can move past it', async () =
         epoch: 0,
         fetchFn: async () => missing,
         write: () => {},
+        mkdir: () => {},
       }),
     (error) => error.notPublished === true,
   );
+});
+
+test('a failed fetch creates no directory — an empty one is a false accusation', async () => {
+  // An empty `epoch-0/` is read by verifyOffline as "epoch 0 was published",
+  // which makes epoch 1 look like a restarted carry chain. Signer B then
+  // refuses, correctly, for a reason that was never true. Observed on box A.
+  const made = [];
+  await assert.rejects(() =>
+    fetchEpochInputs({
+      base: 'http://h:8100',
+      epoch: 0,
+      fetchFn: async () => missing,
+      write: () => {},
+      mkdir: (dir) => made.push(dir),
+    }),
+  );
+  assert.deepEqual(made, [], 'nothing was created for an epoch that has nothing published');
+});
+
+test('a directory appears only once every file is in hand', async () => {
+  // The third file 404s. The first two must not have been written, or the
+  // directory exists holding a partial epoch that reproduces to nothing.
+  const made = [];
+  const written = [];
+  let seen = 0;
+  await assert.rejects(() =>
+    fetchEpochInputs({
+      base: 'http://h:8100',
+      epoch: 5,
+      fetchFn: async () => (++seen === 3 ? missing : ok('{}')),
+      write: (path) => written.push(path),
+      mkdir: (dir) => made.push(dir),
+    }),
+  );
+  assert.deepEqual(made, []);
+  assert.deepEqual(written, []);
 });
 
 test('urls join without doubling the slash', () => {
