@@ -108,6 +108,17 @@
    * simply fitted more characters into it and stayed over measure at 101. */
   --measure: 40em;
 
+  /* The hero's right-hand column is ONE block: the headline, the sentence under
+   * it and the button stack are all this wide, so the text ends where the
+   * buttons end instead of running past them into the empty half of the column.
+   *
+   * 28rem is the button pair's natural `fit-content` width (345px at a laptop)
+   * plus 30% — the pair is widened to meet the text rather than the text being
+   * squeezed to meet the pair, because at 345px the headline breaks to three
+   * lines. Both sides read it, so changing it moves them together; setting a
+   * width on only one is what makes the hero look misaligned. */
+  --hero-block: 28rem;
+
   /* Inter is pump.fun's typeface. It is NAMED, never fetched: a webfont link
    * is a third-party request on every page load, and this page's whole claim
    * is that nothing it renders passed through anyone else's server. Visitors
@@ -997,10 +1008,13 @@ summary:focus-visible {
     padding-bottom: 2.75rem;
   }
 
+  /* Only from 46rem up. Below it the copy spans the column, because there the
+   * buttons already do too and capping it would just indent the headline. */
   .hero-copy {
     grid-column: 2;
     grid-row: 1;
     align-self: end;
+    max-width: var(--hero-block);
   }
 
   .hero-actions {
@@ -1243,6 +1257,15 @@ summary:focus-visible {
   margin: 0;
   width: fit-content;
   max-width: 100%;
+  /* The floor that widens the pair to match `.hero-copy`. `fit-content` is kept
+   * rather than replaced by a flat width so the block can still GROW past this
+   * if a label ever needs it — the countdown still cannot drag it, for the
+   * reason above.
+   *
+   * `min()` and not a bare `--hero-block`: on a phone the media query below
+   * turns `width: auto` back on, and a 28rem floor against a 343px column would
+   * push the buttons off the screen. `100%` caps it at the column. */
+  min-width: min(var(--hero-block), 100%);
 }
 
 /* 50/50, always. Two equal halves are both reachable with one thumb, and equal
