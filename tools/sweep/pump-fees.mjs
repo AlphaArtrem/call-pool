@@ -162,6 +162,35 @@ const bn = (value) => {
 };
 
 /**
+ * Which token program owns this mint. **Not always SPL Token.**
+ *
+ * pump's `create` produces SPL Token mints and `create_v2` produces Token-2022
+ * ones, and the two derive *different* associated token addresses. The SDK's
+ * fetch helpers default to SPL Token, so on a `create_v2` coin a sell fails with
+ * "Associated token account not found" for a wallet that is visibly holding the
+ * token — measured 2026-08-07, on a wallet with 101,885,000,753,712 raw units.
+ *
+ * Buys hid it: `fetchBuyState` tolerates a missing ATA because a first-time
+ * buyer legitimately has none, so the wrong program looked like a new account
+ * and the instruction created the right one anyway. Only the sell path, which
+ * must find an existing balance, actually breaks — which is the path the lockout
+ * test depends on.
+ *
+ * `scripts/lib/chain.mjs` has always detected this for the crank. This is the
+ * same question asked on the SDK side of the boundary.
+ */
+async function tokenProgramFor(connection, mint) {
+  const { PublicKey } = web3();
+  const TOKEN_2022 = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
+  const TOKEN = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+  const info = await connection.getAccountInfo(mint);
+  if (!info) throw new Error(`mint account not found: ${mint.toBase58()}`);
+  if (info.owner.equals(TOKEN_2022)) return TOKEN_2022;
+  if (info.owner.equals(TOKEN)) return TOKEN;
+  throw new Error(`${mint.toBase58()} is not owned by a token program (${info.owner.toBase58()})`);
+}
+
+/**
  * Create the coin with its fee split already locked, in one transaction.
  *
  * F6, proven on devnet: `create` + `createFeeSharingConfig` + `updateFeeShares`
@@ -271,9 +300,11 @@ export async function buildBuyInstructions(rpcUrl, mint, user, quoteLamports, sl
 
   const mintKey = new PublicKey(mint);
   const userKey = new PublicKey(user);
+  const conn = new (web3().Connection)(rpcUrl, 'confirmed');
+  const tokenProgram = await tokenProgramFor(conn, mintKey);
   const global = await client.fetchGlobal();
   const feeConfig = await client.fetchFeeConfig();
-  const state = await client.fetchBuyState(mintKey, userKey);
+  const state = await client.fetchBuyState(mintKey, userKey, tokenProgram);
   const quoteAmount = bn(quoteLamports);
 
   // How many tokens that SOL buys at the curve's current point. Passed as the
@@ -296,6 +327,7 @@ export async function buildBuyInstructions(rpcUrl, mint, user, quoteLamports, sl
     amount,
     quoteAmount,
     slippage: slippageBps / 100,
+    tokenProgram,
   });
   return { instructions: instructions.map(plain), tokenAmount: amount.toString() };
 }
@@ -321,9 +353,11 @@ export async function buildSellInstructions(rpcUrl, mint, user, tokenAmount, sli
 
   const mintKey = new PublicKey(mint);
   const userKey = new PublicKey(user);
+  const conn = new (web3().Connection)(rpcUrl, 'confirmed');
+  const tokenProgram = await tokenProgramFor(conn, mintKey);
   const global = await client.fetchGlobal();
   const feeConfig = await client.fetchFeeConfig();
-  const state = await client.fetchSellState(mintKey, userKey);
+  const state = await client.fetchSellState(mintKey, userKey, tokenProgram);
   const amount = bn(tokenAmount);
 
   const quoteAmount = getSellSolAmountFromTokenAmount({
@@ -343,6 +377,7 @@ export async function buildSellInstructions(rpcUrl, mint, user, tokenAmount, sli
     amount,
     quoteAmount,
     slippage: slippageBps / 100,
+    tokenProgram,
   });
   return { instructions: instructions.map(plain), solAmount: quoteAmount.toString() };
 }
