@@ -31,7 +31,7 @@ import { alert } from '../lib/alert.mjs';
 import { iso } from '../lib/epoch.mjs';
 import {
   checkVault, payEpoch, readLog, restartUnit, settleEpoch, topology, unitStatus,
-  reachability,
+  reachability, rebuildEpoch,
 } from '../lib/runbook.mjs';
 import { REPO_ROOT } from '../lib/store.mjs';
 
@@ -233,6 +233,10 @@ async function check(args) {
           'NOTE: an epoch stuck at 1-of-2 looks exactly like a dead crank from here — the ' +
           'crank builds, proposes and self-approves before it ever needs the second host. ' +
           'Check reachability before restarting anything.\n\n' +
+          'AND IF THIS IS A BACKLOG: once the first epoch settles it drains the pool, and ' +
+          'every epoch built behind the blockage then allocates more than exists. The ' +
+          'co-signer refuses those forever and no restart helps — they have to be REBUILT ' +
+          'against current pool state. Command 7.\n\n' +
           'RUN THESE, in order — look before restarting:',
         {
           commands: [
@@ -249,6 +253,11 @@ async function check(args) {
                 `${restartUnit(t.cosign)} ; ${restartUnit(t.crank)}` },
             { what: `6 — if that did not take, settle epoch ${oldest.epoch} by hand`, command:
                 settleEpoch(t, oldest.epoch) },
+            // Last, because it is the only destructive one — and the only one
+            // that works when the epochs are stale rather than the services
+            // dead. A backlog behind a cleared blockage lands here every time.
+            { what: `7 — if it refuses as "allocates more than is available", REBUILD epoch ${oldest.epoch}`,
+              command: rebuildEpoch(t, oldest.epoch) },
           ],
         },
       );

@@ -115,6 +115,34 @@ export function reachability(t) {
   );
 }
 
+/**
+ * Rebuild a stale epoch, then settle it.
+ *
+ * The recovery for a backlog, and it is not the same action as restarting a
+ * service. Every unsettled epoch is built against the pool as it stood at build
+ * time, so N epochs waiting behind a blockage each allocate nearly the whole
+ * pool. Clearing the blockage settles the first and drains it; the rest then
+ * allocate more than exists and the co-signer refuses them — correctly, and
+ * forever, because nothing re-derives them on its own.
+ *
+ * Removing the published directory is what forces the re-derivation. It is safe
+ * precisely because the epoch has no root on chain: nothing has been promised to
+ * anyone, so there is no audit trail to damage. Once a root IS posted the
+ * directory is evidence and this command must not be used on it.
+ */
+export function rebuildEpoch(t, epoch) {
+  return ssh(
+    t.crank,
+    onBox(
+      t,
+      `bash -c 'rm -rf ${t.snapshotsDir}/epoch-${epoch} && ` +
+        `node scripts/crank.mjs --epoch ${epoch} ` +
+        `${t.multisig ? `--multisig ${t.multisig} ` : ''}--keypair ${t.signer} ` +
+        `--store ${t.snapshotsDir.replace(/\/snapshots$/, '')}/callout-store.json'`,
+    ),
+  );
+}
+
 /** Settle one specific epoch by hand, through the multisig. */
 export function settleEpoch(t, epoch) {
   return ssh(

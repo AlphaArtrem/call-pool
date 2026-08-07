@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { alert, clamp, composeHtml, redactSecrets } from '../lib/alert.mjs';
-import { payEpoch, reachability, readLog, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
+import { payEpoch, reachability, readLog, rebuildEpoch, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
 import { epochAt, epochEnd, forgetResolved, minutes, overdueEpochs, recordAlert, shouldAlert, unpaidEpochs } from '../tools/watchdog.mjs';
 
 const CONFIG = { genesisTs: 1_000, epochSeconds: 300 };
@@ -333,4 +333,30 @@ test('a blocked path between hosts is the FIRST cause the alert offers', () => {
   // second host. Ordering the causes wrong costs an outage's worth of time.
   const t = topology({});
   assert.notEqual(t.crank.label, t.cosign.label);
+});
+
+test('rebuilding a stale epoch removes the published directory first', () => {
+  // Removing it is what forces re-derivation against current pool state. It is
+  // safe only because the epoch has no root on chain — nothing was promised, so
+  // there is no audit trail to damage.
+  const t = topology({ CALLPOOL_MULTISIG: 'MS111', CALLPOOL_PROGRAM_ID: 'PID111' });
+  const command = rebuildEpoch(t, 7);
+  assert.match(command, /rm -rf .*epoch-7/);
+  assert.match(command, /crank\.mjs --epoch 7/);
+  assert.ok(command.includes('--multisig MS111'), 'must go back through the multisig');
+});
+
+test('rebuild runs on the crank host, as the service user, with no secret inlined', () => {
+  const t = topology({ CALLPOOL_MULTISIG: 'MS111' });
+  const command = rebuildEpoch(t, 3);
+  assert.match(command, /ssh -i ~\/\.ssh\/hostinger root@31\.97\.11\.4/);
+  assert.match(command, /sudo -u callpool/);
+  assert.ok(!/rpc\.ankr\.com|api[-_]?key=/.test(command), 'must not inline the provider key');
+  assert.match(command, /\. \/etc\/callpool\/signer\.env/);
+});
+
+test('rebuild targets the same epoch the alert was sent about', () => {
+  const t = topology({});
+  assert.ok(rebuildEpoch(t, 42).includes('epoch-42'));
+  assert.ok(rebuildEpoch(t, 42).includes('--epoch 42'));
 });

@@ -217,8 +217,23 @@ async function main() {
   const { root, leafCount, allocate } = publishedRoot(snapshotDir(epoch));
   const pool = await poolAvailable(connection, config);
   if (allocate > pool.available) {
+    // Almost always a **stale snapshot**, not a corrupt one, and the difference
+    // decides the recovery. Every unsettled epoch is built against the pool as
+    // it stood at build time, so a backlog produces snapshots that each claim
+    // nearly the same money. When the blockage clears, the first one settles,
+    // drains the pool, and every later one becomes unsatisfiable — through no
+    // fault of its own and with nothing wrong with the services.
+    //
+    // Restarting anything is therefore the wrong move: the fix is to re-run the
+    // crank for this epoch, which rebuilds the snapshot against current pool
+    // state and proposes bytes that can actually be honoured. Said here because
+    // this is where the operator is standing when they need to know it.
     throw new Error(
-      `epoch ${epoch} allocates ${allocate} but only ${pool.available} is available — NOT signing`,
+      `epoch ${epoch} allocates ${allocate} but only ${pool.available} is available — NOT signing.\n` +
+        '  This is what a STALE snapshot looks like. It is built from the pool as it stood\n' +
+        '  when it was built, and a later epoch has since been paid out of that same pool.\n' +
+        `  Recovery is to REBUILD, not to restart: re-run the crank for epoch ${epoch} so the\n` +
+        '  snapshot is derived against the pool as it stands now.',
     );
   }
 
