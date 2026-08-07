@@ -21,7 +21,8 @@ import {
   tokenProgramForMint,
 } from './chain.js';
 import { associatedTokenAddress } from './addresses.js';
-import { explorerUrl } from './config.js';
+import { explorerUrl, snapshotUrl } from './config.js';
+import { DELIVERY, describeDelivery, loadPayoutTrail, payoutHistory, projectedShare } from './payouts.js';
 import { formatSol, formatTokens, standingFor, utcDate } from './standing.js';
 import { addressNode, escapeHtml, failure, field, row, SOURCES } from './ui.js';
 
@@ -39,23 +40,43 @@ export function looksLikeAddress(value) {
  * reads with it — holdings are still worth showing, and `callout.checked`
  * false produces an honest "could not check" rather than "no callout".
  */
-export async function loadPosition({ connection, config, address, window: epochWindow, now }) {
+export async function loadPosition({
+  connection, config, address, window: epochWindow, now,
+  settledEpochs = [], poolLamports = 0n,
+}) {
   const tokenProgram = await tokenProgramForMint(connection, config.mint);
   const ata = associatedTokenAddress(address, config.mint, tokenProgram);
 
   const lockout = lockoutWindow(epochWindow, LOCKOUT_EPOCHS);
 
-  const [currentRaw, accounts, events, calloutResult] = await Promise.all([
+  const [currentRaw, accounts, events, calloutResult, trail] = await Promise.all([
     currentBalanceRaw(connection, ata),
     allTokenAccounts(connection, address, config.mint, tokenProgram),
     balanceEventsFor(connection, ata, lockout.start),
     loadCallouts({ config, address, window: epochWindow }),
+    // The audit trail. Fetched, not trusted — these are the same files a
+    // stranger checks the epoch with. Failure here must not cost the holder
+    // their holdings view, so `loadPayoutTrail` resolves rather than throws.
+    loadPayoutTrail({
+      epochFileUrl: (epoch, file) => snapshotUrl(config, epoch, file),
+      epochs: settledEpochs,
+    }).catch(() => []),
   ]);
 
   const held = computeHold(events, epochWindow, { currentBalance: currentRaw });
   const decreases = decreasesIn(events, lockout);
 
+  const payouts = payoutHistory(trail, address.toBase58 ? address.toBase58() : String(address));
+  // The basis for today is the newest settled tree the wallet appears in.
+  const newest = [...trail].sort((a, b) => b.epoch - a.epoch)[0] ?? null;
+
   return {
+    payouts,
+    projected: projectedShare({
+      previousTree: newest?.tree ?? null,
+      wallet: address.toBase58 ? address.toBase58() : String(address),
+      poolLamports,
+    }),
     ata: ata.toBase58(),
     tokenProgram: tokenProgram.toBase58(),
     accounts,
@@ -169,6 +190,73 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     ? 'Already locked out — a further sale does not extend it, but it does not shorten it either.'
     : `today’s lowest balance drops to 0, and this wallet earns nothing for ${LOCKOUT_EPOCHS} days, starting tomorrow.`;
   table.append(row('if you sell any amount now', sellCell));
+
+  // ── what is definitely owed ──────────────────────────────────────────────
+  // Facts, from the published audit trail. Every figure here is already
+  // settled: a root was posted, the working was published, and either the
+  // money moved or it did not.
+  const payouts = loaded.payouts;
+  if (payouts && payouts.rows.length > 0) {
+    const owedCell = document.createElement('span');
+    if (payouts.owed > 0n) owedCell.className = 'warn';
+    field(owedCell, {
+      value: payouts.owed > 0n ? `${formatSol(payouts.owed)} SOL` : 'nothing outstanding',
+      source: SOURCES.snapshot,
+    });
+    table.append(row(
+      'owed to this wallet',
+      owedCell,
+      payouts.needsAttention
+        ? 'Allocated on a settled day and not delivered. It stays claimable until the deadline — nobody has to do anything for it to remain yours.'
+        : 'Every settled day has either paid out or correctly withheld.',
+    ));
+
+    const paidCell = document.createElement('span');
+    field(paidCell, { value: `${formatSol(payouts.paid)} SOL`, source: SOURCES.snapshot });
+    table.append(row('paid to this wallet so far', paidCell));
+
+    // Withheld is shown separately and never added to "owed". A wallet that
+    // sold below the floor is not owed that money — it stayed in the pool for
+    // everyone else — and presenting it as a balance would be a claim on funds
+    // that belong to other holders.
+    if (payouts.refused > 0n) {
+      const refusedCell = document.createElement('span');
+      field(refusedCell, { value: `${formatSol(payouts.refused)} SOL`, source: SOURCES.snapshot });
+      table.append(row(
+        'allocated but withheld',
+        refusedCell,
+        'This wallet held less than the floor when those days paid out, so its share stayed in the pool. This is not owed to you.',
+      ));
+    }
+
+    // Per-day detail, newest first, so a disputed day can be pointed at.
+    for (const entry of payouts.rows.slice(0, 7)) {
+      const dayCell = document.createElement('span');
+      if (entry.state === DELIVERY.failed) dayCell.className = 'warn';
+      dayCell.textContent = describeDelivery(entry, (n) => `${formatSol(n)} SOL`);
+      table.append(row(`day ${entry.epoch}`, dayCell));
+    }
+  }
+
+  // ── what today might pay ─────────────────────────────────────────────────
+  // Deliberately separated from everything above, and deliberately vaguer.
+  // Today has not settled: the eligible set is not known and no amount exists
+  // yet. The figure is the last settled day's share of the pool applied to the
+  // pool now — a basis, not a forecast — and it is absent entirely when there
+  // is nothing to base it on, because inventing one would be the return
+  // framing this site does not do.
+  if (loaded.projected) {
+    const todayCell = document.createElement('span');
+    field(todayCell, {
+      value: `about ${formatSol(loaded.projected.indicative)} SOL`,
+      source: SOURCES.derived,
+    });
+    table.append(row(
+      'today, if it settled now',
+      todayCell,
+      `Not owed and not promised. Today has not settled, so nobody knows who qualifies yet. This applies your share of day ${loaded.projected.basisEpoch} to the pool as it stands now, and it moves every time someone buys, sells or calls out.`,
+    ));
+  }
 
   const ataCell = addressNode(loaded.ata, { href: explorerUrl(config, 'address', loaded.ata) });
   table.append(

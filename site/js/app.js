@@ -793,6 +793,16 @@ function wireCalculator(config) {
         address,
         window: state.window,
         now: Math.floor(Date.now() / 1000),
+        // The settled days this wallet could be owed by, newest first, and the
+        // pool as it stands — the two inputs the payout panel needs. Bounded:
+        // a holder checking today does not need last quarter, and each epoch
+        // is two fetches from the audit trail.
+        settledEpochs: (state.epochs ?? [])
+          .filter((e) => e.posted)
+          .map((e) => e.epoch)
+          .sort((a, b) => b - a)
+          .slice(0, 14),
+        poolLamports: state.poolLamports ?? 0n,
       });
       nodes.result.classList.remove('failed');
       renderPosition(nodes, loaded, {

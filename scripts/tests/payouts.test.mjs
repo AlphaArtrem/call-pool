@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DELIVERY, deliveryFor, payoutHistory, describeDelivery } from '../../site/js/payouts.js';
+import { DELIVERY, deliveryFor, payoutHistory, describeDelivery, projectedShare } from '../../site/js/payouts.js';
 
 const W = 'EXbcXYZJTRFLjix9CPLFa4p79WhxtxFnBZz7kyQiYgXZ';
 const OTHER = 'Amn5WXq5eYtMab1QADor82tQoWXY4EgSPWbiWLsDqLxw';
@@ -178,4 +178,32 @@ test('an airdrop.json with no runs[] still works — older files, and first runs
   const airdrop = { sent: [{ signature: 's', leaves: [0] }], failed: [] };
   const tree = { leaves: [{ index: 0, owner: 'A', amount: '100' }] };
   assert.equal(deliveryFor(tree, airdrop, 'A').state, DELIVERY.paid);
+});
+
+// ── today: a projection, and it must refuse to guess ───────────────────────
+
+test('today\'s indicative share is the last settled fraction applied to the pool now', () => {
+  const previousTree = { epoch: 9, allocate: '1000', leaves: [{ index: 0, owner: W, amount: '250' }] };
+  const p = projectedShare({ previousTree, wallet: W, poolLamports: 4000n });
+  assert.equal(p.numerator, 250n);
+  assert.equal(p.denominator, 1000n);
+  assert.equal(p.indicative, 1000n, 'a quarter of the last tree, against a pool of 4000');
+  assert.equal(p.basisEpoch, 9);
+});
+
+test('no basis means no number — it must not invent one', () => {
+  // L9: state the mechanic, not a return. A projection with nothing behind it
+  // is the yield framing the whole site is written to avoid.
+  const tree = { epoch: 9, allocate: '1000', leaves: [{ index: 0, owner: OTHER, amount: '250' }] };
+  assert.equal(projectedShare({ previousTree: tree, wallet: W, poolLamports: 4000n }), null);
+  assert.equal(projectedShare({ previousTree: null, wallet: W, poolLamports: 4000n }), null);
+  assert.equal(
+    projectedShare({ previousTree: { epoch: 9, allocate: '0', leaves: [] }, wallet: W, poolLamports: 4000n }),
+    null,
+  );
+});
+
+test('an empty pool projects zero rather than failing', () => {
+  const previousTree = { epoch: 9, allocate: '1000', leaves: [{ index: 0, owner: W, amount: '250' }] };
+  assert.equal(projectedShare({ previousTree, wallet: W, poolLamports: 0n }).indicative, 0n);
 });

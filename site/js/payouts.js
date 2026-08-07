@@ -167,3 +167,74 @@ export function describeDelivery(row, formatSol) {
       return 'nothing allocated';
   }
 }
+
+/**
+ * What today *might* pay — explicitly a projection, never a promise.
+ *
+ * Today's epoch has not settled. Nobody knows the eligible set until it does,
+ * and this cannot compute it: that would mean every caller's callout record and
+ * every one of their balance histories, which is the crank's job and takes far
+ * more than a page load.
+ *
+ * So it does the one honest thing available. Your share of a settled epoch is
+ * `yourAmount / allocate` — a fraction recoverable from the published tree
+ * without knowing anyone's balances. Apply the most recent settled fraction to
+ * the pool as it stands now, and you have "if today turns out like the last
+ * settled day". That is a **basis**, stated as such, not a forecast.
+ *
+ * Returns null when it cannot be computed — you were not in the last tree, or
+ * that epoch allocated nothing. **A missing answer is correct here**; inventing
+ * one would be exactly the yield framing L9 forbids.
+ */
+export function projectedShare({ previousTree, wallet, poolLamports }) {
+  const allocate = BigInt(previousTree?.allocate ?? 0);
+  if (allocate <= 0n) return null;
+
+  const leaf = (previousTree?.leaves ?? []).find((l) => l.owner === wallet);
+  if (!leaf) return null;
+
+  const mine = BigInt(leaf.amount);
+  if (mine <= 0n) return null;
+
+  const pool = BigInt(poolLamports ?? 0);
+  return {
+    // Kept as a ratio rather than a float so the arithmetic stays exact and
+    // the caller decides how to round for display.
+    numerator: mine,
+    denominator: allocate,
+    basisEpoch: previousTree.epoch ?? null,
+    indicative: (pool * mine) / allocate,
+  };
+}
+
+/**
+ * Fetch the published working for a range of epochs.
+ *
+ * Reads only the audit trail — the same files any stranger can fetch and check
+ * — so nothing here depends on our server telling the truth about a balance.
+ *
+ * A missing `airdrop.json` is a normal, temporary state (settled, not yet
+ * paid), so it resolves to null rather than failing the whole load. A missing
+ * `tree.json` means the epoch is not published and it is skipped entirely: a
+ * wallet cannot have been owed by an epoch that was never settled.
+ */
+export async function loadPayoutTrail({ epochFileUrl, epochs, fetchImpl = fetch }) {
+  const readJson = async (url) => {
+    if (!url) return null;
+    try {
+      const response = await fetchImpl(url, { cache: 'no-store' });
+      return response.ok ? await response.json() : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const loaded = await Promise.all(
+    epochs.map(async (epoch) => {
+      const tree = await readJson(epochFileUrl(epoch, 'tree.json'));
+      if (!tree) return null;
+      return { epoch, tree, airdrop: await readJson(epochFileUrl(epoch, 'airdrop.json')) };
+    }),
+  );
+  return loaded.filter(Boolean);
+}
