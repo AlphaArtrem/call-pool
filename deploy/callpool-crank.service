@@ -1,24 +1,28 @@
-# CALLPOOL — the daily crank. MAINNET clock.
+# CALLPOOL — settle AND pay, once a day at 00:00 UTC. MAINNET.
 #
-# Settles whatever the chain says is outstanding, oldest first, stopping at the
-# first failure. Not "yesterday" — asking the chain is what removed the epoch
-# arithmetic that wedged three rehearsals.
+# One unit does both, which is only correct because the challenge window is
+# minutes rather than a day (L19). Under L14's 24-hour window this had to be two
+# timers, because `--and-pay` waits the window out in-process and a process held
+# open for a day is a crank that dies with the first reboot. At five minutes,
+# waiting in-process is the simplest thing that works and it means holders are
+# paid within minutes of midnight rather than two days later.
 #
 #   install -m 0644 deploy/callpool-crank.{service,timer} /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now callpool-crank.timer
 #
-# ⚠️ **No `--and-pay` here, deliberately.** The challenge window is 24 hours on
-# mainnet, and `--and-pay` waits it out *in-process* — a process held open for a
-# day is a crank that dies with the first reboot. The airdrop is
-# callpool-airdrop.timer, on its own schedule. The rehearsal unit uses
-# `--and-pay` because its window was 60 seconds; do not copy it here.
+# `ExecStartPre` refreshes the holder candidate list **before** the snapshot
+# runs. It is only used if pump's feed truncated (L5) — but the day it is needed
+# is a busy day, and a settlement that refuses stops every later epoch behind
+# it. `-` prefix: a failure here must not block a settlement that probably does
+# not need it.
 #
-# `--payer` is the gas-only wallet that runs step 0, the fee sweep. It controls
-# nothing: the sweep's destination is fixed by pump's fee-sharing config. It
-# must never be the snapshot key or a multisig member key.
+# `--payer` is the gas-only wallet: it runs step 0's fee sweep and submits the
+# claims. It controls nothing — the sweep's destination is fixed by pump's
+# fee-sharing config and each payout's destination is inside the merkle leaf —
+# and it must never be the snapshot key or a multisig member key.
 
 [Unit]
-Description=CALLPOOL — settle outstanding epochs (mainnet)
+Description=CALLPOOL — settle and pay the closed epoch (mainnet)
 Documentation=https://github.com/AlphaArtrem/call-pool
 After=network-online.target
 Wants=network-online.target
@@ -29,11 +33,17 @@ User=callpool
 Group=callpool
 WorkingDirectory=/srv/callpool
 EnvironmentFile=/etc/callpool/signer.env
+ExecStartPre=-/usr/bin/node scripts/tools/holders-above-floor.mjs --out epochs/holders.json
 ExecStart=/usr/bin/node scripts/tools/settle-outstanding.mjs \
   --multisig ${CALLPOOL_MULTISIG} \
   --keypair /etc/callpool/mainnet-signer-a.json \
   --payer /etc/callpool/mainnet-payer.json \
-  --await-root 3600 --max 5
+  --holders epochs/holders.json \
+  --and-pay --await-root 1800 --max 5
+
+# The window is 5 minutes and the co-signer ticks every 5, so a normal run is
+# minutes. This bounds a pathological one rather than describing the usual case.
+TimeoutStartSec=3600
 
 NoNewPrivileges=true
 PrivateTmp=true

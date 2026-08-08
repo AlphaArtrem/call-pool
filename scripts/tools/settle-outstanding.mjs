@@ -100,6 +100,10 @@ export function crankArgs(epoch, args) {
     ...(args.multisig ? ['--multisig', args.multisig] : []),
     ...(args.payer ? ['--payer', args.payer] : []),
     ...(args.store ? ['--store', args.store] : []),
+    // Forwarded so a truncated feed can still settle (L5). Without it the
+    // snapshot refuses, this stops at the first failure — correctly — and every
+    // later epoch waits behind it.
+    ...(args.holders ? ['--holders', args.holders] : []),
     ...(args.awaitRoot !== undefined ? ['--await-root', String(args.awaitRoot)] : []),
     ...(args.andPay ? ['--and-pay'] : []),
     ...(args.dryRun ? ['--dry-run'] : []),

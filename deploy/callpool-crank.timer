@@ -1,20 +1,21 @@
-# CALLPOOL — when the daily crank fires. MAINNET clock.
+# CALLPOOL — 00:02 UTC, every day. MAINNET.
 #
-# 00:10 UTC: ten minutes after the epoch boundary, so the epoch has certainly
-# closed by the cluster's clock as well as ours. The program refuses an early
-# root and so does the crank.
+# Two minutes past midnight, not ten: the whole point of L19 is that holders are
+# paid at 00:00 UTC, so every minute of offset is a minute of the promise not
+# being kept. Two minutes is enough for the cluster's clock to be past the
+# boundary as well as ours — the program refuses an early root and so does the
+# crank.
 #
-# `Persistent=true` matters more here than at rehearsal speed: if the box is
-# down at 00:10 the tick fires on boot instead of being skipped, and a skipped
-# day is a day nobody was paid.
+# `Persistent=true` because a skipped day is a day nobody was paid: if the box
+# is down at 00:02 the tick fires on boot instead of being dropped.
 
 [Unit]
-Description=CALLPOOL — settle outstanding epochs daily (mainnet)
+Description=CALLPOOL — settle and pay daily at 00:00 UTC (mainnet)
 Documentation=https://github.com/AlphaArtrem/call-pool
 
 [Timer]
-OnCalendar=*-*-* 00:10:00 UTC
-AccuracySec=30s
+OnCalendar=*-*-* 00:02:00 UTC
+AccuracySec=10s
 Persistent=true
 Unit=callpool-crank.service
 

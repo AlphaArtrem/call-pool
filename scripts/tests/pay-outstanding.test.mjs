@@ -176,3 +176,42 @@ test('the bounds must be sane', () => {
   assert.throws(() => parseArgs(['--keypair', 'k', '--grace', '-1']), /--grace/);
   assert.equal(parseArgs(['--keypair', 'k', '--grace', '0']).grace, 0);
 });
+
+// ── the holder candidate list (L5's fallback) ──────────────────────────────
+//
+// A wrong offset here produces a plausible-looking list of the wrong
+// addresses, which is the hardest kind of wrong to notice.
+
+const { ownersAboveFloor } = await import('../tools/holders-above-floor.mjs');
+
+/** A token account as the chain lays it out: mint(32) owner(32) amount(8). */
+function tokenAccount(owner32, amount, extraBytes = 0) {
+  const data = Buffer.alloc(165 + extraBytes);
+  Buffer.alloc(32, 1).copy(data, 0);        // mint
+  Buffer.alloc(32, owner32).copy(data, 32); // owner
+  data.writeBigUInt64LE(amount, 64);        // amount
+  return { account: { data } };
+}
+
+test('owners at or above the floor are included; the floor is inclusive', () => {
+  const owners = ownersAboveFloor(
+    [tokenAccount(7, 100n), tokenAccount(8, 99n), tokenAccount(9, 101n)],
+    100n,
+  );
+  assert.equal(owners.length, 2, 'exactly the account at the floor and the one above it');
+});
+
+test('Token-2022 accounts with extensions are not dropped', () => {
+  // The bug a `dataSize: 165` filter would cause: create_v2 coins are
+  // Token-2022 (G6), and an account carrying an extension is longer than the
+  // base layout. Dropping those would drop the real holders.
+  assert.equal(ownersAboveFloor([tokenAccount(7, 500n, 83)], 100n).length, 1);
+});
+
+test('one owner with several accounts appears once', () => {
+  assert.equal(ownersAboveFloor([tokenAccount(7, 500n), tokenAccount(7, 600n)], 100n).length, 1);
+});
+
+test('data too short to be a token account is skipped, not guessed at', () => {
+  assert.deepEqual(ownersAboveFloor([{ account: { data: Buffer.alloc(40) } }], 1n), []);
+});

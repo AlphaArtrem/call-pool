@@ -1,17 +1,18 @@
 # CALLPOOL — how often the second signer looks. BOX B. MAINNET.
 #
-# Every 15 minutes rather than daily. The crank proposes at 00:10 and waits up
-# to an hour for the threshold; a daily co-signer would miss that window
-# entirely, and a proposal that sits below threshold is an epoch that never
-# settles. Frequent and cheap beats aligned and fragile — an idle tick reads
-# the chain, finds nothing outstanding, and exits.
+# Every 5 minutes, not daily. The crank proposes at 00:02 and then waits for the
+# threshold before it can pay, so every minute the co-signer is late is a minute
+# holders are not paid — and L19's whole promise is payment at 00:00 UTC. A
+# proposal sitting below threshold is an epoch that never settles at all.
+# Frequent and cheap beats aligned and fragile: an idle tick reads the chain,
+# finds nothing outstanding, and exits.
 
 [Unit]
 Description=CALLPOOL — co-sign outstanding epochs (mainnet)
 Documentation=https://github.com/AlphaArtrem/call-pool
 
 [Timer]
-OnCalendar=*:0/15
+OnCalendar=*:0/5
 RandomizedDelaySec=30
 AccuracySec=30s
 Persistent=true

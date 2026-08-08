@@ -1,18 +1,21 @@
-# CALLPOOL — when the airdrop fires. MAINNET clock.
+# CALLPOOL — the payout backstop. MAINNET.
 #
-# 00:40 UTC, half an hour after the crank. Yesterday's epoch is still inside
-# its challenge window at this point and is correctly skipped; what this pays
-# is the epoch *before* it, whose window closed at 00:00. The tool works that
-# out from the chain, so the offset only has to be "after the crank, not at the
-# same moment".
+# The crank pays as part of settling (L19), so on a healthy day this finds
+# nothing and exits. It exists for the unhealthy one: a crank that posted a root
+# and then died before paying leaves money allocated and undelivered, and that
+# is invisible from the outside.
+#
+# Every 6 hours. Cheap, idempotent — claims are write-once on chain, so a repeat
+# run is refused by the program rather than paying twice — and it turns "nobody
+# was paid until someone noticed" into "nobody was paid for at most six hours".
 
 [Unit]
-Description=CALLPOOL — pay outstanding epochs daily (mainnet)
+Description=CALLPOOL — pay any epoch the crank left unpaid (mainnet)
 Documentation=https://github.com/AlphaArtrem/call-pool
 
 [Timer]
-OnCalendar=*-*-* 00:40:00 UTC
-AccuracySec=30s
+OnCalendar=*-*-* 06,12,18:20:00 UTC
+AccuracySec=60s
 Persistent=true
 Unit=callpool-airdrop.service
 

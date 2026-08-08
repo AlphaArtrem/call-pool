@@ -12,9 +12,11 @@
 # holds no keys and reads only public chain state, so it can report that the
 # crank is dead without depending on anything the crank maintains.
 #
-# The grace values are the MAINNET clock: an epoch is a day, so being an hour
-# late is normal and being six hours late is not. `--stale-after` defaults to
-# grace plus one epoch, which on a daily clock is a day too slow to be useful.
+# The grace values are the MAINNET clock under L19: settlement AND payment both
+# happen within minutes of 00:00 UTC, so an hour late is already abnormal —
+# unlike under L14, where a payout legitimately lagged the epoch by a day.
+# `--stale-after` defaults to grace plus one epoch, which on a daily clock is a
+# day too slow to be useful, so it is set explicitly.
 
 [Unit]
 Description=CALLPOOL — alert on the ABSENCE of a settlement (mainnet)
@@ -29,7 +31,7 @@ Group=callpool
 WorkingDirectory=/srv/callpool
 EnvironmentFile=/etc/callpool/signer.env
 ExecStart=/usr/bin/node scripts/tools/watchdog.mjs --once \
-  --grace 5400 --stale-after 21600 --heartbeat 86400 --min-vault 0.05
+  --grace 3600 --stale-after 14400 --heartbeat 86400 --min-vault 0.05
 
 NoNewPrivileges=true
 PrivateTmp=true

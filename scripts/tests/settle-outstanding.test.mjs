@@ -93,6 +93,17 @@ test('the crank gets the same arguments the timer used, with only the epoch vary
   ]);
 });
 
+test('the holder list is forwarded, or a truncated feed cannot settle', () => {
+  // L5's fallback needs candidates. Nothing forwarded them until 2026-08-08, so
+  // on the one day the fallback exists for, the snapshot refused — and refusing
+  // stops every later epoch behind it.
+  const args = parseArgs(['--keypair', '/k/a.json', '--holders', 'epochs/holders.json']);
+  assert.ok(crankArgs(3, args).includes('--holders'));
+  assert.equal(crankArgs(3, args)[crankArgs(3, args).indexOf('--holders') + 1], 'epochs/holders.json');
+
+  assert.ok(!crankArgs(3, parseArgs(['--keypair', '/k/a.json'])).includes('--holders'));
+});
+
 test('optional arguments that were not given are not forwarded', () => {
   const argv = crankArgs(2, parseArgs(['--keypair', '/k/snap.json']));
   assert.deepEqual(argv, ['--epoch', '2', '--rpc', parseArgs(['--keypair', 'x']).rpc, '--keypair', '/k/snap.json']);
