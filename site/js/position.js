@@ -207,9 +207,14 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   // Only shown when proration actually reduced the weight — i.e. the wallet
   // bought partway through today. For everyone who held the whole day the two
   // numbers are identical and a second row saying so would be noise.
+  // L21 — the weight can now differ from the floor number in BOTH directions:
+  // below it for a wallet that bought partway through, above it for one that
+  // topped up. Shown whenever they differ, because a number that decides money
+  // and is not on screen is a number nobody can check.
   const sustained = loaded.held.sustained ?? loaded.held.hold;
-  if (loaded.held.hold < sustained) {
+  if (loaded.held.hold !== sustained) {
     const shareCell = document.createElement('span');
+    const toppedUp = loaded.held.hold > sustained;
     const hours = Math.max(0, Math.round((loaded.held.heldSeconds ?? 0) / 360) / 10);
     field(shareCell, {
       value: `${formatTokens(loaded.held.hold, MINT_DECIMALS)} CALLPOOL`,
@@ -218,8 +223,11 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     table.append(row(
       'counted for today’s split',
       shareCell,
-      `You have held for about ${hours}h of today, so today’s share is scaled to that. ` +
-        'Hold through a full day and the two numbers above match.',
+      toppedUp
+        ? 'Higher than your lowest balance because you added to your position today. ' +
+          'The extra counts from the moment it landed — not for the hours before it.'
+        : `You have held for about ${hours}h of today, so today’s share is scaled to that. ` +
+          'Hold through a full day and the two numbers above match.',
     ));
   }
 

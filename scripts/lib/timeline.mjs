@@ -191,34 +191,71 @@ export function computeHold(events, window, options = {}) {
   const heldFromStart = opening > 0n;
   const firstHeldAt = heldFromStart ? window.start : firstHeld?.blockTime ?? null;
 
-  // The floor gate: the lowest balance the wallet held *while it held anything*.
-  // A dip below the floor still costs the whole day, so the anti-flipper
-  // property is untouched — this only stops the pre-purchase zero counting.
-  let sustained = 0n;
-  if (firstHeldAt != null) {
-    sustained = heldFromStart ? opening : firstHeld.post;
-    for (const e of inWindow) {
-      if (e.blockTime < firstHeldAt) continue;
-      if (e.post < sustained) sustained = e.post;
-    }
-  }
-
-  // The weight: prorated by how much of the window the wallet was in.
+  // ── L21 — credited for what you KEEP ─────────────────────────────────────
   //
-  // **This is what stops the obvious version of the fix being an exploit.**
-  // Ignoring the leading zero and paying full weight would let a wallet buy a
-  // minute before midnight, collect a full day's share, sell after the payout
-  // and repeat nightly with a fresh wallet — a direct drain on everyone who
-  // held all day. Prorating makes a minute worth a minute.
+  // One sentence: **at any moment you are credited with the smallest balance you
+  // still hold for the rest of the day.**
   //
-  // Integer division truncates, which is the safe direction: the remainder
-  // stays in the pool rather than being allocated to anybody.
+  // That single rule produces the asymmetry deliberately, and it is the whole
+  // point of L21:
+  //
+  //   * **Topping up pays, from when it lands.** The minutes before an increase
+  //     are still capped by the smaller balance you held then, so there is no
+  //     retroactive credit — but every minute after counts at the higher one.
+  //   * **Selling costs the whole day, retroactively.** A decrease at 18:00 caps
+  //     every earlier minute at the lower balance too, because from any earlier
+  //     instant that lower balance is what you still hold by the day's end. Sell
+  //     down to 120,000 and the day is worth 120,000, exactly as before.
+  //
+  // The balance is piecewise constant between transactions, so this is a suffix
+  // minimum over the segments and then a time-weighted sum. Nothing can hide
+  // between two transactions.
   const windowSeconds = BigInt(window.end - window.start);
   const heldSeconds = firstHeldAt == null ? 0n : BigInt(window.end - firstHeldAt);
-  const hold =
-    windowSeconds === 0n || heldSeconds <= 0n
-      ? 0n
-      : (sustained * heldSeconds) / windowSeconds;
+
+  /** Segments of constant balance from `firstHeldAt` to the window's end. */
+  const segments = [];
+  if (firstHeldAt != null) {
+    const changes = inWindow.filter((e) => e.blockTime >= firstHeldAt);
+    let at = firstHeldAt;
+    let balance = heldFromStart ? opening : firstHeld.post;
+    // When the wallet held from the open, the first in-window event is a change
+    // *away* from `opening`; when it bought inside the window, the event that
+    // started the holding is itself the first balance and must not re-open a
+    // segment at the same instant.
+    for (const e of changes) {
+      if (e === firstHeld) continue;
+      segments.push({ from: at, to: e.blockTime, balance });
+      at = e.blockTime;
+      balance = e.post;
+    }
+    segments.push({ from: at, to: window.end, balance });
+  }
+
+  // Suffix minima, walked backwards: `keeps` is the smallest balance still held
+  // from this segment onward.
+  let running = null;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    running = running == null || segments[i].balance < running ? segments[i].balance : running;
+    segments[i].keeps = running;
+  }
+
+  // The floor gate is the same number as before: the lowest balance held while
+  // holding anything, which is exactly the suffix minimum at the first segment.
+  // A dip below the floor still costs the whole day.
+  const sustained = segments.length > 0 ? segments[0].keeps : 0n;
+
+  // Integer division truncates, and it is applied once at the end rather than
+  // per segment — dividing inside the loop would round every segment down and
+  // lose real weight. The remainder stays in the pool, which is the safe
+  // direction: an epoch may under-allocate harmlessly, but over-allocating
+  // turns claims into a race.
+  let weighted = 0n;
+  for (const s of segments) {
+    const seconds = BigInt(Math.max(0, s.to - s.from));
+    weighted += s.keeps * seconds;
+  }
+  const hold = windowSeconds === 0n ? 0n : weighted / windowSeconds;
 
   return {
     hold,
@@ -230,6 +267,7 @@ export function computeHold(events, window, options = {}) {
     firstHeldAt,
     heldSeconds: Number(heldSeconds),
     windowSeconds: Number(windowSeconds),
+    segments,
     opening,
     closing,
     maximum,

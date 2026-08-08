@@ -96,7 +96,12 @@ test('the lockout scales with the epoch length, not with the calendar', () => {
 // "A wallet buys, calls, sells half, rebuys; hold must return the trough, not
 // the closing balance or the maximum."
 
-test('proof 4: hold is the trough, not the close and not the maximum', () => {
+test('proof 4: the trough gates eligibility and caps every earlier minute (L21)', () => {
+  // **Proof 4's expectation is amended by L21, deliberately.** It used to assert
+  // `hold === the trough`. The trough still decides whether the wallet qualifies
+  // at all (`sustained`), and it still caps credit for every minute *before* the
+  // sale — but minutes after a later increase are credited at the higher
+  // balance, because by then that is what the wallet keeps to the day's end.
   const history = [
     at(-30, 0, 1_000_000), // opening position, set before the epoch
     at(6, 1_000_000, 500_000), // sold half, mid-epoch
@@ -107,16 +112,68 @@ test('proof 4: hold is the trough, not the close and not the maximum', () => {
   assert.equal(r.opening, T(1_000_000));
   assert.equal(r.maximum, T(1_200_000));
   assert.equal(r.closing, T(1_200_000));
-  assert.equal(r.hold, T(500_000), 'the trough is what is paid on');
+
+  assert.equal(r.sustained, T(500_000), 'the trough still decides eligibility');
+  // 500k for the first 18h (capped by the sale), 1.2M for the last 6h.
+  assert.equal(r.hold, (T(500_000) * 18n + T(1_200_000) * 6n) / 24n);
+  assert.ok(r.hold < T(1_000_000), 'still worse than never having sold');
 });
 
-test('proof 4: rebuying inside the epoch does not repair the trough', () => {
+test('proof 4: dumping to zero still costs the whole day — via the floor', () => {
+  // Under L21 the *weight* of a dump-and-rebuy is no longer zero, because the
+  // rebought balance is genuinely held to the day's end. What excludes this
+  // wallet is `sustained`: it went to zero while holding, so it cannot clear any
+  // floor above zero. Asserting on the weight alone would miss where the
+  // protection actually lives — and the wallet is also locked out for the next
+  // LOCKOUT_EPOCHS days by the decrease.
   const history = [
     at(-1, 0, 800_000),
     at(2, 800_000, 0), // dumped everything an hour into the day
     at(3, 0, 800_000), // and rebought an hour later
   ];
-  assert.equal(computeHold(history, W).hold, 0n);
+  const r = computeHold(history, W);
+
+  assert.equal(r.sustained, 0n, 'it held nothing at one point, so it qualifies for nothing');
+  assert.ok(r.sustained < MIN_HOLD_RAW, 'excluded by the floor, whatever the weight says');
+});
+
+test('a dip below the floor and back is still excluded (L21)', () => {
+  // The near-miss version: never reached zero, but went under the floor. The
+  // floor is checked against the trough, so the day is still lost.
+  const history = [at(-1, 0, 800_000), at(2, 800_000, 50_000), at(3, 50_000, 800_000)];
+  const r = computeHold(history, W);
+  assert.equal(r.sustained, T(50_000));
+  assert.ok(r.sustained < MIN_HOLD_RAW);
+});
+
+// ── L21 — topping up earns, from the moment it lands ──────────────────────
+
+test('topping up mid-day is credited for the rest of the day', () => {
+  // The demand incentive L21 exists for: 500k from the open, doubled to 1M at
+  // 06:00. Under L20 this was worth 500k — the increase earned nothing.
+  const history = [at(-5, 0, 500_000), at(6, 500_000, 1_000_000)];
+  const r = computeHold(history, W, { currentBalance: T(1_000_000) });
+
+  assert.equal(r.sustained, T(500_000), 'the floor still sees the lower balance');
+  assert.equal(r.hold, (T(500_000) * 6n + T(1_000_000) * 18n) / 24n);
+  assert.ok(r.hold > T(500_000), 'the top-up is rewarded');
+  assert.ok(r.hold < T(1_000_000), 'but not retroactively — the early hours stay capped');
+});
+
+test('a top-up minutes before the close is worth minutes, not a day', () => {
+  // The mirror of the flash-buy guard: no retroactive credit, so buying big at
+  // 23:59 cannot capture a day's weight.
+  const late = { blockTime: W.end - 60, pre: T(500_000), post: T(5_000_000), signature: 'late' };
+  const r = computeHold([at(-5, 0, 500_000), late], W, { currentBalance: T(5_000_000) });
+
+  assert.equal(r.hold, (T(500_000) * 86_340n + T(5_000_000) * 60n) / 86_400n);
+  assert.ok(r.hold < T(510_000), `a minute of a bigger balance is worth a minute, got ${r.hold}`);
+});
+
+test('selling still beats being unable to sell: the penalty is unchanged by L21', () => {
+  const history = [at(-5, 0, 500_000), at(18, 500_000, 120_000)];
+  const r = computeHold(history, W, { currentBalance: T(120_000) });
+  assert.equal(r.hold, T(120_000), 'the whole day at the lower balance, exactly as under L20');
 });
 
 // ── L20 — a first purchase is not a sale ──────────────────────────────────
@@ -310,7 +367,10 @@ test('a contiguous history with an account close and reopen is accepted', () => 
   // so the chain is unbroken and the lockout fires on the close.
   const history = [at(-30, 0, 900_000), at(4, 900_000, 0), at(9, 0, 900_000)];
   assert.doesNotThrow(() => assertContiguous(history));
-  assert.equal(computeHold(history, W).hold, 0n);
+  // L21: the weight is non-zero because the reopened balance is held to the end,
+  // but `sustained` is zero so the wallet clears no floor. Same outcome, and the
+  // check now names the reason.
+  assert.equal(computeHold(history, W).sustained, 0n);
 });
 
 // ── the RPC response shape ─────────────────────────────────────────────────
