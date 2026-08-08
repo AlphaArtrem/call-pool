@@ -17,7 +17,7 @@ import { resolve } from 'node:path';
 
 import { Keypair, PublicKey } from '@solana/web3.js';
 
-import { publishedRoot, sameInstruction } from '../cosign.mjs';
+import { assertCanPropose, PROPOSE_MIN_LAMPORTS, publishedRoot, sameInstruction } from '../cosign.mjs';
 import { postEpochRootIx } from '../lib/program.mjs';
 
 const VAULT = new PublicKey('4yoTWJ4Hdxy8kRiiA2CJ4netQGkDhvmnbvLeQS4CKYsn');
@@ -161,4 +161,41 @@ test('every name Squads gives a taken transaction index counts as a lost race', 
   ]) {
     assert.ok(!RACED.test(message), `must NOT be swallowed as a race: ${message}`);
   }
+});
+
+// --- the member's own balance ----------------------------------------------
+//
+// 2026-08-09: signer A held 0.0027 SOL, and the create failed with "Account is
+// already initialized" — the System program's insufficient-lamports error read
+// through the wrong error table. Every message pointed at the multisig; the
+// fault was an empty wallet. A balance cannot be misread that way.
+
+test('a member that cannot pay for the proposal is stopped before it proposes', async () => {
+  const connection = { getBalance: async () => 2_653_720 };
+
+  await assert.rejects(
+    () => assertCanPropose(connection, PublicKey.default),
+    /holds 0\.002653720 SOL.*not enough to create a proposal/s,
+  );
+});
+
+test('the refusal says the rent is the member’s, not the vault’s', async () => {
+  const connection = { getBalance: async () => 0 };
+
+  await assert.rejects(
+    () => assertCanPropose(connection, PublicKey.default),
+    /rent this member pays, not a fee the vault pays/,
+  );
+});
+
+test('a funded member proposes, and gets its balance back', async () => {
+  const connection = { getBalance: async () => 500_000_000 };
+
+  assert.equal(await assertCanPropose(connection, PublicKey.default), 500_000_000n);
+});
+
+test('the threshold is inclusive — exactly the minimum is enough', async () => {
+  const connection = { getBalance: async () => Number(PROPOSE_MIN_LAMPORTS) };
+
+  assert.equal(await assertCanPropose(connection, PublicKey.default), PROPOSE_MIN_LAMPORTS);
 });

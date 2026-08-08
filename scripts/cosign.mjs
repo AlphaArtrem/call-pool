@@ -234,6 +234,70 @@ async function waitForIndex(connection, multisigPda, index, attempts = 30) {
   throw new Error(`the multisig never reached transaction index ${index}`);
 }
 
+/**
+ * An account this run just created, once the endpoint admits it exists.
+ *
+ * `confirmTransaction` confirms against the cluster; the read that follows can
+ * still be answered by a node behind the one that confirmed. On 2026-08-09 that
+ * turned a successful `proposalCreate` into "Unable to find Proposal account",
+ * one line after the confirmation — the same staleness that made two of run 2's
+ * recovery sells report that they had moved nothing.
+ *
+ * `waitForIndex` above is this idea applied to the multisig's counter. This is
+ * it applied to an account.
+ */
+async function waitForAccount(read, what, attempts = 20, delayMs = 500) {
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    const found = await read().catch((error) => {
+      last = error;
+      return null;
+    });
+    if (found) return found;
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  throw new Error(
+    `${what} was created and confirmed, but this endpoint still does not serve it after ` +
+      `${((attempts * delayMs) / 1000).toFixed(0)}s. Check the RPC's slot lag before anything else` +
+      `${last ? ` — the last read said: ${last.message}` : ''}.`,
+  );
+}
+
+/**
+ * What a member must hold before it can propose.
+ *
+ * The vault pays the *inner* transaction; the member pays for the Squads
+ * transaction account that carries it, and that is rent, not a fee — ~0.0035
+ * SOL that does not come back while the proposal exists. 0.02 covers a proposal
+ * and several approvals with room to spare.
+ */
+export const PROPOSE_MIN_LAMPORTS = 20_000_000n;
+
+/**
+ * Refuse to propose from a member that cannot pay for the proposal.
+ *
+ * This exists because of what the chain says when it happens. On 2026-08-09,
+ * signer A held 0.0027 SOL and `vaultTransactionCreate` failed with
+ * **"Account is already initialized"** — the System program's
+ * `insufficient lamports` (custom error 0x1) mapped through the wrong error
+ * table, exactly as `AlreadyInitialized` does. The recovery path then read it
+ * as a lost race, re-scanned, found no matching proposal and refused to sign,
+ * naming an index that was demonstrably free. Every message pointed at the
+ * multisig; nothing pointed at the empty wallet.
+ *
+ * A balance check cannot be fooled by an error table.
+ */
+export async function assertCanPropose(connection, member, { minimum = PROPOSE_MIN_LAMPORTS } = {}) {
+  const lamports = BigInt(await connection.getBalance(member));
+  if (lamports >= minimum) return lamports;
+  throw new Error(
+    `signer ${member.toBase58()} holds ${(Number(lamports) / 1e9).toFixed(9)} SOL, which is not ` +
+      `enough to create a proposal (needs about ${(Number(minimum) / 1e9).toFixed(3)}).\n` +
+      '  The Squads transaction account is rent this member pays, not a fee the vault pays.\n' +
+      '  Fund it and re-run — nothing is wrong with the multisig, the epoch, or the root.',
+  );
+}
+
 /** Byte-for-byte comparison of an instruction against the one we derived. */
 function sameInstruction(a, b) {
   return (
@@ -439,6 +503,8 @@ async function main() {
     index = Number(multisigAccount.transactionIndex) + 1;
     console.log(`proposal     none matched — creating index ${index}`);
 
+    await assertCanPropose(connection, member.publicKey);
+
     const message = new TransactionMessage({
       payerKey: vault,
       recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
@@ -510,15 +576,25 @@ async function main() {
       );
       if (!raced) throw error;
 
-      console.log(`proposal     index ${index} was taken while we were building it — re-scanning`);
+      // Say what the chain actually said. The recovery below reads the same
+      // for a lost race, an orphaned index and a malformed create, and on
+      // 2026-08-08 that cost an hour: a create that failed for its own reasons
+      // was reported as "index N is taken", against an index the scan had just
+      // read as free.
+      console.log(`proposal     index ${index} create failed — re-scanning. The chain said: ${error.message}`);
+      // The message alone is rarely enough — "Account is already initialized"
+      // does not say *which* account. The program logs name it.
+      for (const line of error.logs ?? []) console.log(`             | ${line}`);
       const fresh = await multisig.accounts.Multisig.fromAccountAddress(connection, multisigPda);
       const now = await findProposal(connection, multisigPda, fresh, expectedIx, vault);
       if (!now) {
         throw new Error(
-          `index ${index} is taken, but no proposal on this multisig carries the bytes derived ` +
-            `here for epoch ${epoch} — NOT signing.\n` +
-            '  Another member proposed something this host did not derive. That is the case the ' +
-            'byte comparison exists for; do not approve it by hand to clear the queue.',
+          `creating index ${index} failed and no proposal on this multisig carries the bytes ` +
+            `derived here for epoch ${epoch} — NOT signing.\n` +
+            `  The create failed with: ${error.message}\n` +
+            '  If that names a taken index, another member proposed something this host did not ' +
+            'derive — that is the case the byte comparison exists for, and approving it by hand ' +
+            'to clear the queue is the one thing not to do.',
         );
       }
       index = now.index;
@@ -554,7 +630,10 @@ async function main() {
       creator: member,
     });
     await connection.confirmTransaction(proposalSig, 'confirmed');
-    proposal = await multisig.accounts.Proposal.fromAccountAddress(connection, proposalPda);
+    proposal = await waitForAccount(
+      () => multisig.accounts.Proposal.fromAccountAddress(connection, proposalPda),
+      `the proposal for index ${index}`,
+    );
   }
 
   const already = proposal.approved.map((k) => k.toBase58());
