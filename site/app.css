@@ -1632,8 +1632,17 @@ summary:focus-visible {
   background: var(--accent);
 }
 
+/* L19 — the checking window is 300s against an 86,400s day, so its honest
+   share of the rail is 0.35%: a band narrower than the 1px border beside it,
+   and one that `toFixed(1)` rounds to "0.3%". A segment nobody can see is a
+   segment that is not on the page, while the legend still announces it. So it
+   gets a visible floor and is exempt from flex shrinking. This makes that part
+   of the rail deliberately not to scale, which the title set in `ui.js` states
+   outright rather than leaving the reader to measure it. */
 .rail span.is-secondary {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
+  min-width: 6px;
+  flex: none;
 }
 
 .rail-legend {

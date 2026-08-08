@@ -22,8 +22,24 @@ import {
 } from './chain.js';
 import { associatedTokenAddress, lpMint } from './addresses.js';
 import { explorerUrl, snapshotUrl } from './config.js';
-import { DELIVERY, describeDelivery, loadPayoutTrail, payoutHistory, projectedShare } from './payouts.js';
-import { exactTitle, formatSolShort, formatTokens, standingFor, utcDate } from './standing.js';
+import {
+  DELIVERY,
+  describeDelivery,
+  describeEstimate,
+  loadPayoutTrail,
+  payoutHistory,
+  projectedShare,
+  sampledShare,
+} from './payouts.js';
+import {
+  exactTitle,
+  formatSolShort,
+  formatTokens,
+  holdFigures,
+  soldWithoutCrossingFloor,
+  standingFor,
+  utcDate,
+} from './standing.js';
 import { addressNode, escapeHtml, failure, field, row, SOURCES } from './ui.js';
 
 /** SOL, short enough to scan. Always paired with `exactTitle` on the element. */
@@ -45,7 +61,7 @@ export function looksLikeAddress(value) {
  */
 export async function loadPosition({
   connection, config, address, window: epochWindow, now,
-  settledEpochs = [], poolLamports = 0n, minHoldRaw = null,
+  settledEpochs = [], poolLamports = 0n, minHoldRaw = null, provisional = null,
 }) {
   const tokenProgram = await tokenProgramForMint(connection, config.mint);
   const ata = associatedTokenAddress(address, config.mint, tokenProgram);
@@ -82,15 +98,23 @@ export async function loadPosition({
     minHold: minHoldRaw,
   });
 
-  const payouts = payoutHistory(trail, address.toBase58 ? address.toBase58() : String(address));
+  const walletKey = address.toBase58 ? address.toBase58() : String(address);
+  const payouts = payoutHistory(trail, walletKey);
   // The basis for today is the newest settled tree the wallet appears in.
   const newest = [...trail].sort((a, b) => b.epoch - a.epoch)[0] ?? null;
 
+  // Today's sample first, yesterday's ratio only if there is no sample. Both
+  // are computed rather than one-or-the-other, because the renderer needs to
+  // say *which* basis it used — an estimate whose provenance is invisible is
+  // the kind of number this page exists not to print.
+  const sampled = sampledShare({ provisional, wallet: walletKey, poolLamports });
+
   return {
     payouts,
+    sampled,
     projected: projectedShare({
       previousTree: newest?.tree ?? null,
-      wallet: address.toBase58 ? address.toBase58() : String(address),
+      wallet: walletKey,
       poolLamports,
     }),
     ata: ata.toBase58(),
@@ -194,9 +218,19 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   const table = nodes.facts;
   table.replaceChildren();
 
+  // L20/L21 — `sustained` and `hold` answer different questions and must never
+  // be printed as each other. `sustained` is the lowest balance held, which is
+  // what the floor is tested against; `hold` is that figure prorated by how
+  // much of the day it was held for, which is what the split is weighted by.
+  // This row showed `hold` under a label and a hint that both describe
+  // `sustained`, so a wallet that bought at 20:00 read its prorated weight as
+  // its floor number — and the "counted for today's split" row below printed
+  // the very same number again under a contradictory label.
+  const figures = holdFigures(loaded.held);
+
   const holdCell = document.createElement('span');
   field(holdCell, {
-    value: `${formatTokens(loaded.held.hold, MINT_DECIMALS)} CALLPOOL`,
+    value: `${formatTokens(figures.sustained, MINT_DECIMALS)} CALLPOOL`,
     source: SOURCES.derived,
   });
   table.append(
@@ -221,13 +255,12 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   // below it for a wallet that bought partway through, above it for one that
   // topped up. Shown whenever they differ, because a number that decides money
   // and is not on screen is a number nobody can check.
-  const sustained = loaded.held.sustained ?? loaded.held.hold;
-  if (loaded.held.hold !== sustained) {
+  if (figures.differ) {
     const shareCell = document.createElement('span');
-    const toppedUp = loaded.held.hold > sustained;
+    const toppedUp = figures.hold > figures.sustained;
     const hours = Math.max(0, Math.round((loaded.held.heldSeconds ?? 0) / 360) / 10);
     field(shareCell, {
-      value: `${formatTokens(loaded.held.hold, MINT_DECIMALS)} CALLPOOL`,
+      value: `${formatTokens(figures.hold, MINT_DECIMALS)} CALLPOOL`,
       source: SOURCES.derived,
     });
     table.append(row(
@@ -238,6 +271,27 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
           'The extra counts from the moment it landed — not for the hours before it.'
         : `You have held for about ${hours}h of today, so today’s share is scaled to that. ` +
           'Hold through a full day and the two numbers above match.',
+    ));
+  }
+
+  // L22 — the case the ruling created, and the one the page had no words for.
+  // A wallet that sold while staying at or above the floor keeps earning, but
+  // its whole day is counted at the reduced balance. It sees a smaller share
+  // and no lockout, which reads as a bug to exactly the person best placed to
+  // report it. `decreases` minus `belowFloor` is precisely this set, the same
+  // way `lpDeposits` names the L18 exemption rather than leaving it to be
+  // inferred from a number that quietly went down.
+  const trimmed = loaded.lockout.decreases ?? [];
+  if (soldWithoutCrossingFloor(loaded.lockout)) {
+    const trimCell = document.createElement('span');
+    trimCell.textContent =
+      trimmed.length === 1
+        ? `Sold on ${utcDate(trimmed[0].blockTime)} and stayed at or above the minimum, so there is no lockout.`
+        : `Sold ${trimmed.length} times in the last ${LOCKOUT_EPOCHS} days and stayed at or above the minimum each time, so there is no lockout.`;
+    table.append(row(
+      'sold, and not locked out',
+      trimCell,
+      'Selling only locks you out if it takes you under the minimum. What it does cost is the day it happened on: that whole day counts at the lowest balance you were left with, not the balance you started it with.',
     ));
   }
 
@@ -357,17 +411,44 @@ function renderTiles(container, loaded) {
       note: payouts.needsAttention
         ? 'An airdrop failed. It stays claimable — nobody has to do anything for it to remain yours.'
         : payouts.owed > 0n
-          ? 'Allocated and not yet sent. The airdrop runs after the challenge window.'
+          // L19 — this tile's meaning changed with the ruling. "Owed" used to
+          // be an ordinary state that lasted a day, so the note only had to
+          // explain that waiting was normal. Now the airdrop follows the root
+          // by minutes, and an "owed" that persists is a stopped crank rather
+          // than a queue. Say so: `needsAttention` only fires on a *recorded*
+          // airdrop failure, so the case where the job never ran at all has no
+          // other signal on the page.
+          ? 'Allocated and not yet sent. The airdrop runs as soon as the checking window closes — minutes after the day settles, not the next day. If this has not cleared within the hour, something has stalled and it is worth reporting.'
           : 'Every settled day has paid out or correctly withheld.',
     });
   }
 
-  if (loaded.projected) {
+  // The estimate, and — just as important — which basis produced it. The two
+  // bases are not equally good and the difference is not visible in the
+  // number, so the note names the one in use rather than letting a sixfold
+  // better figure and a sixfold worse one wear the same caption.
+  const sampled = loaded.sampled;
+  if (sampled?.eligible && sampled.indicative != null) {
+    tiles.push({
+      label: 'Estimated today',
+      lamports: sampled.indicative,
+      approximate: true,
+      note: describeEstimate(sampled, loaded.now),
+    });
+  } else if (loaded.projected) {
     tiles.push({
       label: 'Estimated today',
       lamports: loaded.projected.indicative,
       approximate: true,
-      note: `Not owed and not promised — today has not settled. Your share of day ${loaded.projected.basisEpoch}, applied to the pool as it stands now.`,
+      note:
+        `Not owed and not promised — today has not settled. Your share of day ` +
+        `${loaded.projected.basisEpoch}, applied to the pool as it stands now. ` +
+        // Said plainly, because this basis is the weaker of the two and a
+        // holder who bought partway through that day is being understated by
+        // it — through no fault of their own and with nothing on screen to
+        // explain the low number.
+        `Today’s own figures have not been sampled yet, so this leans on that day: ` +
+        `if you were only holding for part of it, this reads low.`,
     });
   }
 

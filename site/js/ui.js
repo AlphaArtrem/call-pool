@@ -276,7 +276,15 @@ export function progressRail(node, { window: w, now, challengeSeconds, empty, un
   if (progress.challengeShare > 0) {
     const challenge = document.createElement('span');
     challenge.className = 'is-secondary';
-    challenge.style.width = `${(Math.min(1, progress.challengeShare) * 100).toFixed(1)}%`;
+    const share = Math.min(1, progress.challengeShare);
+    challenge.style.width = `${(share * 100).toFixed(1)}%`;
+    // Under a mainnet clock this band is 0.35% wide and the CSS floor is doing
+    // all the work, so the rail is no longer to scale here. Say which of the
+    // two it is instead of drawing a bar that quietly overstates the window.
+    challenge.title =
+      share < 0.02
+        ? 'The checking window — drawn wider than it really is so that it stays visible.'
+        : 'The checking window.';
     rail.append(challenge);
   }
 

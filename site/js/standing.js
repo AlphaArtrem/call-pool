@@ -242,7 +242,12 @@ function settlementState(settlement, now) {
       headline: `Settled: ${formatSol(amountLamports)} SOL. Payout sent in ${countdown(challengeEndsAt - now)}.`,
       detail: [
         'The root is posted and the numbers are published, so anyone can recompute them before the money moves.',
-        'Be clear about what that window is: 24 hours in which anyone can discover a bad root, and nobody can stop it. There is no pause, no veto and no dispute instruction.',
+        // L19 — no duration in this sentence. It said "24 hours" while the
+        // window was a deploy-time argument, and the ruling that cut it to five
+        // minutes made the copy wrong everywhere at once. The headline above
+        // already counts the real window down from `challengeEndsAt`; what this
+        // line is for is the part no clock can express.
+        'Be clear about what that window is: a chance for anyone to discover a bad root, not a chance to stop one. There is no pause, no veto and no dispute instruction.',
       ],
     };
   }
@@ -257,6 +262,45 @@ function settlementState(settlement, now) {
       'If it stays here, anyone can submit the claim on your behalf, including you. The destination is fixed inside the merkle leaf on chain, so submitting it cannot redirect the payment to anybody else.',
     ],
   };
+}
+
+// ── decisions shared with the renderer ─────────────────────────────────────
+// Pure, and exported for their own sake: the facts table is built against the
+// live DOM and has no test harness, so anything in it that decides what a
+// number *means* lives here where it can be asserted directly.
+
+/**
+ * The two hold figures the facts table prints, resolved together.
+ *
+ * They are returned as a pair because the entire class of bug here is printing
+ * one under the other's label. `sustained` is the lowest balance held and is
+ * what the floor is tested against; `hold` is that figure prorated by how much
+ * of the day it was held for and is what the split is weighted by. For a
+ * wallet that bought at 20:00 UTC they differ by a factor of six, and the row
+ * captioned "the floor is checked against this" printed `hold` — the number
+ * the floor is *not* checked against.
+ *
+ * `differ` drives the second row: it is true in both directions, low for a
+ * part-day holder and high after a top-up (L21).
+ */
+export function holdFigures(held) {
+  const hold = held?.hold ?? null;
+  const sustained = held?.sustained ?? hold;
+  return { sustained, hold, differ: hold != null && sustained != null && hold !== sustained };
+}
+
+/**
+ * Did this wallet sell without ever crossing the floor?
+ *
+ * L22 made this an ordinary, common state — and one the page had no words for.
+ * The holder sees a share computed on a reduced balance and no lockout, which
+ * looks like the mechanic failing to punish a sale. `decreases` already
+ * excludes L18's LP deposits, and `belowFloor` is the subset that actually
+ * locks, so the difference between them is exactly this case and nothing else.
+ */
+export function soldWithoutCrossingFloor(lockout) {
+  if (lockout == null || lockout.locked) return false;
+  return (lockout.decreases ?? []).length > 0 && (lockout.belowFloor ?? []).length === 0;
 }
 
 // ── formatting shared with the renderer ────────────────────────────────────

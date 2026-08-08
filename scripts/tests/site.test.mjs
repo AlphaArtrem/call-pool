@@ -41,10 +41,14 @@ import {
 import { decodeBase58, encodeBase58 } from '../../site/js/base58.js';
 import {
   standingFor, formatSol, formatSolShort, exactTitle, formatTokens, countdown, utcTime,
+  holdFigures, soldWithoutCrossingFloor,
 } from '../../site/js/standing.js';
 import * as clocksModule from '../../site/js/clocks.js';
 import { dailyState, epochAt, firstRecordNote, freshnessNote, hourlyState, windowFor } from '../../site/js/clocks.js';
-import { siteConfig, snapshotUrl, explorerUrl, resolveCluster } from '../../site/js/config.js';
+import {
+  siteConfig, snapshotUrl, explorerUrl, provisionalUrl, resolveCluster,
+} from '../../site/js/config.js';
+import { describeEstimate, loadProvisional, sampledShare } from '../../site/js/payouts.js';
 import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
 import { pageOf, PAGE_SIZE } from '../../site/js/paging.js';
 import { epochIndices, totalClaimed } from '../../site/js/history.js';
@@ -395,8 +399,196 @@ test('inside the challenge window the page says nobody can stop a bad root', () 
     }),
   );
   assert.equal(s.state, 'challenge-window');
-  assert.match(s.detail.join(' '), /nobody can stop it/i);
+  assert.match(s.detail.join(' '), /not a chance to stop one/i);
+  assert.match(s.detail.join(' '), /no pause, no veto and no dispute/i);
   assert.doesNotMatch(s.detail.join(' '), /trustless/i);
+  // L19 — the copy here said "24 hours" for four months, and the ruling that
+  // cut the window to five minutes made it wrong without touching this file.
+  // The duration belongs to the countdown in the headline, which is derived
+  // from `challengeEndsAt`; no fixed span may appear in the prose again.
+  assert.doesNotMatch(s.detail.join(' '), /\b24[ -]hours?\b/i);
+  assert.doesNotMatch(s.detail.join(' '), /\b(hours?|minutes?|days?)\b/i);
+});
+
+// ── today's estimate, from today's sample ──────────────────────────────────
+// The tile used to reach for yesterday's ratio because nothing published
+// today's. `sample-standings.mjs` does now, and the property that matters is
+// that a wallet whose *yesterday* was a part-day is no longer punished for it
+// in today's figure.
+
+const SAMPLE = {
+  kind: 'provisional-standings',
+  settled: false,
+  epoch: 12,
+  sampledAt: 1_767_247_200,
+  elapsedFraction: 0.25,
+  totalWeight: '2000000',
+  truncated: false,
+  carryKnown: true,
+  standings: [
+    { wallet: 'Alice', hold: '1500000', sustained: '1500000', eligible: true, meetsFloor: true, locked: false, indicative: '750' },
+    { wallet: 'Carol', hold: '10', sustained: '10', eligible: false, meetsFloor: false, locked: false, indicative: null },
+    { wallet: 'Dave', hold: '900000', sustained: '900000', eligible: false, meetsFloor: true, locked: true, indicative: null },
+  ],
+};
+
+test('the estimate uses today’s total weight as the denominator', () => {
+  const share = sampledShare({ provisional: SAMPLE, wallet: 'Alice', poolLamports: 4_000_000_000n });
+  // 1,500,000 of 2,000,000 of the pool as it stands now.
+  assert.equal(share.indicative, 3_000_000_000n);
+  assert.equal(share.denominator, 2_000_000n);
+  assert.equal(share.eligible, true);
+});
+
+test('a wallet below the floor gets no figure, and is not confused with a locked one', () => {
+  const carol = sampledShare({ provisional: SAMPLE, wallet: 'Carol', poolLamports: 4_000_000_000n });
+  assert.equal(carol.eligible, false);
+  assert.equal(carol.indicative, null);
+  assert.equal(carol.locked, false);
+  assert.equal(carol.meetsFloor, false);
+
+  const dave = sampledShare({ provisional: SAMPLE, wallet: 'Dave', poolLamports: 4_000_000_000n });
+  assert.equal(dave.locked, true);
+  assert.equal(dave.meetsFloor, true);
+});
+
+test('a wallet the sample never saw gets null, not a zero', () => {
+  assert.equal(sampledShare({ provisional: SAMPLE, wallet: 'Nobody', poolLamports: 1n }), null);
+});
+
+test('no sample, or a settled file, is not an estimate', () => {
+  assert.equal(sampledShare({ provisional: null, wallet: 'Alice', poolLamports: 1n }), null);
+  assert.equal(
+    sampledShare({ provisional: { ...SAMPLE, settled: true }, wallet: 'Alice', poolLamports: 1n }),
+    null,
+  );
+  assert.equal(
+    sampledShare({ provisional: { ...SAMPLE, totalWeight: '0' }, wallet: 'Alice', poolLamports: 1n }),
+    null,
+  );
+});
+
+test('the estimate says how much of the day it covers', () => {
+  const note = describeEstimate({ elapsedFraction: 0.25, sampledAt: 1_000 }, 1_000);
+  assert.match(note, /25% of the day/);
+  assert.match(note, /not owed and not promised/i);
+  assert.match(note, /00:00 UTC/);
+});
+
+test('a sample older than the hourly cadence is called out as stale', () => {
+  const fresh = describeEstimate({ elapsedFraction: 0.5, sampledAt: 10_000 }, 10_000 + 600);
+  assert.doesNotMatch(fresh, /out of date/);
+
+  const stale = describeEstimate({ elapsedFraction: 0.5, sampledAt: 10_000 }, 10_000 + 4 * 3600);
+  assert.match(stale, /out of date/);
+  assert.match(stale, /4h ago/);
+});
+
+test('a truncated feed is disclosed on the tile, and in the direction it errs', () => {
+  const note = describeEstimate(
+    { elapsedFraction: 0.5, sampledAt: 10_000, truncated: true },
+    10_000,
+  );
+  assert.match(note, /feed was full/);
+  assert.match(note, /read high/);
+});
+
+test('the estimate never describes itself as the payout', () => {
+  const note = describeEstimate({ elapsedFraction: 0.9, sampledAt: 10_000 }, 10_000);
+  assert.doesNotMatch(note, /you will (be paid|receive)/i);
+  assert.doesNotMatch(note, /guarantee/i);
+});
+
+test('provisional.json is addressed outside the epoch directories', () => {
+  // It is rewritten hourly; the epoch directories are published once. Sharing
+  // an accessor with them would be the first step to it landing inside one.
+  const config = { snapshotsBase: 'https://example.test/snapshots' };
+  assert.equal(provisionalUrl(config), 'https://example.test/snapshots/provisional.json');
+  assert.equal(provisionalUrl({ snapshotsBase: null }), null);
+});
+
+test('a file that does not name itself a sample is refused', async () => {
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ totalWeight: '1', standings: [] }) });
+  assert.equal(await loadProvisional({ url: 'x', fetchImpl }), null);
+});
+
+test('a missing or unreachable sample is null, not a thrown page', async () => {
+  assert.equal(await loadProvisional({ url: null }), null);
+  assert.equal(
+    await loadProvisional({ url: 'x', fetchImpl: async () => ({ ok: false }) }),
+    null,
+  );
+  assert.equal(
+    await loadProvisional({ url: 'x', fetchImpl: async () => { throw new Error('offline'); } }),
+    null,
+  );
+});
+
+// ── the two hold figures, and the sale that is not a lockout ───────────────
+// The facts table is built against the live DOM and has no harness, so the
+// rules that decide what its numbers *mean* are asserted through the pure
+// functions it is built from. Both of these shipped wrong: the floor row
+// printed the prorated weight, and the L22 case had no row at all.
+
+test('holdFigures keeps the floor number and the split weight apart (L20)', () => {
+  // The 20:00 UTC buyer: 500,000 tokens held for the last sixth of the day.
+  const figures = holdFigures({ hold: 83_333n, sustained: 500_000n, heldSeconds: 14_400 });
+  assert.equal(figures.sustained, 500_000n, 'the floor is tested against the lowest balance held');
+  assert.equal(figures.hold, 83_333n, 'the split is weighted by the prorated figure');
+  assert.equal(figures.differ, true);
+});
+
+test('holdFigures reports the difference in the top-up direction too (L21)', () => {
+  const figures = holdFigures({ hold: 700_000n, sustained: 500_000n });
+  assert.equal(figures.differ, true);
+  assert.ok(figures.hold > figures.sustained, 'a top-up lifts the weight above the floor number');
+});
+
+test('holdFigures collapses to a single figure for a whole-day holder', () => {
+  assert.equal(holdFigures({ hold: 1_000_000n, sustained: 1_000_000n }).differ, false);
+});
+
+test('holdFigures falls back to hold when sustained is absent', () => {
+  const figures = holdFigures({ hold: 42n });
+  assert.equal(figures.sustained, 42n);
+  assert.equal(figures.differ, false);
+});
+
+test('selling while staying above the floor is named, not left to look like a bug (L22)', () => {
+  assert.equal(
+    soldWithoutCrossingFloor({ locked: false, decreases: [{ blockTime: 1 }], belowFloor: [] }),
+    true,
+  );
+});
+
+test('a wallet that crossed the floor gets the lockout, not the trimmed explanation', () => {
+  assert.equal(
+    soldWithoutCrossingFloor({
+      locked: true,
+      decreases: [{ blockTime: 1 }],
+      belowFloor: [{ blockTime: 1 }],
+    }),
+    false,
+  );
+});
+
+test('a wallet that never sold is told nothing about selling', () => {
+  assert.equal(soldWithoutCrossingFloor({ locked: false, decreases: [], belowFloor: [] }), false);
+});
+
+test('an LP deposit alone is not described as a sale (L18 stays exempt)', () => {
+  // `computeLocked` strips LP deposits out of `decreases` before this sees
+  // them, so a wallet whose only outflow was liquidity must not be told it
+  // sold — it already has its own explanation upstream.
+  assert.equal(
+    soldWithoutCrossingFloor({
+      locked: false,
+      decreases: [],
+      belowFloor: [],
+      lpDeposits: [{ blockTime: 1 }],
+    }),
+    false,
+  );
 });
 
 test('dust below the send threshold is carried, and said to be carried, not lost', () => {
