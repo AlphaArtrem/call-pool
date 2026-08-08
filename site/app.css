@@ -1793,8 +1793,14 @@ table {
   font-weight: 500;
 }
 
+/* Left, like every other cell and like the headers above them. These four
+ * columns used to be right-aligned — the usual reason to do that with figures
+ * is so the digits line up down the column — but the headers were never right
+ * aligned to match, so each number sat at the opposite edge of its own label.
+ *
+ * `white-space: nowrap` stays and is doing separate work: it stops "0.0231 SOL"
+ * breaking between the figure and its unit when the table is narrow. */
 .epochs .num {
-  text-align: right;
   white-space: nowrap;
 }
 
