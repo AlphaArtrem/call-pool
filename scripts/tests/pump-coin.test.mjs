@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { shareholdersFor } from '../tools/mk-pump-coin.mjs';
-import { resolveSellAmount } from '../tools/pump-trade.mjs';
+import { resolveSellAmount, settledBalance } from '../tools/pump-trade.mjs';
 
 // ── the split ──────────────────────────────────────────────────────────────
 
@@ -65,4 +65,53 @@ test('a nonsense percentage is refused rather than silently clamped', () => {
 test('a zero balance yields zero, and the caller decides what that means', () => {
   assert.equal(resolveSellAmount('all', 0n), 0n);
   assert.equal(resolveSellAmount('50%', 0n), 0n);
+});
+
+// --- reading the balance back ---------------------------------------------
+//
+// Added 2026-08-08: two of sixty-four recovery sells reported "the token
+// balance did not move" against transactions that had sold everything. The
+// endpoint answered the read from a node behind the one that confirmed.
+
+test('a balance that has not caught up yet is re-read until it moves', async () => {
+  const answers = [500n, 500n, 0n];
+  let calls = 0;
+  const result = await settledBalance(null, null, 500n, {
+    delayMs: 0,
+    read: async () => answers[calls++],
+  });
+
+  assert.equal(result, 0n);
+  assert.equal(calls, 3, 'stops as soon as the balance disagrees with the one before');
+});
+
+test('a trade that really moved nothing still reports the unchanged balance', async () => {
+  let calls = 0;
+  const result = await settledBalance(null, null, 500n, {
+    attempts: 3,
+    delayMs: 0,
+    read: async () => {
+      calls++;
+      return 500n;
+    },
+  });
+
+  // The warning downstream of this is the point: a landed trade that moves
+  // nothing is a real outcome and must not be retried into looking fine.
+  assert.equal(result, 500n);
+  assert.equal(calls, 3);
+});
+
+test('a balance that has already moved is not waited on at all', async () => {
+  let calls = 0;
+  const result = await settledBalance(null, null, 500n, {
+    delayMs: 0,
+    read: async () => {
+      calls++;
+      return 0n;
+    },
+  });
+
+  assert.equal(result, 0n);
+  assert.equal(calls, 1);
 });

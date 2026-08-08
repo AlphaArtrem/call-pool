@@ -84,6 +84,30 @@ export function resolveSellAmount(spec, balance) {
   return raw;
 }
 
+/**
+ * The balance after the trade, once the endpoint agrees a trade happened.
+ *
+ * `sendAndConfirmTransaction` confirms against the cluster; the read that
+ * follows can still be answered by a node behind the one that confirmed, and a
+ * provider behind a load balancer is several nodes. On 2026-08-08 that made two
+ * of sixty-four recovery sells print "the token balance did not move" against
+ * transactions that had in fact sold everything — the balances read zero
+ * seconds later.
+ *
+ * So: re-read a few times before believing an unchanged balance. **The warning
+ * itself stays** — a trade that really moves nothing is a real outcome and must
+ * still be visible. This only stops a stale read from wearing its costume.
+ */
+export async function settledBalance(connection, ata, before, { attempts = 5, delayMs = 1000, read = currentBalanceRaw } = {}) {
+  let latest = before;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    latest = await read(connection, ata);
+    if (latest !== before) return latest;
+    if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return latest;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const connection = connect(args.rpc);
@@ -172,8 +196,8 @@ async function main() {
     { commitment: 'confirmed' },
   );
 
+  const tokensAfter = await settledBalance(connection, ata, tokensBefore);
   const solAfter = await connection.getBalance(wallet.publicKey);
-  const tokensAfter = await currentBalanceRaw(connection, ata);
 
   console.log(`\nsent       ${signature}`);
   console.log(`tokens     ${tokensBefore} → ${tokensAfter}`);
