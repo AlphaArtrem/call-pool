@@ -18,6 +18,13 @@
 //   node scripts/tools/mock-callouts.mjs --silent        # an epoch nobody called in
 //   node scripts/tools/mock-callouts.mjs --only steady,minnow
 //
+// Driving the 50-record cap, which is what the final devnet test is for:
+//   ... --count 49              # C3 — just under; the normal path
+//   ... --count 50              # C4 — TRUNCATED. The boundary is inclusive.
+//   ... --count 49 --before 1   # C5 — 50 written, one outside; NOT truncated
+//   ... --count 60              # C6 — well over
+//   ... --before 1 --after 1    # C10/C11 — near-misses at each edge
+//
 // ⚠️ It proves **our settlement** and nothing whatsoever about pump.fun's API.
 // Devnet proofs 1, 1b, 2, 2b, 3, 12b and 22 still need the real feed on devnet,
 // and they are the ones that gate launch.
@@ -26,7 +33,7 @@ import { resolve } from 'node:path';
 
 import { connect } from '../lib/rpc.mjs';
 
-import { mergeById, recordsInWindow } from '../lib/callouts.mjs';
+import { FEED_CAP, mergeById, recordsInWindow } from '../lib/callouts.mjs';
 import { DEFAULT_RPC_URL } from '../lib/config.mjs';
 import { iso } from '../lib/epoch.mjs';
 import { epochIndexFor, fetchConfig, windowForEpoch } from '../lib/program.mjs';
@@ -43,6 +50,84 @@ import { assertNotMainnet, DEVNET_STORE_PATH, readManifest } from './devnet.mjs'
 function callsOut(name, epochsIn, fadeAfter) {
   if (name === 'fader') return epochsIn < fadeAfter;
   return true;
+}
+
+/**
+ * Which cast members produce a record, and when each one is dated.
+ *
+ * Pure, and exported, because the 50-record boundary is the owner's headline
+ * ask and landing on it exactly is fiddly enough to be worth asserting without
+ * a chain. Two things make it subtle:
+ *
+ * **`snapshot.mjs` measures truncation on records it has already filtered to
+ * the window.** `isTruncated` also tests that the oldest record is not older
+ * than the window start, but after that filter it always is — so at the
+ * settlement end the rule degenerates to `count >= FEED_CAP`. The oldest-record
+ * half of the test only bites in `poll-callouts.mjs`, which sees the raw feed.
+ * That is why `before` here is what produces C5: a record dated outside the
+ * window is dropped by the filter and the in-window count falls to 49.
+ *
+ * **The boundary is inclusive.** Exactly 50 in-window records IS truncated.
+ *
+ * @param {number} count  how many in-window records to write. Defaults to the
+ *   whole selection, which is the ordinary per-epoch behaviour.
+ * @param {number} before  extra records dated before the window opens — they
+ *   must not count, and they are what turns 50 into "50 with one outside".
+ * @param {number} after  extra records dated after it closes. Same, at the
+ *   other end (C11).
+ */
+export function selectRecords({
+  cast, epoch, mint, window, createdAt, epochsIn, fadeAfter,
+  only = null, silent = false, count = null, before = 0, after = 0,
+}) {
+  if (silent) return [];
+
+  const eligible = cast.filter((member) =>
+    only ? only.has(member.name) : callsOut(member.name, epochsIn, fadeAfter),
+  );
+
+  const wanted = count == null ? eligible.length : count;
+  if (wanted > eligible.length) {
+    throw new Error(
+      `--count ${wanted} needs ${wanted} callers but only ${eligible.length} are available ` +
+        `in this epoch. Build a bigger cast (mk-pump-cast.mjs --count) or lower it.`,
+    );
+  }
+  // Each record comes from a distinct wallet, so the out-of-window ones need
+  // callers of their own. Reusing an in-window wallet would write a second
+  // record for someone already counted, which changes nothing observable and
+  // would make a failed near-miss test look like a passing one.
+  if (wanted + before + after > eligible.length) {
+    throw new Error(
+      `${wanted} in-window + ${before} before + ${after} after needs ` +
+        `${wanted + before + after} distinct callers, and only ${eligible.length} are available.`,
+    );
+  }
+
+  const record = (member, at) => ({
+    // Stable per wallet per epoch, so re-running inside the same window
+    // merges rather than duplicating — and `firstSeenAt` keeps the first
+    // sighting, exactly as the hourly poll does. The suffix keeps an
+    // out-of-window record from colliding with the same wallet's real one.
+    id: `mock-${epoch}-${member.name}${at === createdAt ? '' : `-${at < window.start ? 'pre' : 'post'}`}`,
+    walletAddress: member.address,
+    tokenAddress: mint,
+    createdAt: new Date(at * 1000).toISOString(),
+    isSpam: false,
+    isHarmful: false,
+    deletedAt: null,
+  });
+
+  const inWindow = eligible.slice(0, wanted).map((m) => record(m, createdAt));
+
+  // Dated a minute outside on each side. Far enough that no rounding pulls
+  // them back in, close enough that they are obviously meant to be near-misses.
+  const outside = [
+    ...eligible.slice(wanted, wanted + before).map((m) => record(m, window.start - 60)),
+    ...eligible.slice(wanted + before, wanted + before + after).map((m) => record(m, window.end + 60)),
+  ];
+
+  return [...inWindow, ...outside];
 }
 
 function parseArgs(argv) {
@@ -95,25 +180,30 @@ async function main() {
   const epochsIn = epoch - manifest.startEpoch;
   const only = args.only ? new Set(args.only.split(',').map((s) => s.trim()).filter(Boolean)) : null;
 
-  const records = [];
-  if (!args.silent) {
-    for (const member of manifest.cast) {
-      if (only ? !only.has(member.name) : !callsOut(member.name, epochsIn, Number(args['fade-after']))) {
-        continue;
-      }
-      records.push({
-        // Stable per wallet per epoch, so re-running inside the same window
-        // merges rather than duplicating — and `firstSeenAt` keeps the first
-        // sighting, exactly as the hourly poll does.
-        id: `mock-${epoch}-${member.name}`,
-        walletAddress: member.address,
-        tokenAddress: mint,
-        createdAt: new Date(createdAt * 1000).toISOString(),
-        isSpam: false,
-        isHarmful: false,
-        deletedAt: null,
-      });
-    }
+  const records = selectRecords({
+    cast: manifest.cast,
+    epoch,
+    mint,
+    window,
+    createdAt,
+    epochsIn,
+    fadeAfter: Number(args['fade-after']),
+    only,
+    silent: args.silent,
+    count: args.count === undefined ? null : Number(args.count),
+    before: args.before === undefined ? 0 : Number(args.before),
+    after: args.after === undefined ? 0 : Number(args.after),
+  });
+
+  const inWindowCount = records.filter((r) => {
+    const at = Math.floor(Date.parse(r.createdAt) / 1000);
+    return at >= window.start && at < window.end;
+  }).length;
+  if (inWindowCount >= FEED_CAP) {
+    console.log(
+      `truncation ${inWindowCount} records in the window — at or over the ${FEED_CAP} cap, so ` +
+        'settlement will REFUSE without --holders (C4/C6/C8)',
+    );
   }
 
   // Retroactive moderation (L7): the flag lands on a record already in the

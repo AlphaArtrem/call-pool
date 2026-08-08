@@ -12,7 +12,7 @@
 //      not by the shape of a URL. A provider's devnet endpoint need not have
 //      "devnet" in it, and a mainnet endpoint need not say so either.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 import { Keypair } from '@solana/web3.js';
@@ -123,14 +123,19 @@ function fromPortablePaths(manifest) {
 }
 
 export function readManifest(path = MANIFEST_PATH) {
-  const manifest = readJson(path, null);
-  if (manifest == null) {
+  // The existence check is here rather than expressed as `readJson`'s fallback,
+  // because `readJson(path, null)` does not mean "return null if absent" — null
+  // *is* its no-fallback sentinel, so it throws `missing file: …` and the
+  // message below was unreachable. Every tool in the dry run opens with this
+  // call, so the first thing an operator sees on a torn-down box was a path
+  // instead of the command that fixes it.
+  if (!existsSync(path)) {
     throw new Error(
       `no devnet deployment at ${path}. Run scripts/tools/deploy-devnet.mjs first — ` +
         'every tool in the dry run reads its addresses from that file.',
     );
   }
-  return fromPortablePaths(manifest);
+  return fromPortablePaths(readJson(path));
 }
 
 export function writeManifest(manifest, path = MANIFEST_PATH) {
