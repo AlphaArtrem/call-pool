@@ -109,16 +109,18 @@ export function standingFor(facts) {
       state: 'locked-out',
       severity: SEVERITY.blocked,
       eligible: false,
-      headline: 'Locked out — selling resets earning for 7 days.',
+      headline: `Locked out — this wallet went below the minimum, so ${LOCKOUT_EPOCHS} days earn nothing.`,
       detail: [
         lockout.lastDecreaseAt
-          ? `Tokens left this wallet on ${utcDate(lockout.lastDecreaseAt)}.`
-          : 'A decrease was found in the last 7 days.',
+          ? `The balance fell below the minimum on ${utcDate(lockout.lastDecreaseAt)}.`
+          : `A drop below the minimum was found in the last ${LOCKOUT_EPOCHS} days.`,
         lockout.liftsAt
           ? `Earning resumes ${utcDate(lockout.liftsAt)} (00:00 UTC).`
-          : `The lockout runs ${LOCKOUT_EPOCHS} whole days from the decrease.`,
-        'Any decrease triggers this, however small.',
-        'Sending tokens to another wallet you own counts as selling. There is no netting and no housekeeping exemption.',
+          : `The lockout runs ${LOCKOUT_EPOCHS} whole days from the drop.`,
+        // L22 — the distinction the old copy got wrong, and the one holders act
+        // on: trimming is allowed, leaving is not.
+        'Only going UNDER the minimum does this. Selling some while staying at or above it is not a lockout — that day is just counted at your lowest balance.',
+        'Sending tokens to another wallet you own is judged the same way: on where this wallet ends up. There is no netting across wallets.',
         'Buying back does not shorten it.',
       ],
     };

@@ -177,7 +177,7 @@ export function verifyOffline(dir, { minHold }) {
  *
  * @param {import('@solana/web3.js').Connection} connection
  */
-export async function recheckChain(dir, { connection, chain }) {
+export async function recheckChain(dir, { connection, chain, minHold = null }) {
   const problems = [];
   const callouts = readJson(resolve(dir, 'callouts.json'));
   const balances = readJson(resolve(dir, 'balances.json'));
@@ -207,7 +207,11 @@ export async function recheckChain(dir, { connection, chain }) {
       problems.push(`${wallet}: chain history could not be replayed — ${error.message}`);
       continue;
     }
-    const locked = computeLocked(events, lockWindow).locked;
+    // L22 — the floor decides what counts as a sale, so the verifier needs it
+    // for the same reason it needs the LP mint: a reproducer that did not know
+    // the rule would call a wallet locked that the builder paid, and refuse a
+    // correct epoch.
+    const locked = computeLocked(events, lockWindow, { minHold }).locked;
 
     if (derived.hold !== big(published.hold)) {
       problems.push(`${wallet}: published hold ${published.hold}, chain says ${derived.hold}`);

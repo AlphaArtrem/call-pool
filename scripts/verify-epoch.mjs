@@ -72,7 +72,7 @@ export async function verify({ dir, recheckChain: doRecheck, rpc, allowUnposted 
   problems.push(...offline.problems);
 
   if (doRecheck) {
-    const rechecked = await recheckChain(dir, { connection, chain });
+    const rechecked = await recheckChain(dir, { connection, chain, minHold });
     results.chain = rechecked;
     problems.push(...rechecked.problems);
 

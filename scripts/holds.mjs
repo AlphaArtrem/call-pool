@@ -93,7 +93,8 @@ export async function holdsFor(connection, { wallet, mint, day, window: explicit
   const current = await currentBalanceRaw(connection, ata);
 
   const result = computeHold(events, window, { currentBalance: current });
-  const lock = computeLocked(events, lockWindow);
+  // L22 — only a decrease that ends below the floor is a sale.
+  const lock = computeLocked(events, lockWindow, { minHold: MIN_HOLD_RAW });
 
   return {
     wallet,

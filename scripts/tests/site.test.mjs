@@ -307,9 +307,26 @@ test('lockout is reported before the floor, so a locked wallet is never told to 
     }),
   );
   assert.equal(s.state, 'locked-out');
-  assert.match(s.detail.join(' '), /another wallet you own counts as selling/i);
+  assert.match(s.detail.join(' '), /another wallet you own is judged the same way/i);
   assert.match(s.detail.join(' '), /Buying back does not shorten it/i);
   assert.doesNotMatch(s.detail.join(' '), /buy more/i);
+});
+
+test('the lockout copy names the ONLY thing that triggers it (L22)', () => {
+  // The copy this replaced said "any decrease triggers this, however small",
+  // which stopped being true when the lockout moved to the floor. A holder who
+  // trims and reads that would think they had lost the week.
+  const s = standingFor(
+    facts({
+      holdRaw: 0n,
+      currentRaw: 1n,
+      lockout: { locked: true, lastDecreaseAt: NOW - 86_400, liftsAt: WINDOW.start + 7 * 86_400 },
+    }),
+  );
+  const text = s.detail.join(' ');
+  assert.match(text, /below the minimum/i);
+  assert.match(text, /staying at or above it is not a lockout/i);
+  assert.doesNotMatch(text, /any decrease/i, 'the claim L22 made false must not survive anywhere');
 });
 
 test('the lockout message states the exact date it lifts', () => {

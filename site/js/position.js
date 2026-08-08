@@ -45,7 +45,7 @@ export function looksLikeAddress(value) {
  */
 export async function loadPosition({
   connection, config, address, window: epochWindow, now,
-  settledEpochs = [], poolLamports = 0n,
+  settledEpochs = [], poolLamports = 0n, minHoldRaw = null,
 }) {
   const tokenProgram = await tokenProgramForMint(connection, config.mint);
   const ata = associatedTokenAddress(address, config.mint, tokenProgram);
@@ -75,7 +75,12 @@ export async function loadPosition({
   // they are locked out while the crank pays them, which is a worse failure
   // than either answer alone: the page exists to be checkable against the
   // settlement, and a page that disagrees with it is a page nobody can use.
-  const { locked, decreases, lpDeposits } = computeLocked(events, lockout);
+  // L22 — the floor is passed so this page and the settlement job cannot
+  // disagree about whether a decrease was a sale. `minHoldRaw` comes from the
+  // on-chain config, so a deployment running a different floor locks on its own.
+  const { locked, decreases, lpDeposits, belowFloor } = computeLocked(events, lockout, {
+    minHold: minHoldRaw,
+  });
 
   const payouts = payoutHistory(trail, address.toBase58 ? address.toBase58() : String(address));
   // The basis for today is the newest settled tree the wallet appears in.
@@ -96,11 +101,16 @@ export async function loadPosition({
     events,
     lockout: {
       locked,
-      lastDecreaseAt: decreases.length > 0 ? decreases[decreases.length - 1].blockTime : null,
-      // The lockout runs from the epoch after the decrease, so it lifts at the
-      // start of the epoch LOCKOUT_EPOCHS after the one the decrease fell in.
-      liftsAt: decreases.length > 0 ? liftsAt(decreases[decreases.length - 1], epochWindow) : null,
+      // L22 — dated from the drop that actually locked, not from any decrease.
+      // Keying these off `decreases` would print a lockout date for a wallet
+      // that only trimmed its position and is not locked at all.
+      lastDecreaseAt: belowFloor.length > 0 ? belowFloor[belowFloor.length - 1].blockTime : null,
+      // The lockout runs from the epoch after the drop, so it lifts at the
+      // start of the epoch LOCKOUT_EPOCHS after the one it fell in.
+      liftsAt: belowFloor.length > 0 ? liftsAt(belowFloor[belowFloor.length - 1], epochWindow) : null,
       decreases,
+      // The subset that crossed the floor — what "locked" is actually about.
+      belowFloor,
       // Kept so the page can say *why* a wallet whose balance visibly dropped
       // is not locked out. Without it the exemption looks like a bug to the one
       // person best placed to report it.
@@ -236,9 +246,12 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   // week to it.
   const sellCell = document.createElement('span');
   sellCell.className = 'warn';
+  // L22 — what actually happens depends on where a sale would leave the wallet,
+  // so say that rather than the old blanket "any sale locks you out".
   sellCell.textContent = loaded.lockout.locked
     ? 'Already locked out — a further sale does not extend it, but it does not shorten it either.'
-    : `today’s lowest balance drops to 0, and this wallet earns nothing for ${LOCKOUT_EPOCHS} days, starting tomorrow.`;
+    : `selling down to at least the minimum only lowers today’s share to whatever you keep. ` +
+      `Going UNDER the minimum earns nothing for ${LOCKOUT_EPOCHS} days, starting tomorrow.`;
   table.append(row('if you sell any amount now', sellCell));
 
   // ── what is definitely owed ──────────────────────────────────────────────

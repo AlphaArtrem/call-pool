@@ -337,15 +337,45 @@ export function decreasesIn(events, window) {
  * anywhere else is indistinguishable from a sale from here, and is still a
  * lockout — which is the safe direction for the boundary to fall.
  *
+ * ── L22 — only a drop BELOW THE FLOOR is a sale ──────────────────────────
+ *
+ * Until 2026-08-08 *any* decrease locked the wallet out, however small. That
+ * punished a holder who took some profit while staying a full participant
+ * exactly as hard as one who left entirely, and it made the two things
+ * indistinguishable in the copy as well as in the code.
+ *
+ * The floor is what the commitment actually is. So a decrease that leaves the
+ * balance **at or above `minHold`** is not a sale: it costs the day's weight,
+ * because `hold` is still the lowest balance held, and nothing more. A decrease
+ * that takes the balance **below** the floor — to 50,000 or to zero, it makes no
+ * difference — is a sale and locks the wallet out.
+ *
+ * `minHold` is passed rather than imported so this stays a pure function of its
+ * arguments: the floor is an `initialize` argument and a deployment running a
+ * different one must lock on *its* floor, not on the constant this file could
+ * have reached for.
+ *
+ * **Omitting `minHold` keeps the old, stricter behaviour.** A caller that has
+ * not been updated locks on any decrease, which is the safe direction for a
+ * missing argument to fall.
+ *
  * @param {BalanceEvent[]} events
  * @param {Window} lockoutWindow  the `epochs` whole epochs before the epoch
- * @returns {{ locked: boolean, decreases: BalanceEvent[], lpDeposits: BalanceEvent[] }}
+ * @param {{ minHold?: bigint|null }} [options]
+ * @returns {{ locked: boolean, decreases: BalanceEvent[], lpDeposits: BalanceEvent[],
+ *   belowFloor: BalanceEvent[] }}
  */
-export function computeLocked(events, lockoutWindow) {
+export function computeLocked(events, lockoutWindow, options = {}) {
+  const { minHold = null } = options;
   const all = decreasesIn(events, lockoutWindow);
   const lpDeposits = all.filter((e) => e.lpDeposit === true);
   const decreases = all.filter((e) => e.lpDeposit !== true);
-  return { locked: decreases.length > 0, decreases, lpDeposits };
+
+  // The decreases that actually count as leaving: the ones that ended below the
+  // floor. With no floor supplied, every decrease counts — see above.
+  const belowFloor = minHold == null ? decreases : decreases.filter((e) => e.post < minHold);
+
+  return { locked: belowFloor.length > 0, decreases, lpDeposits, belowFloor };
 }
 
 /**

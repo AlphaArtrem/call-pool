@@ -328,6 +328,11 @@ function renderRules() {
   const floor = `${MIN_HOLD_TOKENS.toLocaleString('en-US')} CALLPOOL`;
   el('floor-tokens').textContent = floor;
   el('floor-tokens-formula').textContent = floor;
+  // L22 made the floor part of the prose rather than only a heading — the
+  // lockout rule is stated in terms of it — so any number of inline slots get
+  // the same value from the same constant. A hardcoded "100,000" in the copy
+  // would be a second source of truth for the one parameter that is immutable.
+  for (const slot of document.querySelectorAll('.floor-inline')) slot.textContent = floor;
   el('floor-percent').textContent = FLOOR_PERCENT_LABEL;
   el('provisional-explanation').textContent = PROVISIONAL_EXPLANATION;
 }
@@ -846,6 +851,10 @@ function wireCalculator(config) {
         // mistake is only catchable in a test.
         settledEpochs: settledEpochIndices(live.epochs),
         poolLamports: live.poolLamports ?? 0n,
+        // L22 — the lockout only fires on a drop below the floor, so the
+        // computation needs the floor. From the on-chain config, so a
+        // deployment running a different one locks on its own.
+        minHoldRaw: state.chainConfig?.minHold ?? null,
       });
       nodes.result.classList.remove('failed');
       renderPosition(nodes, loaded, {

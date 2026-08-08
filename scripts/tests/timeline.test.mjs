@@ -501,3 +501,57 @@ test('a signature the RPC lists but will not return is an incomplete history, no
   // events.
   await assert.rejects(() => balanceEventsFor(connection, ACCOUNT, W.start), /history is incomplete/);
 });
+
+// ── L22 — only a drop BELOW THE FLOOR is a sale ───────────────────────────
+//
+// Until 2026-08-08 any decrease locked the wallet out, so a holder who took
+// some profit while staying a full participant was punished exactly as hard as
+// one who left. The floor is what the commitment is, so that is where the line
+// goes.
+
+test('trimming a position but staying above the floor does NOT lock out', () => {
+  // 500k down to 120k: still above the 100k floor, so not a sale. It costs the
+  // day's weight — hold is the lowest balance — and nothing more.
+  const sell = { signature: 'trim', slot: 9, blockTime: LOCK.start + 3600, pre: T(500_000), post: T(120_000) };
+  const r = computeLocked([sell], LOCK, { minHold: MIN_HOLD_RAW });
+
+  assert.equal(r.locked, false, 'still a participant, so still earning');
+  assert.equal(r.decreases.length, 1, 'it was still a decrease');
+  assert.equal(r.belowFloor.length, 0, 'it just did not cross the floor');
+});
+
+test('dropping below the floor IS a sale, at 50,000 or at zero alike', () => {
+  const toFifty = { signature: 'half', slot: 9, blockTime: LOCK.start + 3600, pre: T(500_000), post: T(50_000) };
+  const toZero = { signature: 'all', slot: 9, blockTime: LOCK.start + 3600, pre: T(500_000), post: 0n };
+
+  assert.equal(computeLocked([toFifty], LOCK, { minHold: MIN_HOLD_RAW }).locked, true);
+  assert.equal(computeLocked([toZero], LOCK, { minHold: MIN_HOLD_RAW }).locked, true);
+});
+
+test('landing exactly on the floor is not a sale — the floor is inclusive', () => {
+  // The boundary the rule turns on. `hold >= min_hold` is what eligibility uses,
+  // so the lockout has to agree or the two disagree by one raw unit.
+  const exact = { signature: 'exact', slot: 9, blockTime: LOCK.start + 3600, pre: T(500_000), post: MIN_HOLD_RAW };
+  const under = { signature: 'under', slot: 9, blockTime: LOCK.start + 3600, pre: T(500_000), post: MIN_HOLD_RAW - 1n };
+
+  assert.equal(computeLocked([exact], LOCK, { minHold: MIN_HOLD_RAW }).locked, false);
+  assert.equal(computeLocked([under], LOCK, { minHold: MIN_HOLD_RAW }).locked, true);
+});
+
+test('the LP exemption still applies below the floor', () => {
+  // L18 outranks L22: supplying liquidity takes the balance to ~0 and must
+  // still not lock, or the exemption would be undone by the new rule.
+  const deposit = {
+    signature: 'lp', slot: 9, blockTime: LOCK.start + 3600,
+    pre: T(500_000), post: 0n, lpDeposit: true,
+  };
+  const r = computeLocked([deposit], LOCK, { minHold: MIN_HOLD_RAW });
+  assert.equal(r.locked, false);
+  assert.equal(r.lpDeposits.length, 1);
+});
+
+test('omitting the floor keeps the old, stricter rule', () => {
+  // A call site that has not been updated must not silently stop locking.
+  const trim = { signature: 't', slot: 9, blockTime: LOCK.start + 3600, pre: T(500_000), post: T(120_000) };
+  assert.equal(computeLocked([trim], LOCK).locked, true, 'no floor supplied → any decrease locks');
+});

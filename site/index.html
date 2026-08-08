@@ -305,10 +305,11 @@
             </div>
             <h3>Hold <span id="floor-tokens" class="mono"></span></h3>
             <p>
-              Without dipping below it. At any moment you are credited with the
-              <em>smallest</em> balance you still hold for the rest of the day — so buying
-              more counts from the moment it lands, and selling costs you the whole day.
-              Buy today and you are in today, scaled by how much of the day you held.
+              At any moment you are credited with the <em>smallest</em> balance you still hold
+              for the rest of the day — so buying more counts from the moment it lands, and
+              selling costs you the whole day. Trimming is allowed: stay at or above the minimum
+              and you keep earning. Buy today and you are in today, scaled by how much of the
+              day you held.
             </p>
           </li>
           <li class="card step">
@@ -339,10 +340,13 @@
           where the two facts are still stated.
         -->
         <p class="highlight">
-          <strong>Selling locks you out for 7 days.</strong> Any decrease counts, however small —
-          including moving tokens to another wallet you own. Buying back does not shorten it.
+          <strong>Dropping below the minimum locks you out for 7 days.</strong> Trimming your
+          position is not a sale — as long as you stay at or above
+          <span class="floor-inline mono"></span> you keep earning, and the day is simply
+          counted at your lowest balance. Go under it, to 50,000 or to zero alike, and the next
+          7 days earn nothing. Buying back does not shorten it.
           <strong>Supplying liquidity to this coin’s own pump.fun pool is the one exception and
-          does not lock you out.</strong>
+          does not lock you out even though it takes your balance to zero.</strong>
         </p>
 
         <h3 class="subhead">What counts as selling</h3>
@@ -354,11 +358,12 @@
                 <path d="M15 17h6v-6"/>
               </svg>
             </span>
-            <h3>Any decrease, however small</h3>
+            <h3>Going under the minimum</h3>
             <p>
-              Sending tokens to another wallet you own counts. There is no netting, no summing
-              across accounts, and no exemption for housekeeping. A decrease locks the wallet out
-              for the next 7 days, and buying back does not shorten it.
+              Whether you sell, or send tokens to another wallet you own, what matters is where
+              your balance lands. Stay at or above the minimum and you keep earning. Drop below
+              it and the next 7 days earn nothing — and buying back does not shorten it. There is
+              no netting and no summing across accounts: only this wallet's balance counts.
             </p>
           </div>
           <div class="card">
@@ -402,8 +407,9 @@
         <h3 class="subhead">What happens in every case</h3>
         <p class="lede">
           Two things are decided separately each day: <strong>what today is worth</strong>, and
-          <strong>whether the next 7 days are locked</strong>. Selling does both. Most other
-          things do only one.
+          <strong>whether the next 7 days are locked</strong>. Only dropping below the minimum
+          does both. Trimming your position while staying above it costs you today's weight and
+          nothing else.
         </p>
 
         <div class="table-scroll">
@@ -441,10 +447,18 @@
                 <td><strong>Nothing</strong> — a call does not carry over</td>
                 <td>Keep earning, as soon as you call out again</td>
               </tr>
-              <tr class="is-bad">
-                <th scope="row">Sold some, stayed above the minimum</th>
-                <td>The <strong>whole day</strong> counts at the lower balance</td>
-                <td><strong>Locked out</strong></td>
+              <tr class="is-warn">
+                <th scope="row">Sold some, stayed at or above the minimum</th>
+                <td>The <strong>whole day</strong> counts at your lowest balance</td>
+                <td>Keep earning — this is not a sale</td>
+              </tr>
+              <tr class="is-warn">
+                <th scope="row">Sold some, then topped back up the same day</th>
+                <td>
+                  The hours before the sale still count at the lower balance; the top-up counts
+                  from the moment it lands
+                </td>
+                <td>Keep earning, if you never went under the minimum</td>
               </tr>
               <tr class="is-bad">
                 <th scope="row">Dipped below the minimum, then bought back</th>
@@ -457,8 +471,8 @@
                 <td><strong>Locked out</strong></td>
               </tr>
               <tr class="is-bad">
-                <th scope="row">Moved tokens to another wallet you own</th>
-                <td>Treated exactly as a sale</td>
+                <th scope="row">Moved enough to another wallet to fall under the minimum</th>
+                <td><strong>Nothing</strong> — judged on where this wallet lands</td>
                 <td><strong>Locked out</strong></td>
               </tr>
             </tbody>
@@ -467,9 +481,10 @@
 
         <p class="note">
           “Locked out” means the next 7 days earn nothing at all, whatever you hold and however
-          often you call out. <strong>Buying back does not shorten it.</strong> The lockout starts
-          the day after the sale — on the day itself you are already losing the share, so the two
-          penalties do not overlap.
+          often you call out. <strong>Buying back does not shorten it.</strong> It is triggered by
+          one thing only: your balance ending up <em>below the minimum</em>. The lockout starts
+          the day after that happens — on the day itself you are already losing the share, so the
+          two penalties do not overlap.
         </p>
 
         <details class="tech">
@@ -494,19 +509,38 @@
                     <td>1,000,000</td>
                   </tr>
                   <tr>
-                    <th scope="row">Held 500,000, topped up to 1,000,000 at 06:00</th>
+                    <th scope="row">Held 500,000, topped up to 1,000,000 at 06:00&nbsp;UTC</th>
                     <td>875,000 — the extra counts for the 18 hours it was there</td>
                   </tr>
                   <tr>
-                    <th scope="row">Held 500,000, sold down to 120,000 at 18:00</th>
-                    <td>120,000 — and locked out for 7 days</td>
+                    <th scope="row">Held 500,000, sold down to 120,000 at 18:00&nbsp;UTC</th>
+                    <td>
+                      120,000 — the whole day at the lower balance. Still above the minimum, so
+                      <strong>not</strong> locked out
+                    </td>
                   </tr>
                   <tr>
-                    <th scope="row">Bought 500,000 at 20:00</th>
+                    <th scope="row">
+                      Held 500,000, sold to 120,000 at 18:00&nbsp;UTC, topped back up to 1,000,000
+                      at 20:00&nbsp;UTC
+                    </th>
+                    <td>
+                      266,667 — the first 20 hours count at 120,000, the last 4 at 1,000,000. Never
+                      went under the minimum, so still earning tomorrow
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Held 500,000, sold down to 50,000 at 18:00&nbsp;UTC</th>
+                    <td><strong>Nothing</strong> — under the minimum, so the next 7 days are locked</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Bought 500,000 at 20:00&nbsp;UTC</th>
                     <td>83,333 — four hours of the day</td>
                   </tr>
                   <tr>
-                    <th scope="row">Held 500,000, topped up to 5,000,000 one minute before midnight</th>
+                    <th scope="row">
+                      Held 500,000, topped up to 5,000,000 one minute before midnight&nbsp;UTC
+                    </th>
                     <td>503,125 — a minute is worth a minute</td>
                   </tr>
                 </tbody>
@@ -563,10 +597,11 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
                 </thead>
                 <tbody>
                   <tr>
-                    <td>Buy at 23:58, call out, sell at 00:02</td>
+                    <td>Buy at 23:58&nbsp;UTC, call out, sell at 00:02&nbsp;UTC</td>
                     <td>
-                      <code>hold</code> is the <em>minimum</em> across the day, so it is whatever
-                      you held at the low point — near zero. Buying late earns nothing.
+                      Buying at 23:58&nbsp;UTC earns two minutes of the day, because your share is
+                      scaled by how long you held. Selling at 00:02&nbsp;UTC takes you below the
+                      minimum, so the next 7 days earn nothing too.
                     </td>
                   </tr>
                   <tr>
@@ -575,11 +610,18 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
                   </tr>
                   <tr>
                     <td>Sell after being paid, then buy back</td>
-                    <td>7 days of nothing. Buying back does not shorten it.</td>
+                    <td>
+                      If the sale took you below the minimum: 7 days of nothing, and buying back
+                      does not shorten it. If you stayed above it, you keep earning — that day is
+                      just counted at your lowest balance.
+                    </td>
                   </tr>
                   <tr>
                     <td>Move tokens to a second wallet you own</td>
-                    <td>Counts as a sale on the sending wallet. There is no netting.</td>
+                    <td>
+                      Judged on where the sending wallet lands, exactly like a sale. There is no
+                      netting across wallets.
+                    </td>
                   </tr>
                   <tr>
                     <td>Split a bag across many wallets</td>
