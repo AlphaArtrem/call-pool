@@ -13,7 +13,7 @@ import { alert, clamp, composeHtml, redactSecrets } from '../lib/alert.mjs';
 import { checkVault, payEpoch, reachability, readLog, rebuildEpoch, restartUnit, settleEpoch, topology, unitStatus } from '../lib/runbook.mjs';
 import {
   classifyOverdue, epochAt, epochEnd, forgetResolved, impossibleEpochs, minutes,
-  overdueEpochs, recordAlert, shouldAlert, unpaidEpochs,
+  overdueEpochs, recordAlert, shouldAlert, staleSample, unpaidEpochs,
 } from '../tools/watchdog.mjs';
 
 const CONFIG = { genesisTs: 1_000, epochSeconds: 300 };
@@ -486,4 +486,70 @@ test('a provider URL with a key in its path is redacted to scheme and host', () 
   const safe = redactSecrets(`cluster   ${url}`);
   assert.ok(!safe.includes('EXAMPLEKEY'), 'the key must not survive redaction');
   assert.ok(safe.includes('rpc.ankr.com'), 'the host is kept — which provider failed is the diagnosis');
+});
+
+// ── the site's estimate ────────────────────────────────────────────────────
+// Every other check here covers something that stops visibly. This one covers
+// the sampler, which stops without looking stopped: `provisional.json` stays
+// where it was and the tile keeps rendering a confident figure from it. The
+// boundary is what matters — too tight and the channel gets muted by ordinary
+// jitter, too loose and a dead sampler is the operator's last discovery.
+
+const HOUR = 3_600;
+
+test('a sample from within the hour is healthy', () => {
+  assert.equal(
+    staleSample({ now: 10_000, sample: { sampledAt: 10_000 - 600 }, staleAfterSeconds: 2 * HOUR }),
+    null,
+  );
+});
+
+test('one missed hourly run is slack, not an alert', () => {
+  // A slow chain read or a reboot must not page anyone.
+  assert.equal(
+    staleSample({ now: 10_000, sample: { sampledAt: 10_000 - 90 * 60 }, staleAfterSeconds: 2 * HOUR }),
+    null,
+  );
+});
+
+test('two missed runs is a pattern, and is reported', () => {
+  const problem = staleSample({
+    now: 100_000,
+    sample: { sampledAt: 100_000 - 3 * HOUR },
+    staleAfterSeconds: 2 * HOUR,
+  });
+  assert.equal(problem.reason, 'stale');
+  assert.equal(problem.ageSeconds, 3 * HOUR);
+});
+
+test('the threshold is inclusive, so the boundary alerts rather than hovering', () => {
+  const problem = staleSample({
+    now: 100_000,
+    sample: { sampledAt: 100_000 - 2 * HOUR },
+    staleAfterSeconds: 2 * HOUR,
+  });
+  assert.equal(problem.reason, 'stale');
+});
+
+test('a sample that was never written is reported, not treated as fine', () => {
+  const problem = staleSample({ now: 10_000, sample: null, staleAfterSeconds: 2 * HOUR });
+  assert.equal(problem.reason, 'missing');
+  assert.equal(problem.ageSeconds, null);
+});
+
+test('a file with no usable timestamp is worse than none, and says so', () => {
+  // The site falls back cleanly on a missing file. A file it will try to use
+  // and cannot date is the case that needs a human.
+  for (const sampledAt of [undefined, null, 0, -1, 'yesterday', Number.NaN]) {
+    const problem = staleSample({ now: 10_000, sample: { sampledAt }, staleAfterSeconds: 2 * HOUR });
+    assert.equal(problem.reason, 'unreadable', `sampledAt ${String(sampledAt)}`);
+  }
+});
+
+test('a clock that has run backwards does not read as stale', () => {
+  // A future timestamp is a negative age, which must not cross the threshold.
+  assert.equal(
+    staleSample({ now: 10_000, sample: { sampledAt: 20_000 }, staleAfterSeconds: 2 * HOUR }),
+    null,
+  );
 });

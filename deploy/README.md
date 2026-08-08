@@ -220,6 +220,30 @@ their own user, with their own `SOLANA_RPC_URL`. The signing key goes in
 Signer B lives on a different provider entirely; two automated signers on one
 host is a 2-of-3 multisig wearing a costume.
 
+## The hourly sampler, and why it is the odd one out
+
+`callpool-sample-standings.{service,timer}` publishes `provisional.json` — the
+provisional standings the site's hourly card and per-wallet estimate read. It
+runs hourly, offset 180s so it lands after the callout poll rather than racing
+it.
+
+It breaks two conventions the other units share, both deliberately:
+
+- **`Persistent=false`.** Every other timer here catches up after a reboot,
+  because a missed run is a missed input that decides money. This one's output
+  is an estimate of an hour that has already passed, and republishing it with a
+  fresh timestamp would be worse than the gap.
+- **It holds no key.** It only reads chain. `signer.env` is mounted for
+  `SOLANA_RPC_URL` alone — and it must be the crank's own provider, not the
+  visitor-facing proxy, which refuses the account reads it needs.
+
+**Nothing settles from what it writes.** The payout is recomputed from scratch
+at 00:00 UTC whether or not this has ever run. What it can do is mislead: the
+site keeps showing the last sample it fetched, and a stale estimate looks
+exactly like a fresh one. That is why `watchdog.mjs` checks the file's age
+(`--sample-stale`, default 2h) — it is the only failure in the system whose
+symptom is a page that looks completely healthy.
+
 ## The callout API key needs no configuration
 
 There is deliberately nothing to set. `x-api-key` for `api.coin-communities.xyz`

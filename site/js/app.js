@@ -23,10 +23,10 @@ import {
   PROVISIONAL_EXPLANATION,
   windowFor,
 } from './clocks.js';
-import { explorerUrl, FLOOR_PERCENT_LABEL, siteConfig } from './config.js';
+import { explorerUrl, FLOOR_PERCENT_LABEL, provisionalUrl, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
 import { decodeConfig } from './program.js';
-import { settledEpochIndices } from './payouts.js';
+import { loadProvisional, settledEpochIndices } from './payouts.js';
 import { loadPosition, looksLikeAddress, renderPosition, renderPositionFailure } from './position.js';
 import { countdown, formatSol, formatTokens } from './standing.js';
 import { wireTopbar } from './topbar.js';
@@ -63,6 +63,16 @@ const live = {
   poolLamports: null,
   vaultLamports: null,
   epochs: null,
+  /**
+   * Today's provisional standings, as published by the hourly sampler.
+   *
+   * Not a chain read and deliberately not counted toward the freshness of the
+   * chain figures: a static file that failed to fetch says nothing about
+   * whether Solana answered. It carries its own `sampledAt`, and the hourly
+   * card is built to describe an old one — so a stalled sampler degrades into
+   * a visible warning rather than a stale number wearing a fresh timestamp.
+   */
+  provisional: null,
   /** When a full pass last succeeded, and when one last failed. Unix seconds. */
   readAt: null,
   failedAt: null,
@@ -132,7 +142,10 @@ function resetLiveFields(reason = null) {
   // Solana" here would blame the wrong thing.
   el('hourly-clock').textContent = hourlyState({
     now: Math.floor(Date.now() / 1000),
-    lastSampleAt: null,
+    // Whatever the last successful fetch found, which is the honest answer
+    // even here: the sample is a static file and may well still be readable
+    // when the RPC is not.
+    lastSampleAt: live.provisional?.sampledAt ?? null,
   }).label;
 
   for (const [valueId, chartId] of CARDS) {
@@ -626,10 +639,11 @@ function renderClocks(chainConfig, now) {
   });
   el('daily-clock').textContent = daily.label;
 
-  // `lastSampleAt` comes from the published provisional standings once the
-  // hourly poller writes them. Until then the counter says so rather than
+  // `lastSampleAt` comes from the published provisional standings, written
+  // hourly by `sample-standings.mjs`. Null is still an ordinary answer — no
+  // sampler yet, or a stalled one — and the counter says so rather than
   // implying a refresh that is not happening.
-  const hourly = hourlyState({ now, lastSampleAt: null });
+  const hourly = hourlyState({ now, lastSampleAt: live.provisional?.sampledAt ?? null });
   const hourlyNode = el('hourly-clock');
   hourlyNode.textContent = hourly.label;
   hourlyNode.classList.toggle('warn', hourly.stale);
@@ -703,12 +717,22 @@ async function refresh() {
   live.attemptedAt = Math.floor(Date.now() / 1000);
 
   try {
-    const results = await Promise.all([loadPool(state.config), loadHistory(state.config)]);
+    // Destructured rather than collected, because only the two chain reads
+    // decide freshness. The sample is a static file: its absence says nothing
+    // about whether Solana answered, and folding it into `every(Boolean)`
+    // would mark every pass stale on a deployment that has no sampler yet.
+    const [poolOk, historyOk] = await Promise.all([
+      loadPool(state.config),
+      loadHistory(state.config),
+      loadProvisional({ url: provisionalUrl(state.config) }).then((sample) => {
+        live.provisional = sample;
+      }),
+    ]);
     const now = Math.floor(Date.now() / 1000);
     // Only a fully successful pass updates the timestamp. A partial one leaves
     // some region stale, and a "read at" that covers only half the page is a
     // more confident claim than the page can actually make.
-    if (results.every(Boolean)) {
+    if (poolOk && historyOk) {
       live.readAt = now;
       live.failedAt = null;
     } else {
@@ -855,6 +879,10 @@ function wireCalculator(config) {
         // computation needs the floor. From the on-chain config, so a
         // deployment running a different one locks on its own.
         minHoldRaw: state.chainConfig?.minHold ?? null,
+        // Today's hourly sample, when there is one. Null is ordinary — before
+        // the first sample of a deployment, and whenever the sampler has
+        // stopped — and the panel falls back to yesterday's ratio and says so.
+        provisional: live.provisional,
       });
       nodes.result.classList.remove('failed');
       renderPosition(nodes, loaded, {

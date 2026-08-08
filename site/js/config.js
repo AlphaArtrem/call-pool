@@ -130,6 +130,20 @@ export function snapshotUrl(config, epoch, file = '') {
 }
 
 /**
+ * `<snapshotsBase>/provisional.json` — today's estimate, rewritten hourly.
+ *
+ * Deliberately not addressed through `snapshotUrl`: it belongs to no epoch
+ * directory, because those are published once and never touched again and this
+ * file is overwritten every hour. Giving it its own accessor keeps that
+ * difference visible at every call site rather than hiding it behind an epoch
+ * number that would have to be faked.
+ */
+export function provisionalUrl(config) {
+  if (config.snapshotsBase == null) return null;
+  return `${config.snapshotsBase}/provisional.json`;
+}
+
+/**
  * The explorer this cluster's links point at.
  *
  * Solscan on mainnet, the Solana explorer on devnet with the cluster pinned —

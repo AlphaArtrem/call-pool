@@ -1,0 +1,52 @@
+# CALLPOOL — publish the provisional standings the site estimates from. MAINNET.
+#
+# The site has always had an "hourly estimate" card and there has never been
+# anything to put in it: `app.js` passed `lastSampleAt: null` because no job
+# wrote a sample. This is that job.
+#
+#   install -m 0644 deploy/callpool-sample-standings.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-sample-standings.timer
+#
+# **Nothing settles from what this writes.** It produces `provisional.json` in
+# the snapshots root — beside the immutable `epoch-N/` directories and never
+# inside one — and no instruction, no crank step and no audit tool reads it. A
+# failure here costs visitors an estimate. That is why it is `Type=oneshot`
+# with no alerting of its own: the watchdog reports a stale sample, because a
+# stale estimate looks exactly like a fresh one on the page and a silent
+# failure is the only way this job can mislead anyone.
+#
+# It reads chain and never writes it, so it holds no key. `signer.env` is here
+# for SOLANA_RPC_URL alone — the crank's own provider, not the visitor-facing
+# proxy, which refuses the account reads this needs.
+
+[Unit]
+Description=CALLPOOL — sample provisional standings (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target callpool-poll-callouts.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+ExecStart=/usr/bin/node scripts/sample-standings.mjs
+
+# A few dozen callers replayed over a partial day. Minutes at the very worst,
+# and it must never still be running when the next hour's sample fires.
+TimeoutStartSec=1800
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool

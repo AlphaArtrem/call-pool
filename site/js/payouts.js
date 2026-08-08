@@ -169,7 +169,121 @@ export function describeDelivery(row, formatSol) {
 }
 
 /**
+ * Today's estimate from the hourly sample — the accurate basis, when there is
+ * one.
+ *
+ * `projectedShare` below has to reach for *yesterday's* ratio because a page
+ * load cannot replay every caller's history. `sample-standings.mjs` can, and
+ * does, every hour: it runs the crank's own `holdsFor` and `buildEpoch` over
+ * the part of today that has happened. So when a sample exists this is the
+ * figure to show, and the reason is specific — the denominator is **today's**
+ * total weight rather than a settled day's.
+ *
+ * That matters most for exactly the wallet yesterday's ratio serves worst. A
+ * wallet that bought at 20:00 yesterday has a leaf prorated to a sixth of a
+ * day; carrying that ratio into a day it has held from the start understates
+ * it roughly sixfold. This does not, because it never looks at yesterday.
+ *
+ * The ratio is applied to the pool **now** rather than the pool at sample
+ * time, so fees that arrived since are included. What it cannot include is the
+ * rest of the day: `elapsedFraction` says how much of it the sample covers,
+ * and the caller is expected to say so.
+ *
+ * Returns null when there is no usable sample, when this wallet is not
+ * eligible in it, or when today has no weight yet — never a zero, which would
+ * claim the split considered this wallet and gave it nothing.
+ */
+export function sampledShare({ provisional, wallet, poolLamports }) {
+  if (provisional == null || provisional.settled === true) return null;
+
+  const totalWeight = BigInt(provisional.totalWeight ?? 0);
+  if (totalWeight <= 0n) return null;
+
+  const standing = (provisional.standings ?? []).find((s) => s.wallet === wallet);
+  if (!standing) return null;
+
+  const weight = BigInt(standing.hold ?? 0);
+  // Ineligible is a different answer from "nothing yet", and the page has
+  // different words for each: `eligible` is false for a locked wallet and for
+  // one below the floor, and `standing` still carries which.
+  if (!standing.eligible || weight <= 0n) {
+    return { eligible: false, locked: standing.locked === true, meetsFloor: standing.meetsFloor === true,
+      sampledAt: provisional.sampledAt ?? null, elapsedFraction: provisional.elapsedFraction ?? null,
+      truncated: provisional.truncated === true, indicative: null };
+  }
+
+  const pool = BigInt(poolLamports ?? 0);
+  return {
+    eligible: true,
+    locked: false,
+    meetsFloor: true,
+    numerator: weight,
+    denominator: totalWeight,
+    indicative: (pool * weight) / totalWeight,
+    sampledAt: provisional.sampledAt ?? null,
+    elapsedFraction: provisional.elapsedFraction ?? null,
+    // Both are reasons the estimate can be short of the truth, and neither is
+    // visible in the number. A truncated feed means the sample may have missed
+    // callers, which inflates this wallet's share of the total weight.
+    truncated: provisional.truncated === true,
+    carryKnown: provisional.carryKnown !== false,
+  };
+}
+
+/**
+ * How much of today the estimate is actually based on, and why it will move.
+ *
+ * The owner's requirement for this tile was that it be as close to reality as
+ * possible at the moment someone looks, *and* that it say how close that is.
+ * The number alone cannot: a figure drawn from twenty minutes of a day and one
+ * drawn from twenty-three hours look identical on screen and are worth
+ * completely different amounts of confidence.
+ *
+ * Kept out of the renderer so the wording is testable, since every sentence
+ * here is a claim about money that has not been decided yet.
+ *
+ * @param {number} nowSeconds  so an old sample is described as old rather than
+ *   silently presented as current — the sampler can stall.
+ */
+export function describeEstimate(sampled, nowSeconds) {
+  const covered = Math.round((sampled?.elapsedFraction ?? 0) * 100);
+  const ageMinutes =
+    sampled?.sampledAt == null ? null : Math.max(0, Math.floor((nowSeconds - sampled.sampledAt) / 60));
+
+  const parts = [
+    'Not owed and not promised — today has not settled.',
+    `Worked out from today’s own figures, covering the ${covered}% of the day that had passed when it was measured.`,
+  ];
+
+  // An hourly sample is at most an hour old in normal operation. Past that the
+  // sampler has stalled, and the page must not present a stale figure as a
+  // current one — the whole point of the tile is that it tracks the day.
+  if (ageMinutes != null && ageMinutes >= 90) {
+    parts.push(
+      `⚠️ Last measured ${Math.floor(ageMinutes / 60)}h ago — the hourly update has stopped, so this is out of date.`,
+    );
+  }
+
+  if (sampled?.truncated) {
+    // A full feed means callers may be missing from the denominator, which can
+    // only push this wallet's share up.
+    parts.push('The callout feed was full when this was measured, so some callers may be missing from it — which makes this read high.');
+  }
+
+  parts.push(
+    'It moves as others call out, buy and sell, and as more fees arrive. ' +
+      'The real figure is worked out at 00:00 UTC from a full replay of the whole day, and that one is what pays.',
+  );
+
+  return parts.join(' ');
+}
+
+/**
  * What today *might* pay — explicitly a projection, never a promise.
+ *
+ * **The fallback, used only when no hourly sample is available.** `sampledShare`
+ * above is the accurate answer; this is what the page had before anything
+ * published one, and what it falls back to if the sampler has stalled.
  *
  * Today's epoch has not settled. Nobody knows the eligible set until it does,
  * and this cannot compute it: that would mean every caller's callout record and
@@ -181,6 +295,10 @@ export function describeDelivery(row, formatSol) {
  * without knowing anyone's balances. Apply the most recent settled fraction to
  * the pool as it stands now, and you have "if today turns out like the last
  * settled day". That is a **basis**, stated as such, not a forecast.
+ *
+ * Its known weakness, and the reason `sampledShare` exists: under L20/L21 that
+ * settled leaf was prorated, so a wallet whose basis day was a part-day carries
+ * that day's handicap into today.
  *
  * Returns null when it cannot be computed — you were not in the last tree, or
  * that epoch allocated nothing. **A missing answer is correct here**; inventing
@@ -218,6 +336,32 @@ export function projectedShare({ previousTree, wallet, poolLamports }) {
  * `tree.json` means the epoch is not published and it is skipped entirely: a
  * wallet cannot have been owed by an epoch that was never settled.
  */
+/**
+ * Today's sample, or null.
+ *
+ * Null is an ordinary answer, not an error: the file is absent before the
+ * first sample of a deployment, and absent again if the sampler is stalled.
+ * The page degrades to `projectedShare` and the hourly card says how old the
+ * last sample was — which is the whole reason the card has a staleness state.
+ *
+ * `settled` is checked by the caller rather than here so that a file of the
+ * wrong shape is treated the same as no file at all: this returns what it
+ * fetched, and `sampledShare` decides whether it is usable.
+ */
+export async function loadProvisional({ url, fetchImpl = fetch }) {
+  if (!url) return null;
+  try {
+    const response = await fetchImpl(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const parsed = await response.json();
+    // A stray object is not a sample. Anything that does not name itself is
+    // refused rather than read for fields that might coincidentally be there.
+    return parsed?.kind === 'provisional-standings' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadPayoutTrail({ epochFileUrl, epochs, fetchImpl = fetch }) {
   const readJson = async (url) => {
     if (!url) return null;

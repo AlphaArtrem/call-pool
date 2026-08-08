@@ -106,6 +106,29 @@ export function epochIndexFor(windowStart, config) {
   return elapsed / config.epochSeconds;
 }
 
+/**
+ * Which epoch a moment falls inside.
+ *
+ * Deliberately separate from `epochIndexFor`, which takes a window *start* and
+ * refuses anything that is not an exact boundary — that strictness is right
+ * for settlement, where a timestamp off a boundary means the on-chain index
+ * and the UTC day have diverged. This is for the jobs that ask "which epoch is
+ * running right now", where an arbitrary timestamp is the normal input and
+ * flooring it is the whole point.
+ *
+ * Before genesis there is no epoch, and returning a negative index would let a
+ * caller derive a window that never existed.
+ */
+export function epochContaining(timestamp, config) {
+  const elapsed = timestamp - config.genesisTs;
+  if (elapsed < 0) {
+    throw new Error(
+      `${timestamp} is before genesis ${config.genesisTs} — no epoch is running yet`,
+    );
+  }
+  return Math.floor(elapsed / config.epochSeconds);
+}
+
 /** The window for an on-chain epoch index. The chain's clock, not a calendar. */
 export function windowForEpoch(config, epoch) {
   const start = config.genesisTs + epoch * config.epochSeconds;

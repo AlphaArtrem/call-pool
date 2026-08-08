@@ -1,6 +1,7 @@
 // The two clocks, and the rule that they must never blur (Phase 07 §7.9).
 //
-//   hourly  — a data refresh. Provisional standings from balance samples.
+//   hourly  — a data refresh. Provisional standings, replayed the same way the
+//             settlement replays them, over the part of the day so far.
 //   daily   — when money is decided. An exact replay of every transfer.
 //
 // A visitor who reads the hourly number as their payout will be angry when the
@@ -168,11 +169,23 @@ export function freshnessNote({ readAt, failedAt }) {
  * Why the provisional number and the final one can differ.
  *
  * One line, on the page, because someone will ask and the honest answer is
- * reassuring. The difference is deliberate (Phase 05 §5.11): sampling is cheap
- * enough to run hourly for every holder, and too weak to pay from.
+ * reassuring.
+ *
+ * **Rewritten when `sample-standings.mjs` was built.** The old copy said the
+ * hourly figure was "a spot check: it looks at balances once an hour", and
+ * that the daily settlement was better because it "catches a sale and a rebuy
+ * that happened between two of those checks". That described a sampler nobody
+ * ever wrote. The one that exists runs the settlement's own `holdsFor` and
+ * `buildEpoch`, so it replays every transfer too and catches exactly that
+ * case. Claiming a weakness the estimate does not have is no more honest than
+ * hiding one it does — and it would send anyone comparing the two numbers
+ * hunting for the wrong explanation.
+ *
+ * The real and only difference is the one that cannot be engineered away: the
+ * day is not over.
  */
 export const PROVISIONAL_EXPLANATION =
-  'The hourly figure is a spot check: it looks at balances once an hour. The daily settlement replays every single transfer of the day, so it catches a sale and a rebuy that happened between two of those checks. The daily number is the exact one. The hourly one is usually identical, and it is never what you are paid.';
+  'The hourly figure is worked out the same way as the payout — every transfer replayed, nothing sampled or rounded — but only over the part of the day that has happened so far. That is the whole difference. It moves as people call out, buy and sell, and as more fees arrive, and it is settled for real at 00:00 UTC. The daily number is the one you are paid.';
 
 /**
  * What the daily record says before there is a single settled day.

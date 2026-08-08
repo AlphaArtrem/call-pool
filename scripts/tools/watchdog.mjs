@@ -40,7 +40,7 @@ import {
   checkVault, payEpoch, readLog, restartUnit, settleEpoch, topology, unitStatus,
   reachability, rebuildEpoch,
 } from '../lib/runbook.mjs';
-import { REPO_ROOT } from '../lib/store.mjs';
+import { REPO_ROOT, SNAPSHOTS_DIR } from '../lib/store.mjs';
 
 /** How long after an epoch closes before an unposted root is a problem. */
 const DEFAULT_GRACE_SECONDS = 900;
@@ -54,6 +54,15 @@ const DEFAULT_HEARTBEAT_SECONDS = 86_400;
 /** Epochs to look back over. Beyond this, an unsettled epoch is history. */
 const DEFAULT_LOOKBACK = 50;
 
+/**
+ * How old the site's estimate may get before the sampler counts as stopped.
+ *
+ * Two hours: the sampler is hourly, so one missed run is slack for a slow
+ * chain read or a reboot, and two is a pattern. Tighter than that would page
+ * on ordinary jitter, which is how an alerting channel gets muted.
+ */
+const DEFAULT_SAMPLE_STALE_SECONDS = 7_200;
+
 function parseArgs(argv) {
   const args = {
     rpc: DEFAULT_RPC_URL,
@@ -62,6 +71,7 @@ function parseArgs(argv) {
     heartbeat: DEFAULT_HEARTBEAT_SECONDS,
     lookback: DEFAULT_LOOKBACK,
     minVault: 0.05,
+    sampleStale: DEFAULT_SAMPLE_STALE_SECONDS,
     once: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -73,6 +83,9 @@ function parseArgs(argv) {
     // Named explicitly: the generic branch below would store this as
     // `stale-after`, and the default would silently apply forever.
     else if (argv[i] === '--stale-after') args.staleAfter = Number(argv[++i]);
+    // Same trap as `--stale-after`: the generic branch would store this under
+    // `sample-stale` and leave the default quietly in force.
+    else if (argv[i] === '--sample-stale') args.sampleStale = Number(argv[++i]);
     else if (argv[i] === '--min-vault') args.minVault = Number(argv[++i]);
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
@@ -232,6 +245,38 @@ export async function unpaidEpochs({ now, config, lookback, graceSeconds, readEp
     }
   }
   return unpaid;
+}
+
+/**
+ * Is the site's published estimate older than the site will admit?
+ *
+ * **This is the only failure here whose symptom is a page that looks fine.**
+ * Every other check covers something that stops visibly — an unposted root, an
+ * unpaid epoch, an empty vault. A stopped sampler leaves `provisional.json`
+ * exactly where it was, and the tile keeps rendering a confident-looking
+ * figure from it. The page does carry its own staleness warning, but that only
+ * helps a visitor who is already looking; nobody operating the system finds
+ * out unless something says so.
+ *
+ * Pure, and separate from the file read, so the boundary is tested rather than
+ * eyeballed — an off-by-one here means either constant noise or silence.
+ *
+ * @returns {{reason: string, ageSeconds: number|null}|null} null when healthy.
+ */
+export function staleSample({ now, sample, staleAfterSeconds }) {
+  if (sample == null) return { reason: 'missing', ageSeconds: null };
+
+  const sampledAt = Number(sample.sampledAt);
+  // A file that exists but cannot be read for a time is worse than none: the
+  // site would fall back cleanly on a missing file, and this one it will try
+  // to use.
+  if (!Number.isFinite(sampledAt) || sampledAt <= 0) {
+    return { reason: 'unreadable', ageSeconds: null };
+  }
+
+  const ageSeconds = now - sampledAt;
+  if (ageSeconds < staleAfterSeconds) return null;
+  return { reason: 'stale', ageSeconds };
 }
 
 /**
@@ -475,6 +520,46 @@ async function check(args) {
           commands: [
             { what: `1 — pay epoch ${unpaid[0].epoch} again`, command: payEpoch(t, unpaid[0].epoch) },
             { what: '2 — if it fails, read why', command: readLog(t.crank, 40) },
+          ],
+        },
+      );
+      state = recordAlert(state, key, now);
+    }
+  }
+
+  // The site's estimate. Checked last because it is the only thing here that
+  // costs nobody any money when it breaks — and reported anyway, because it is
+  // the only thing here that breaks without looking broken.
+  const samplePath = resolve(SNAPSHOTS_DIR, 'provisional.json');
+  const sample = existsSync(samplePath)
+    ? JSON.parse(readFileSync(samplePath, 'utf8'))
+    : null;
+  const sampleProblem = staleSample({ now, sample, staleAfterSeconds: args.sampleStale });
+
+  if (sampleProblem) {
+    const key = 'sample-stale';
+    keys.push(key);
+    if (shouldAlert(state, key, now, args.repeat)) {
+      const age =
+        sampleProblem.ageSeconds == null ? 'never written' : `${minutes(sampleProblem.ageSeconds)} old`;
+      addProblem(
+        `🟡 CALLPOOL — the site's hourly estimate has stopped updating\n\n` +
+          `file    ${samplePath}\n` +
+          `state   ${sampleProblem.reason} (${age})\n` +
+          `expected  a fresh sample every hour\n\n` +
+          'MEANING: `sample-standings.mjs` publishes the provisional standings the wallet ' +
+          'panel estimates from. Nothing settles from that file and no money is at risk — ' +
+          'the payout is computed from scratch at 00:00 UTC either way.\n\n' +
+          'What it does cost is trust. The page keeps showing the last figure it fetched, ' +
+          'and to a visitor a stale estimate looks exactly like a fresh one. The page does ' +
+          'label a sample older than 90 minutes, so this is visible to anyone reading ' +
+          'closely — but nobody running the system finds out unless this alert does it.\n\n' +
+          'FIX: restart the timer. If it fails on start, the cause is almost always the ' +
+          'same as any other chain read failing — check the RPC before anything else.',
+        {
+          commands: [
+            { what: '1 — why the last run stopped', command: readLog({ ...t.crank, unit: 'callpool-sample-standings' }, 40) },
+            { what: '2 — start it again', command: restartUnit({ ...t.crank, unit: 'callpool-sample-standings' }) },
           ],
         },
       );
