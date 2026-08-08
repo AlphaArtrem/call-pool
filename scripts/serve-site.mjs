@@ -83,7 +83,36 @@ const publicMode = process.env.CALLPOOL_PUBLIC === '1';
  * reading the log. A production host is expected to leave the devnet one unset.
  */
 const trustProxy = process.env.CALLPOOL_TRUST_PROXY === '1';
-const limiter = createRateLimiter();
+
+/**
+ * The bucket, overridable — because the default is not always right.
+ *
+ * 60 tokens assumes "the heaviest thing a visitor can do sits around 10",
+ * which is true of the dashboard and **not** of the wallet panel: that one
+ * fetches a transaction per signature across the whole lockout window, so a
+ * wallet with a busy week can want hundreds of calls in one click and 429
+ * itself against our own proxy. Measured 2026-08-08 against a rehearsal
+ * wallet, where it also surfaced as a *different* error — the partial history
+ * that comes back fails the timeline's ordering check, so the page reports
+ * "events are not ordered oldest-first" rather than "rate limited".
+ *
+ * Defaults are unchanged, so nothing moves unless a host asks. Raise it where
+ * one client legitimately makes many calls — a tunnelled dev host, or a
+ * mainnet box once real wallets are hitting it.
+ */
+const rateNumber = (name, fallback) => {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number, got ${JSON.stringify(raw)}`);
+  }
+  return value;
+};
+const limiter = createRateLimiter({
+  capacity: rateNumber('CALLPOOL_RPC_RATE_CAPACITY', 60),
+  refillPerSecond: rateNumber('CALLPOOL_RPC_RATE_REFILL', 1),
+});
 // Buckets that have refilled are dropped, so a busy day cannot grow the map
 // without bound. `unref` so this timer never holds the process open.
 setInterval(() => limiter.sweep(), 60_000).unref();
