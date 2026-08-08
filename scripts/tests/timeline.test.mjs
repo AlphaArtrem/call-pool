@@ -119,11 +119,69 @@ test('proof 4: rebuying inside the epoch does not repair the trough', () => {
   assert.equal(computeHold(history, W).hold, 0n);
 });
 
-test('buying an hour before the close earns nothing for the day', () => {
+// ── L20 — a first purchase is not a sale ──────────────────────────────────
+//
+// `min(balance over the window)` read "had not bought yet" as identically to
+// "sold", so **every new holder earned nothing on their first day, for ever**.
+// These pin the replacement: the floor is checked against what the wallet held
+// while it held anything, and the weight is prorated by how long that was.
+
+test('buying an hour before the close earns an hour of the day, not nothing', () => {
   const history = [at(23, 0, 5_000_000)];
   const r = computeHold(history, W, { currentBalance: T(5_000_000) });
-  assert.equal(r.opening, 0n, 'the minimum includes the hours holding nothing');
+
+  assert.equal(r.opening, 0n, 'it did still open the window holding nothing');
+  assert.equal(r.sustained, T(5_000_000), 'the floor sees what was actually held');
+  // 5,000,000 tokens for 1 of 24 hours.
+  assert.equal(r.hold, (T(5_000_000) * 3600n) / 86_400n);
+  assert.equal(r.firstHeldAt, W.start + 23 * 3600);
+});
+
+test('a buy a minute before the close is worth about a minute — the drain is dead', () => {
+  // The exploit in the obvious version of this fix: ignore the leading zero,
+  // pay full weight, and a wallet buys just before midnight, collects a full
+  // day's share, sells after the payout and repeats with a fresh wallet.
+  const oneMinuteLeft = { blockTime: W.end - 60, pre: 0n, post: T(10_000_000), signature: 'flash' };
+  const r = computeHold([oneMinuteLeft], W, { currentBalance: T(10_000_000) });
+
+  const full = T(10_000_000);
+  assert.ok(r.hold < full / 1000n, `a minute of a day must be negligible, got ${r.hold}`);
+  assert.equal(r.hold, (full * 60n) / 86_400n);
+});
+
+test('selling down still bites the same day, at the lower balance', () => {
+  // The property that must survive: a decrease is weighted at what is left, not
+  // averaged with what came before. Held 500k from the open, sold to 120k at
+  // 18:00 — the day is worth 120k, not a time-weighted 405k.
+  const history = [at(-5, 0, 500_000), at(18, 500_000, 120_000)];
+  const r = computeHold(history, W, { currentBalance: T(120_000) });
+
+  assert.equal(r.sustained, T(120_000));
+  assert.equal(r.hold, T(120_000), 'held all day, so no proration — just the lower balance');
+});
+
+test('a wallet that held all day is untouched by L20', () => {
+  // The compatibility guarantee: existing holders' payouts must not move.
+  const history = [at(-72, 0, 250_000)];
+  const r = computeHold(history, W, { currentBalance: T(250_000) });
+  assert.equal(r.hold, T(250_000));
+  assert.equal(r.sustained, T(250_000));
+  assert.equal(r.heldSeconds, r.windowSeconds);
+});
+
+test('buying and then dumping to zero is still worth nothing', () => {
+  const history = [at(4, 0, 900_000), at(9, 900_000, 0)];
+  const r = computeHold(history, W, { currentBalance: 0n });
+  assert.equal(r.sustained, 0n, 'it went to zero while holding — that is a sale');
   assert.equal(r.hold, 0n);
+});
+
+test('a wallet that never held anything holds nothing, and says so safely', () => {
+  const r = computeHold([], W, { currentBalance: 0n });
+  assert.equal(r.hold, 0n);
+  assert.equal(r.sustained, 0n);
+  assert.equal(r.firstHeldAt, null);
+  assert.equal(r.heldSeconds, 0);
 });
 
 // ── proof 6 ────────────────────────────────────────────────────────────────

@@ -132,7 +132,7 @@ export function standingFor(facts) {
       headline: 'Below the minimum for today.',
       detail: [
         `The minimum is ${MIN_HOLD_TOKENS.toLocaleString('en-US')} CALLPOOL — 0.01% of the supply, fixed on chain.`,
-        'It is measured as the lowest balance at any point in the day, not the balance now — so a dip below the floor costs the whole day even if you bought back.',
+        'It is measured as the lowest balance for as long as you held it that day, not the balance now — so a dip below the floor costs the whole day even if you bought back. Buying in partway through does not: your share is simply scaled by how much of the day you held.',
       ],
     };
   }

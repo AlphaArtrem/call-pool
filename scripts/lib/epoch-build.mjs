@@ -51,12 +51,26 @@ export function buildEpoch({
       // means the crank skipped a caller, which would silently underpay them.
       throw new Error(`no hold computed for active wallet ${wallet}`);
     }
+    // L20 — the floor is checked against `sustained`, the weight is `hold`.
+    //
+    // They are the same number for a wallet that held all day, which is why
+    // existing holders' payouts do not move. They differ for a wallet that
+    // bought partway through: 500,000 tokens bought at 20:00 clears a 100,000
+    // floor on what it held, and is paid on 4/24 of it. Checking the floor
+    // against the prorated number instead would exclude exactly the holders
+    // this rule exists to include.
+    //
+    // `sustained` falls back to `hold` so a caller passing pre-L20 hold objects
+    // (or a fixture) keeps the old, stricter behaviour rather than silently
+    // treating every wallet as eligible.
+    const sustained = held.sustained ?? held.hold;
     rows.push({
       wallet,
       hold: held.hold,
+      sustained,
       locked: held.locked,
-      meetsFloor: held.hold >= minHold,
-      eligible: held.hold >= minHold && !held.locked,
+      meetsFloor: sustained >= minHold,
+      eligible: sustained >= minHold && !held.locked,
     });
   }
 

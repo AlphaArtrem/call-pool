@@ -157,7 +157,11 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
   const standing = standingFor({
     now: loaded.now,
     currentRaw: loaded.currentRaw,
-    holdRaw: loaded.held.hold,
+    // L20 — the floor is checked against `sustained`, not the prorated weight.
+    // Passing `hold` here told a wallet that bought 500,000 tokens at 20:00 it
+    // was "below the minimum" on a number the proration had already reduced to
+    // 83,000 — excluding exactly the holders L20 exists to include.
+    holdRaw: loaded.held.sustained ?? loaded.held.hold,
     minHoldRaw,
     callout: loaded.callout,
     lockout: loaded.lockout,
@@ -186,7 +190,11 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     source: SOURCES.derived,
   });
   table.append(
-    row('lowest balance today', holdCell, 'This is the number your share is worked out from.'),
+    row(
+      'lowest balance today',
+      holdCell,
+      'The lowest you held for as long as you held it. The floor is checked against this.',
+    ),
   );
 
   const nowCell = document.createElement('span');
@@ -195,6 +203,25 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     source: SOURCES.chain,
   });
   table.append(row('balance now', nowCell));
+
+  // Only shown when proration actually reduced the weight — i.e. the wallet
+  // bought partway through today. For everyone who held the whole day the two
+  // numbers are identical and a second row saying so would be noise.
+  const sustained = loaded.held.sustained ?? loaded.held.hold;
+  if (loaded.held.hold < sustained) {
+    const shareCell = document.createElement('span');
+    const hours = Math.max(0, Math.round((loaded.held.heldSeconds ?? 0) / 360) / 10);
+    field(shareCell, {
+      value: `${formatTokens(loaded.held.hold, MINT_DECIMALS)} CALLPOOL`,
+      source: SOURCES.derived,
+    });
+    table.append(row(
+      'counted for today’s split',
+      shareCell,
+      `You have held for about ${hours}h of today, so today’s share is scaled to that. ` +
+        'Hold through a full day and the two numbers above match.',
+    ));
+  }
 
   // §7.2: "if you sell now, this becomes X" — the single most useful line on
   // the page, and the one that stops a lockout being discovered by losing a

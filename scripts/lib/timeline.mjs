@@ -167,18 +167,75 @@ export function computeHold(events, window, options = {}) {
   );
 
   const points = [{ at: window.start, balance: opening, signature: null }];
-  let hold = opening;
+  let floorMin = opening;
   let maximum = opening;
   let closing = opening;
 
   for (const e of inWindow) {
     points.push({ at: e.blockTime, balance: e.post, signature: e.signature });
-    if (e.post < hold) hold = e.post;
+    if (e.post < floorMin) floorMin = e.post;
     if (e.post > maximum) maximum = e.post;
     closing = e.post;
   }
 
-  return { hold, opening, closing, maximum, events: inWindow, points };
+  // ── L20 — when the wallet first held anything in this window ──────────────
+  //
+  // Everything below exists because `min(balance over the window)` treated "had
+  // not bought yet" identically to "sold", so **every new holder earned nothing
+  // on their first day, permanently**. Their balance at 00:00 was zero, so their
+  // minimum was zero.
+  //
+  // The zero before a first purchase is not a decrease and must not be read as
+  // one. `firstHeldAt` is where the wallet's day actually starts.
+  const firstHeld = opening > 0n ? null : inWindow.find((e) => e.post > 0n) ?? null;
+  const heldFromStart = opening > 0n;
+  const firstHeldAt = heldFromStart ? window.start : firstHeld?.blockTime ?? null;
+
+  // The floor gate: the lowest balance the wallet held *while it held anything*.
+  // A dip below the floor still costs the whole day, so the anti-flipper
+  // property is untouched — this only stops the pre-purchase zero counting.
+  let sustained = 0n;
+  if (firstHeldAt != null) {
+    sustained = heldFromStart ? opening : firstHeld.post;
+    for (const e of inWindow) {
+      if (e.blockTime < firstHeldAt) continue;
+      if (e.post < sustained) sustained = e.post;
+    }
+  }
+
+  // The weight: prorated by how much of the window the wallet was in.
+  //
+  // **This is what stops the obvious version of the fix being an exploit.**
+  // Ignoring the leading zero and paying full weight would let a wallet buy a
+  // minute before midnight, collect a full day's share, sell after the payout
+  // and repeat nightly with a fresh wallet — a direct drain on everyone who
+  // held all day. Prorating makes a minute worth a minute.
+  //
+  // Integer division truncates, which is the safe direction: the remainder
+  // stays in the pool rather than being allocated to anybody.
+  const windowSeconds = BigInt(window.end - window.start);
+  const heldSeconds = firstHeldAt == null ? 0n : BigInt(window.end - firstHeldAt);
+  const hold =
+    windowSeconds === 0n || heldSeconds <= 0n
+      ? 0n
+      : (sustained * heldSeconds) / windowSeconds;
+
+  return {
+    hold,
+    // Kept separate because they answer different questions: `sustained` decides
+    // whether the wallet qualifies at all, `hold` decides how much of the split
+    // it gets. Collapsing them is what made a late buyer of 500,000 tokens fail
+    // a 100,000 floor on a prorated number.
+    sustained,
+    firstHeldAt,
+    heldSeconds: Number(heldSeconds),
+    windowSeconds: Number(windowSeconds),
+    opening,
+    closing,
+    maximum,
+    events: inWindow,
+    points,
+  };
 }
 
 /**
