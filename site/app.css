@@ -1772,6 +1772,78 @@ table {
   font-size: 0.9375rem;
 }
 
+/* ── the scenario tables ──────────────────────────────────────────────────
+ *
+ * Three columns of prose on a phone is unreadable, and a table that widens the
+ * page is worse — a body that scrolls sideways makes every other section feel
+ * broken. So the table keeps its own scroll and the page never gains one.
+ */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0.5rem 0 0.75rem;
+  /* A hint that there is more to the right, rather than a hidden edge. */
+  border-radius: 8px;
+}
+
+.scenarios {
+  width: 100%;
+  min-width: 34rem;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.scenarios thead th {
+  font-size: 0.6875rem;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+
+.scenarios th[scope='row'] {
+  font-weight: 400;
+  color: var(--fg);
+}
+
+.scenarios th,
+.scenarios td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The colour carries the same three-way split the wallet panel uses: kept,
+ * costs you today only, costs you today AND the next seven days. A row's
+ * meaning is legible before any of it is read. */
+.scenarios tbody tr {
+  border-left: 3px solid transparent;
+}
+
+.scenarios tr.is-ok th[scope='row'] {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+
+.scenarios tr.is-warn th[scope='row'] {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.scenarios tr.is-bad th[scope='row'] {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.scenarios tr.is-bad td strong {
+  color: var(--danger);
+}
+
+.scenarios tr.is-warn td strong {
+  color: var(--warn);
+}
+
 .epochs th,
 .epochs td,
 .attacks th,
