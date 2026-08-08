@@ -29,6 +29,14 @@
 // outside; retries make that rarer, not impossible. Alert on the *absence* of a
 // completed airdrop, not only on errors.
 
+// A second failure, 2026-08-08, needed a second answer in the same place. The
+// 63-wallet replay hit QuickNode's 15 req/s cap and every retry below hit it
+// too: backoff spaces out *one* request's attempts, it does not slow the job
+// down, so the run spent its five attempts inside six seconds of a rate limit
+// that lasts as long as the job does. Retrying a self-inflicted 429 is just
+// asking the same question faster. The fix is to not exceed the cap in the
+// first place — see `pacedFetch`.
+
 import { Connection } from '@solana/web3.js';
 
 /** Attempts per request, including the first. */
@@ -97,6 +105,52 @@ export function retryingFetch(underlying = fetch, { attempts = ATTEMPTS, baseDel
 }
 
 /**
+ * `fetch`, held to at most `maxRps` request starts per second.
+ *
+ * Requests are not serialised — a batch still has its responses in flight
+ * together — only their *start* times are spaced, which is what a provider's
+ * cap actually measures. Each caller claims the next slot as it arrives, so the
+ * order requests were made in is the order they go out.
+ *
+ * `maxRps <= 0` disables pacing and returns the underlying fetch untouched:
+ * mainnet's key has no cap worth pacing, and an unconfigured environment must
+ * behave exactly as it did before this existed.
+ *
+ * Exported for tests. Takes the clock and sleep so a test needs no real time.
+ */
+export function pacedFetch(underlying = fetch, { maxRps = 0, now = () => Date.now(), sleep: wait = sleep } = {}) {
+  if (!(maxRps > 0)) return underlying;
+
+  const intervalMs = 1000 / maxRps;
+  let nextSlot = 0;
+
+  return async function pacedFetchImpl(input, init) {
+    const at = now();
+    const slot = Math.max(at, nextSlot);
+    nextSlot = slot + intervalMs;
+    if (slot > at) await wait(slot - at);
+    return underlying(input, init);
+  };
+}
+
+/**
+ * The cap to pace to, from the environment.
+ *
+ * A provider's published limit, not a guess: set `CALLPOOL_RPC_MAX_RPS` to
+ * something under it (QuickNode devnet is 15/s; the boxes run 12). Unset means
+ * unpaced, which is what every path that is not rate limited wants.
+ */
+function configuredMaxRps(env = process.env) {
+  const raw = env.CALLPOOL_RPC_MAX_RPS;
+  if (raw == null || raw === '') return 0;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`CALLPOOL_RPC_MAX_RPS must be a non-negative number, got ${JSON.stringify(raw)}`);
+  }
+  return parsed;
+}
+
+/**
  * A Connection that survives a blip.
  *
  * Use this everywhere a script talks to a cluster. The only deliberate
@@ -106,5 +160,9 @@ export function retryingFetch(underlying = fetch, { attempts = ATTEMPTS, baseDel
  * a stale number look live. Different job, different answer.
  */
 export function connect(rpc, commitment = 'confirmed') {
-  return new Connection(rpc, { commitment, fetch: retryingFetch() });
+  // Pacing goes *underneath* the retry, so a retried attempt waits its turn
+  // like any other request. The other order would let a burst of retries walk
+  // straight through the cap that caused them.
+  const fetchImpl = retryingFetch(pacedFetch(fetch, { maxRps: configuredMaxRps() }));
+  return new Connection(rpc, { commitment, fetch: fetchImpl });
 }
