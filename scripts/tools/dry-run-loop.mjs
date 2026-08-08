@@ -35,7 +35,11 @@ import { iso } from '../lib/epoch.mjs';
 import { fetchConfig, fetchEpoch, windowForEpoch } from '../lib/program.mjs';
 import { redactSecrets } from '../lib/alert.mjs';
 import { REPO_ROOT } from '../lib/store.mjs';
+import { FEED_CAP } from '../lib/callouts.mjs';
 import { assertNotMainnet, DEVNET_DIR, DEVNET_STORE_PATH, readManifest } from './devnet.mjs';
+
+/** The candidate list L5's fallback needs, refreshed before every settlement. */
+const HOLDERS_PATH = `${DEVNET_DIR}/holders.json`;
 
 /**
  * Where the rehearsal's snapshot directories go.
@@ -63,6 +67,9 @@ function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL, schedule: true, accrue: '0.05' };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--no-schedule') args.schedule = false;
+    // Named explicitly: the generic branch would store it as `callout-count`.
+    else if (argv[i] === '--callout-count') args.calloutCount = argv[++i];
+    else if (argv[i] === '--callout-base') args.calloutBase = argv[++i];
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -232,12 +239,27 @@ async function main() {
         );
       }
 
+      // L5's fallback, armed the same way the mainnet crank unit arms it with
+      // its `ExecStartPre`. This loop was written when the cast was four
+      // wallets, so the feed never reached the 50-record cap and the holder
+      // list was never needed. A sixty-wallet cast truncates **every** epoch,
+      // and without this the run stops at the first one — which is exactly the
+      // C8 wedge, reproduced live on 2026-08-08.
+      //
+      // Refreshed per epoch, not once: a wallet that crosses the floor
+      // mid-run has to appear in the list for the epoch it is eligible in.
+      // `-` semantics: a failure here must not stop the crank, because a stale
+      // list still settles correctly for everyone already in it.
+      run('scripts/tools/holders-above-floor.mjs', ['--rpc', args.rpc, '--out', HOLDERS_PATH]);
+
       const cranked = run('scripts/crank.mjs', [
         '--epoch', String(epoch),
         '--rpc', args.rpc,
         ...postingArgs(args, manifest),
         '--payer', manifest.payer.keypair,
         '--store', DEVNET_STORE_PATH,
+        '--holders', HOLDERS_PATH,
+        ...(args.calloutBase ? ['--callout-base', args.calloutBase] : []),
         '--and-pay',
         ...(restarting ? ['--carry-reset'] : []),
       ]);
@@ -277,9 +299,28 @@ async function main() {
 /** Write the next epoch's callouts, or record why that epoch will be empty. */
 function seed(epoch, manifest, args, record) {
   const plan = args.schedule ? (SCHEDULE[epoch - manifest.startEpoch] ?? {}) : {};
+  // Capped below `FEED_CAP` by default, and this matters more than it looks.
+  //
+  // The mock writes one record per cast member. With the four-wallet cast it
+  // could never reach 50, so the loop never truncated. A sixty-wallet cast
+  // truncates **every** epoch — and truncation sends settlement down L5's
+  // fallback, which asks pump.fun per wallet. **Devnet has no callout feed**,
+  // so that path finds nobody and every epoch would settle with zero callers:
+  // a green run that measured nothing.
+  //
+  // So the ordinary epochs stay on the normal path, and truncation becomes a
+  // thing you provoke deliberately for the C-group with `--callout-count`,
+  // which is the only way to observe either behaviour honestly.
+  // No cap by default. A sixty-wallet cast puts every epoch over `FEED_CAP`,
+  // which is the point: truncation sends settlement down L5's fallback, and
+  // `--callout-base` (below) now gives that fallback something to talk to on
+  // devnet. `--callout-count 49` forces the normal path when that is what a
+  // scenario wants instead.
+  const count = args.calloutCount ?? null;
   const seeded = run('scripts/tools/mock-callouts.mjs', [
     '--epoch', String(epoch),
     '--rpc', args.rpc,
+    ...(plan.silent || count == null ? [] : ['--count', count]),
     ...(plan.silent ? ['--silent'] : []),
   ]);
   if (plan.silent) {

@@ -260,6 +260,7 @@ async function main() {
   // until 2026-08-08, so the fallback could not run on the day it exists for —
   // and a settlement that refuses stops every later epoch behind it.
   if (args.holders) snapshotArgs.push('--holders', args.holders);
+  if (args['callout-base']) snapshotArgs.push('--callout-base', args['callout-base']);
   if (args.carryReset) snapshotArgs.push('--carry-reset');
   const snapshot = run('snapshot.mjs', [...snapshotArgs, '--rpc', args.rpc], args);
   if (snapshot.status !== 0) throw new Error('snapshot failed — nothing was posted');

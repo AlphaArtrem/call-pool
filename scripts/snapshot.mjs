@@ -79,7 +79,7 @@ const serialiseBig = (value) =>
  * list, and the right one is **holders above the floor** — enumerable from
  * chain — rather than callers, which are not.
  */
-async function resolveCallouts({ store, window, mint, keySource, holdersAboveFloor }) {
+async function resolveCallouts({ store, window, mint, keySource, holdersAboveFloor, baseUrl }) {
   // The store wraps its records in `callouts` alongside the poll's own
   // bookkeeping; only the records are epoch input.
   const records = recordsInWindow(store.callouts ?? {}, window);
@@ -101,7 +101,13 @@ async function resolveCallouts({ store, window, mint, keySource, holdersAboveFlo
     );
   }
 
-  const recovered = await collectByWallet(holdersAboveFloor, mint, window, { keySource });
+  // `baseUrl` is how the fallback becomes testable at all. It defaults to
+  // pump's real host, which has no devnet surface — so on devnet the recovery
+  // path could only ever return nothing, and a truncated epoch settled with an
+  // empty caller set that looked like a clean run. `--callout-base` points it
+  // at `mock-pump-api.mjs`, which answers the same per-wallet endpoint from the
+  // rehearsal's own store. Production passes nothing and reaches pump.
+  const recovered = await collectByWallet(holdersAboveFloor, mint, window, { keySource, baseUrl });
   const merged = mergeById(
     Object.fromEntries(records.map((r) => [r.id, r])),
     recovered,
@@ -150,6 +156,7 @@ async function main() {
     // Only the fallback path talks to the callout API, so the key is only
     // resolved when it is going to be used.
     keySource: args.holders ? createCalloutKeySource({ mint, log: console.log }) : null,
+    baseUrl: args['callout-base'],
     holdersAboveFloor: holdersFile,
   });
   const windowStore = Object.fromEntries(records.map((r) => [r.id, r]));
