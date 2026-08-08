@@ -127,3 +127,38 @@ test('a root.txt missing a field is refused rather than defaulted', () => {
   writeFileSync(resolve(dir, 'root.txt'), 'root=abcd\n');
   assert.throws(() => publishedRoot(dir), /leaf_count/);
 });
+
+// ── the proposal-index collision, diagnosed 2026-08-08 ─────────────────────
+
+test('every name Squads gives a taken transaction index counts as a lost race', () => {
+  // Two members propose on their own timers, so losing the race is ordinary
+  // and recoverable — re-scan and approve what is there. The recovery is
+  // gated on this regex, and for two rehearsals it did not match the name
+  // that actually came back.
+  //
+  // When the transaction PDA for an index already exists, Squads fails with a
+  // bare `custom program error` that the client maps through the WRONG error
+  // table: it surfaces as `TokenLendingError#AlreadyInitialized`, naming a
+  // program not in the transaction. The crank exited "no root was posted" on
+  // every epoch, and the cause was filed as undiagnosed.
+  const RACED = /ConstraintSeeds|already in use|InvalidTransactionIndex|AlreadyInitialized|already initialized/i;
+
+  for (const message of [
+    'AnchorError#ConstraintSeeds',
+    'Allocate: account Address { .. } already in use',
+    'InvalidTransactionIndex',
+    'TokenLendingError#AlreadyInitialized: Account is already initialized',
+    'Account is already initialized',
+  ]) {
+    assert.ok(RACED.test(message), `must be treated as a lost race: ${message}`);
+  }
+
+  // And the cases that must still be raised rather than swallowed.
+  for (const message of [
+    'insufficient lamports',
+    'Blockhash not found',
+    'the snapshot is not internally consistent',
+  ]) {
+    assert.ok(!RACED.test(message), `must NOT be swallowed as a race: ${message}`);
+  }
+});

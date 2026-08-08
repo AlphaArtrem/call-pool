@@ -260,8 +260,19 @@ function sameInstruction(a, b) {
 async function findProposal(connection, multisigPda, multisigAccount, expectedIx, vault) {
   const current = Number(multisigAccount.transactionIndex);
   const floor = Math.max(1, current - 50);
+  // **Above `transactionIndex` as well as below it**, and this is the whole of
+  // the collision that went undiagnosed for three rehearsals.
+  //
+  // `vaultTransactionCreate` and `proposalCreate` are two instructions. A run
+  // that dies between them leaves the transaction PDA at `current + 1` while
+  // the multisig's own counter stays at `current` — so every later run computes
+  // `current + 1`, finds it taken, and re-scans backward over indices that can
+  // never contain it. The multisig is then wedged permanently: same index,
+  // same collision, forever, with the misleading `AlreadyInitialized` name on
+  // top. Looking a few indices forward is what unwedges it.
+  const ceiling = current + 5;
 
-  for (let index = current; index >= floor; index--) {
+  for (let index = ceiling; index >= floor; index--) {
     const [txPda] = multisig.getTransactionPda({ multisigPda, index: BigInt(index) });
     let vaultTx;
     try {
@@ -456,6 +467,21 @@ async function main() {
     // what is there.
     let createSig = null;
     try {
+      // Step past indices that are already taken.
+      //
+      // A taken index is not always a race with the other member — it is also
+      // the corpse of a run that created the transaction and died before the
+      // proposal, leaving the multisig's counter behind the account that
+      // exists. That orphan carries a *different* epoch's bytes, so it can
+      // never be adopted, and every later run collided with it forever. Trying
+      // the next index is what turns a permanent wedge into one wasted slot.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const [candidate] = multisig.getTransactionPda({ multisigPda, index: BigInt(index) });
+        if ((await connection.getAccountInfo(candidate)) == null) break;
+        console.log(`proposal     index ${index} already exists — trying ${index + 1}`);
+        index += 1;
+      }
+
       createSig = await multisig.rpc.vaultTransactionCreate({
         connection,
         feePayer: member,
@@ -468,7 +494,18 @@ async function main() {
         memo: `callpool post_epoch_root epoch ${epoch}`,
       });
     } catch (error) {
-      const raced = /ConstraintSeeds|already in use|InvalidTransactionIndex/i.test(
+      // `AlreadyInitialized` is the same race wearing a different name, and it
+      // is why the collision was logged as "undiagnosed" for two rehearsals.
+      // When the transaction PDA for this index already exists, Squads fails
+      // with a bare `custom program error` that the client maps through the
+      // WRONG error table — it surfaces as `TokenLendingError#AlreadyInitialized`,
+      // which names a program not involved in this transaction at all. The
+      // regex below did not match it, so the recovery beneath never ran and a
+      // perfectly ordinary lost race exited as "no root was posted".
+      //
+      // Measured 2026-08-08: box B's 55s timer and box A's crank both proposed
+      // epoch 3; the loser died here on every epoch it tried.
+      const raced = /ConstraintSeeds|already in use|InvalidTransactionIndex|AlreadyInitialized|already initialized/i.test(
         `${error.message}${error.logs?.join(' ') ?? ''}`,
       );
       if (!raced) throw error;
