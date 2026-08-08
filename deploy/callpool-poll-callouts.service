@@ -1,0 +1,44 @@
+# CALLPOOL — capture the callout feed. MAINNET.
+#
+# **This is the only input that decides who gets paid**, and pump's public feed
+# returns only the newest 50 records, so our capture is the only surviving copy
+# (Phase 05 §5.10). If this stops, epochs settle with partial or no callers and
+# nothing else notices until the money is already divided.
+#
+#   install -m 0644 deploy/callpool-poll-callouts.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-poll-callouts.timer
+#
+# ⚠️ **It must be running BEFORE genesis.** An epoch whose window opened before
+# the poller started has partial inputs and cannot be settled honestly.
+#
+# The API key needs no configuration: `callout-key.mjs` derives pump's public
+# client key from their own bundle and re-derives only on a 401/403. See
+# deploy/README.md.
+
+[Unit]
+Description=CALLPOOL — poll the pump.fun callout feed (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+ExecStart=/usr/bin/node scripts/poll-callouts.mjs --mint ${CALLPOOL_MINT}
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool

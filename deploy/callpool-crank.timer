@@ -1,0 +1,22 @@
+# CALLPOOL — when the daily crank fires. MAINNET clock.
+#
+# 00:10 UTC: ten minutes after the epoch boundary, so the epoch has certainly
+# closed by the cluster's clock as well as ours. The program refuses an early
+# root and so does the crank.
+#
+# `Persistent=true` matters more here than at rehearsal speed: if the box is
+# down at 00:10 the tick fires on boot instead of being skipped, and a skipped
+# day is a day nobody was paid.
+
+[Unit]
+Description=CALLPOOL — settle outstanding epochs daily (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+
+[Timer]
+OnCalendar=*-*-* 00:10:00 UTC
+AccuracySec=30s
+Persistent=true
+Unit=callpool-crank.service
+
+[Install]
+WantedBy=timers.target

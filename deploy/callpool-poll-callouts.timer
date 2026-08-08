@@ -1,0 +1,22 @@
+# CALLPOOL — hourly callout capture. MAINNET.
+#
+# Hourly is the owner's ruling (2026-08-08): one epoch per UTC day, the feed
+# sampled every hour. `RandomizedDelaySec` keeps us off the exact top of the
+# hour, where every other bot on the internet also calls.
+#
+# `Persistent=true` so a reboot does not silently skip an hour of the only
+# input that decides who gets paid.
+
+[Unit]
+Description=CALLPOOL — poll the callout feed hourly (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=90
+AccuracySec=30s
+Persistent=true
+Unit=callpool-poll-callouts.service
+
+[Install]
+WantedBy=timers.target

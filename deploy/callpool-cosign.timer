@@ -1,0 +1,21 @@
+# CALLPOOL — how often the second signer looks. BOX B. MAINNET.
+#
+# Every 15 minutes rather than daily. The crank proposes at 00:10 and waits up
+# to an hour for the threshold; a daily co-signer would miss that window
+# entirely, and a proposal that sits below threshold is an epoch that never
+# settles. Frequent and cheap beats aligned and fragile — an idle tick reads
+# the chain, finds nothing outstanding, and exits.
+
+[Unit]
+Description=CALLPOOL — co-sign outstanding epochs (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=30
+AccuracySec=30s
+Persistent=true
+Unit=callpool-cosign.service
+
+[Install]
+WantedBy=timers.target

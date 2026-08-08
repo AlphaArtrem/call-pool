@@ -1,0 +1,20 @@
+# CALLPOOL — when the airdrop fires. MAINNET clock.
+#
+# 00:40 UTC, half an hour after the crank. Yesterday's epoch is still inside
+# its challenge window at this point and is correctly skipped; what this pays
+# is the epoch *before* it, whose window closed at 00:00. The tool works that
+# out from the chain, so the offset only has to be "after the crank, not at the
+# same moment".
+
+[Unit]
+Description=CALLPOOL — pay outstanding epochs daily (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+
+[Timer]
+OnCalendar=*-*-* 00:40:00 UTC
+AccuracySec=30s
+Persistent=true
+Unit=callpool-airdrop.service
+
+[Install]
+WantedBy=timers.target

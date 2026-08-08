@@ -1,0 +1,50 @@
+# CALLPOOL — the daily crank. MAINNET clock.
+#
+# Settles whatever the chain says is outstanding, oldest first, stopping at the
+# first failure. Not "yesterday" — asking the chain is what removed the epoch
+# arithmetic that wedged three rehearsals.
+#
+#   install -m 0644 deploy/callpool-crank.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-crank.timer
+#
+# ⚠️ **No `--and-pay` here, deliberately.** The challenge window is 24 hours on
+# mainnet, and `--and-pay` waits it out *in-process* — a process held open for a
+# day is a crank that dies with the first reboot. The airdrop is
+# callpool-airdrop.timer, on its own schedule. The rehearsal unit uses
+# `--and-pay` because its window was 60 seconds; do not copy it here.
+#
+# `--payer` is the gas-only wallet that runs step 0, the fee sweep. It controls
+# nothing: the sweep's destination is fixed by pump's fee-sharing config. It
+# must never be the snapshot key or a multisig member key.
+
+[Unit]
+Description=CALLPOOL — settle outstanding epochs (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+ExecStart=/usr/bin/node scripts/tools/settle-outstanding.mjs \
+  --multisig ${CALLPOOL_MULTISIG} \
+  --keypair /etc/callpool/mainnet-signer-a.json \
+  --payer /etc/callpool/mainnet-payer.json \
+  --await-root 3600 --max 5
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool

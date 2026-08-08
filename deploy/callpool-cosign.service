@@ -1,0 +1,51 @@
+# CALLPOOL — the second signer. BOX B. MAINNET.
+#
+# Box B does not trust box A's arithmetic: it fetches each epoch's published
+# inputs over HTTP the way a stranger auditing the pool would, rebuilds the
+# root, and refuses anything it cannot reproduce byte for byte.
+#
+#   install -m 0644 deploy/callpool-cosign.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-cosign.timer
+#
+# ⚠️ **`--callout-store` is the argument that makes this a second opinion
+# rather than a second signature.** Without it, box B checks that the root
+# follows from box A's inputs but not that those inputs are real — a compromised
+# box A can fabricate callers and this will approve them. Point it at the store
+# box B's OWN poller maintains, never at anything fetched from `--base`.
+#
+# **This path has never run against real divergence.** pump's callout API has no
+# devnet surface, so through four rehearsals the corroboration only ever took
+# its skip path. Twelve unit tests are its entire exercise. Watch the first
+# mainnet epochs for it actually reporting a comparison.
+
+[Unit]
+Description=CALLPOOL — co-sign post_epoch_root, re-derived here (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+ExecStart=/usr/bin/node scripts/tools/cosign-remote.mjs \
+  --base ${CALLPOOL_PUBLISH_BASE} \
+  --multisig ${CALLPOOL_MULTISIG} \
+  --keypair /etc/callpool/mainnet-signer-b.json \
+  --callout-store epochs/callout-store.json
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool
