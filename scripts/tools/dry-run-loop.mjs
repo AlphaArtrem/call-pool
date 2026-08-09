@@ -113,7 +113,14 @@ const carryLedgerFor = (epoch) =>
 /** Run one of our own scripts as a child process, the way a scheduler would. */
 function run(script, scriptArgs) {
   const command = `node ${script} ${scriptArgs.join(' ')}`;
-  console.log(`\n$ ${command}\n`);
+  // Redacted. `--rpc` carries the provider key as a PATH segment, so echoing
+  // argv verbatim publishes it — and under systemd this line lands in journald,
+  // which is exactly how run 1's credentials were burned (§S2.2). `sh()` in
+  // deploy-devnet.mjs and `alert.mjs` already redact; these two echoes were
+  // missed, and were writing the key on every crank tick on 2026-08-09.
+  // The printed line is no longer copy-pasteable, which is the same trade the
+  // other two already made.
+  console.log(`\n$ ${redactSecrets(command)}\n`);
   const result = spawnSync('node', [resolve(REPO_ROOT, script), ...scriptArgs], {
     stdio: 'inherit',
     cwd: REPO_ROOT,

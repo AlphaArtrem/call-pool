@@ -60,6 +60,7 @@ import { DEFAULT_RPC_URL } from './lib/config.mjs';
 import { iso, windowForDay } from './lib/epoch.mjs';
 import { epochIndexFor, fetchConfig, fetchEpoch, windowForEpoch } from './lib/program.mjs';
 import { REPO_ROOT } from './lib/store.mjs';
+import { redactSecrets } from './lib/alert.mjs';
 
 /** Seconds between polls while waiting for a root to show up on chain. */
 const ROOT_POLL_SECONDS = 5;
@@ -138,10 +139,17 @@ const sleep = (seconds) => new Promise((r) => setTimeout(r, seconds * 1000));
 function run(script, scriptArgs, { dryRun }) {
   const command = `node scripts/${script} ${scriptArgs.join(' ')}`;
   if (dryRun) {
-    console.log(`  would run: ${command}`);
+    console.log(`  would run: ${redactSecrets(command)}`);
     return { status: 0 };
   }
-  console.log(`\n$ ${command}\n`);
+  // Redacted. `--rpc` carries the provider key as a PATH segment, so echoing
+  // argv verbatim publishes it — and under systemd this line lands in journald,
+  // which is exactly how run 1's credentials were burned (§S2.2). `sh()` in
+  // deploy-devnet.mjs and `alert.mjs` already redact; these two echoes were
+  // missed, and were writing the key on every crank tick on 2026-08-09.
+  // The printed line is no longer copy-pasteable, which is the same trade the
+  // other two already made.
+  console.log(`\n$ ${redactSecrets(command)}\n`);
   return spawnSync('node', [resolve(REPO_ROOT, 'scripts', script), ...scriptArgs], {
     stdio: 'inherit',
     cwd: REPO_ROOT,

@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
@@ -127,13 +127,21 @@ test('the fallback splits candidates into bounded sublists', () => {
   assert.equal(split.flat().length, 320);
 });
 
-test('the mint filter reads the field pump.fun actually sends', () => {
+// The capture lives in `docs/`, which is a **separate private repository** and
+// is deliberately absent from the deployment boxes — they run the suite too, and
+// a dev-only fixture must not fail there. Present on a workstation, skipped with
+// a reason anywhere else, so the coverage is never silently lost: a skip that
+// says why is a different thing from a test that quietly stopped existing.
+const FIXTURE = resolve(import.meta.dirname, '../../docs/fixtures/callouts-sample.json');
+const fixtureMissing = !existsSync(FIXTURE)
+  ? 'docs/fixtures is dev-only and is not deployed to the boxes'
+  : false;
+
+test('the mint filter reads the field pump.fun actually sends', { skip: fixtureMissing }, () => {
   // Pinned against a real captured response, because this is a trust boundary:
   // the field name is pump.fun's to choose, and a wrong guess fails *open* into
   // a confident "no callout found" rather than into an error anyone would see.
-  const sample = JSON.parse(
-    readFileSync(resolve(import.meta.dirname, '../../docs/fixtures/callouts-sample.json'), 'utf8'),
-  );
+  const sample = JSON.parse(readFileSync(FIXTURE, 'utf8'));
   const records = sample.callouts;
   const mint = 'Cg1hswfyVfnFaKHSEVyNdFWEj1bmnZoA8ZnWLVbApump';
 
@@ -789,4 +797,44 @@ test('payouts.csv has one row per caller, eligible or not', () => {
   assert.equal(lines.length, 3, 'header plus both callers');
   assert.match(lines[0], /^index,owner,hold,locked,eligible,weight,carried,payout_lamports,withheld_lamports$/);
   assert.ok(lines.some((l) => l.includes(wallet(2)) && l.includes(',false,')));
+});
+
+// ── the echoed command must not carry the provider key (2026-08-09) ─────────
+//
+// `crank.mjs` and `dry-run-loop.mjs` print the child command before running it,
+// and `--rpc` carries the provider key as a PATH segment. Under systemd that
+// line goes to journald — which is precisely how run 1's credentials were
+// burned, and it was happening again on every crank tick of run 3 until this
+// was caught mid-run. `deploy-devnet.mjs` and `alert.mjs` already redact; these
+// two echoes had been missed.
+//
+// Asserted against the source rather than by running the crank: the echo is one
+// line in a function that shells out to the whole pipeline, and what matters is
+// that no unredacted `${command}` reaches a console anywhere in these files.
+
+test('neither runner echoes a raw command to the console', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  for (const file of ['../crank.mjs', '../tools/dry-run-loop.mjs']) {
+    const source = readFileSync(resolve(here, file), 'utf8');
+    const raw = source.match(/console\.log\([^)]*\$\{command\}/g) ?? [];
+    assert.deepEqual(
+      raw,
+      [],
+      `${file} echoes \${command} without redactSecrets — that writes the RPC key to journald`,
+    );
+    assert.match(source, /redactSecrets\(command\)/, `${file} should redact the command it echoes`);
+  }
+});
+
+test('redaction keeps the host and drops the key, so the log stays readable', async () => {
+  const { redactSecrets } = await import('../lib/alert.mjs');
+  const line = redactSecrets('node scripts/sweep.mjs --rpc https://lb.drpc.live/solana-devnet/FAKEKEYFAKEKEY11');
+
+  assert.ok(!line.includes('FAKEKEYFAKEKEY11'), 'the key must not survive redaction');
+  assert.ok(line.includes('lb.drpc.live'), 'the host must survive — which endpoint served a run is evidence');
+  assert.ok(line.includes('scripts/sweep.mjs'), 'the command itself must stay legible');
 });
