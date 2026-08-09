@@ -69,6 +69,7 @@ export function parseArgs(argv) {
     // Named explicitly: the generic branch would store these under their
     // hyphenated names and the values would silently never be read.
     else if (argv[i] === '--await-root') args.awaitRoot = Number(argv[++i]);
+    else if (argv[i] === '--callout-base') args.calloutBase = argv[++i];
     else if (argv[i] === '--lookback') args.lookback = Number(argv[++i]);
     else if (argv[i] === '--max') args.max = Number(argv[++i]);
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
@@ -104,6 +105,13 @@ export function crankArgs(epoch, args) {
     // snapshot refuses, this stops at the first failure — correctly — and every
     // later epoch waits behind it.
     ...(args.holders ? ['--holders', args.holders] : []),
+    // Forwarded so the truncation fallback talks to mock-pump-api.mjs on a
+    // rehearsal instead of the real pump host, which has no devnet surface.
+    // Without this the fallback resolves every devnet wallet to "no pump
+    // account" and recovers nothing — which the store papers over (it is never
+    // really capped), so the path settles while testing nothing. Never set on
+    // mainnet: there it would mean settling real money from a mock.
+    ...(args.calloutBase ? ['--callout-base', args.calloutBase] : []),
     ...(args.awaitRoot !== undefined ? ['--await-root', String(args.awaitRoot)] : []),
     ...(args.andPay ? ['--and-pay'] : []),
     ...(args.dryRun ? ['--dry-run'] : []),

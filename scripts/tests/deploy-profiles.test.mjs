@@ -322,3 +322,35 @@ test('every timer in a devnet profile is faster than mainnet\'s equivalent', () 
     }
   }
 });
+
+test('the devnet crank points the fallback at the mock, and mainnet never does', () => {
+  // Without --callout-base the fallback asks the REAL pump host about devnet
+  // wallets, resolves each to "no pump account" and recovers nothing — and the
+  // store papers over it, because the devnet store is never really capped. C7
+  // then settles while exercising none of the fallback's routes, and the first
+  // real execution of the everyday mainnet path would BE mainnet.
+  for (const dir of DEVNET_PROFILES) {
+    assert.match(
+      execStart(dir, 'callpool-crank.service'),
+      /--callout-base\s+http:\/\/127\.0\.0\.1:(\d+)/,
+      `${dir}: the crank must aim the fallback at the profile's mock`,
+    );
+  }
+  // On mainnet the same flag would mean settling real money from a mock.
+  assert.doesNotMatch(execStart('mainnet', 'callpool-crank.service'), /--callout-base/);
+});
+
+test('a profile whose crank names the mock also runs it, on the same port', () => {
+  // --callout-base pointing at a dead port fails every truncated epoch loudly
+  // at settlement — better than silence, but it still wedges an unattended run.
+  for (const dir of DEVNET_PROFILES) {
+    const crank = execStart(dir, 'callpool-crank.service');
+    const port = /--callout-base\s+http:\/\/127\.0\.0\.1:(\d+)/.exec(crank)?.[1];
+    assert.ok(port, `${dir}: crank names no mock port`);
+
+    const mock = execStart(dir, 'callpool-mock-pump.service');
+    assert.match(mock, /mock-pump-api\.mjs/, `${dir}: no mock unit`);
+    assert.match(mock, new RegExp(`--port\\s+${port}\\b`), `${dir}: mock port differs from the crank's`);
+    assert.match(mock, /--store\s+epochs\/devnet\//, `${dir}: the mock must serve the rehearsal store`);
+  }
+});

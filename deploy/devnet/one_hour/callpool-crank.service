@@ -47,7 +47,14 @@ ExecStart=/usr/bin/node scripts/tools/settle-outstanding.mjs \
   --payer /etc/callpool/devnet-payer.json --and-pay --await-root 200 \
   --store epochs/devnet/callout-store.json \
   --holders epochs/devnet/holders.json \
+  --callout-base http://127.0.0.1:8200 \
   --lookback 50 --max 15
+# `--callout-base` points the truncation fallback at callpool-mock-pump.service
+# (same profile). Without it the fallback asks the REAL pump host about devnet
+# wallets, resolves every one to "no pump account", and recovers nothing — the
+# store papers over it because the store is never really capped, so C7 settles
+# while exercising none of the fallback's routes. Mainnet passes no
+# --callout-base, ever: there it would mean settling real money from a mock.
 
 # ── hardening ────────────────────────────────────────────────────────────
 #

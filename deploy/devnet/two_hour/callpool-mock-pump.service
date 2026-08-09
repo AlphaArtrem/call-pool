@@ -1,0 +1,53 @@
+# CALLPOOL — mock pump.fun callout API, on box A. Devnet only.
+#
+#   install -m 0644 deploy/devnet/two_hour/callpool-mock-pump.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-mock-pump
+#
+# The truncation fallback (L5) walks pump's per-wallet routes, and pump has no
+# devnet surface — so on a rehearsal the crank's `--callout-base` sends those
+# requests here, where they are answered from the rehearsal's own store. This
+# is the only way the fallback's routes execute before mainnet: without this
+# unit running, `--callout-base` points at a dead port and every truncated
+# epoch fails loudly at settlement.
+#
+# Loopback only (the server binds 127.0.0.1) — the crank on this same host is
+# its one client. Nothing here is a secret, but nothing here is a service to
+# the internet either.
+#
+# It is a mock of the transport, not of the decision: which records count is
+# still the settlement's call. See scripts/tools/mock-pump-api.mjs.
+
+[Unit]
+Description=CALLPOOL — mock pump.fun callout API (devnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+ExecStart=/usr/bin/node scripts/tools/mock-pump-api.mjs \
+  --store epochs/devnet/callout-store.json \
+  --port 8200
+Restart=on-failure
+RestartSec=5
+
+# ── hardening ────────────────────────────────────────────────────────────
+# Read-only: it serves the store and writes nothing.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

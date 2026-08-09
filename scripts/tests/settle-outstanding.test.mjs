@@ -130,3 +130,16 @@ test('the cap and the lookback must be positive integers', () => {
   assert.throws(() => parseArgs(['--keypair', 'k', '--lookback', 'soon']), /--lookback/);
   assert.equal(parseArgs(['--keypair', 'k', '--max', '2']).max, 2);
 });
+
+test('--callout-base is forwarded to the crank, so the fallback can reach the mock', () => {
+  // It parsed into args['callout-base'] via the generic branch and was never
+  // forwarded — so no unit-driven devnet settlement could ever point the
+  // truncation fallback at mock-pump-api.mjs, and the fallback's routes went
+  // unexercised on every rehearsal while reading as C7 passes.
+  const args = parseArgs(['--keypair', '/k/a.json', '--callout-base', 'http://127.0.0.1:8200']);
+  const argv = crankArgs(4, args);
+  assert.equal(argv[argv.indexOf('--callout-base') + 1], 'http://127.0.0.1:8200');
+
+  // And absent stays absent — mainnet passes nothing and reaches pump.
+  assert.ok(!crankArgs(4, parseArgs(['--keypair', '/k/a.json'])).includes('--callout-base'));
+});
