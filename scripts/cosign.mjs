@@ -63,6 +63,8 @@ function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL, execute: false, dryRun: false, yes: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--execute') args.execute = true;
+    else if (argv[i] === '--approve-only') args.approveOnly = true;
+    else if (argv[i] === '--trust-proposer') args.trustProposer = true;
     else if (argv[i] === '--dry-run') args.dryRun = true;
     else if (argv[i] === '--yes') args.yes = true;
     // Named explicitly: the generic branch below would store this as
@@ -107,8 +109,33 @@ function publishedRoot(dir) {
   };
 }
 
-/** Reproduce the epoch independently. A non-zero exit is a refusal to sign. */
-function reproduce(epoch, rpc) {
+/**
+ * Reproduce the epoch independently. A non-zero exit is a refusal to sign.
+ *
+ * `--trust-proposer` skips it, and skipping it is the whole of the second
+ * signer's value:
+ *
+ *   **A member that signs without reproducing is not a check. It is a second
+ *   key held by the same decision.** The 2-of-3 still stops a single stolen
+ *   key from moving the pool, but it stops nothing about a WRONG root — box A
+ *   computes it, box B signs it unread, and no one has disagreed with anybody.
+ *
+ * It exists because re-deriving sixty wallets with `--recheck-chain` takes
+ * ~60 seconds, which on a short devnet clock is most of the window the crank
+ * spends waiting. On a rehearsal, where the question is whether the machinery
+ * settles and pays, that trade is reasonable and the owner asked for it.
+ *
+ * **On mainnet it is not, and this refuses there** — the site tells holders
+ * two independent parties check every root, and L15 rests on the same claim.
+ */
+function reproduce(epoch, rpc, { trustProposer = false } = {}) {
+  if (trustProposer) {
+    console.log(
+      `\n⚠️  --trust-proposer: epoch ${epoch} was NOT reproduced before signing.\n` +
+        '   This signer is a second key, not a second opinion. Devnet only.\n',
+    );
+    return;
+  }
   console.log(`\n── reproducing epoch ${epoch} before signing anything ──\n`);
   const result = spawnSync(
     'node',
@@ -414,7 +441,16 @@ async function main() {
   // would produce a directory that reproduces perfectly and pays the wrong
   // people. The mint is in the epoch's own inputs; compare it.
   assertSameCoin(epoch, mint);
-  reproduce(epoch, args.rpc);
+  // `--trust-proposer` must never reach mainnet. The site tells holders two
+  // independent parties check every root, and L15's whole custody argument
+  // rests on the same claim — a signer that does not reproduce makes both
+  // untrue while still looking like a 2-of-3 on chain.
+  if (args.trustProposer) {
+    const { assertNotMainnet } = await import('./tools/devnet.mjs');
+    await assertNotMainnet(connection, 'cosign.mjs --trust-proposer');
+  }
+
+  reproduce(epoch, args.rpc, { trustProposer: args.trustProposer });
   corroborate(epoch, args.calloutStore);
 
   const { root, leafCount, allocate } = publishedRoot(snapshotDir(epoch));
@@ -499,6 +535,28 @@ async function main() {
   if (existing) {
     index = existing.index;
     console.log(`proposal     index ${index}, and its bytes are the bytes derived here ✓`);
+  } else if (args.approveOnly) {
+    // ── the second signer never proposes ──────────────────────────────────
+    //
+    // Both members running the same command on their own timers means both can
+    // create, and on 2026-08-09 both did: signer A created index 83 and signer
+    // B, scanning a moment too early to see it, created 84. Two proposals for
+    // the **same root**, one signature each, neither ever reaching 2-of-2. The
+    // multisig deadlocks silently — every host logs "approved 1/2" and looks
+    // like it is waiting for the other.
+    //
+    // The race is not worth winning, because the second signer has no business
+    // proposing at all: its job is to check that a root follows from box A's
+    // published inputs and approve it. If there is nothing to approve yet, the
+    // answer is to wait for the next tick, not to invent a second proposal.
+    //
+    // `--approve-only` makes that explicit, and the crank host stays the sole
+    // proposer.
+    console.log(
+      'proposal     none matched, and --approve-only is set — nothing to approve yet.\n' +
+        '             The crank host proposes; this signer waits for the next tick.',
+    );
+    return;
   } else {
     index = Number(multisigAccount.transactionIndex) + 1;
     console.log(`proposal     none matched — creating index ${index}`);

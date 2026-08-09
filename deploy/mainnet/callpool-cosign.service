@@ -34,6 +34,7 @@ ExecStart=/usr/bin/node scripts/tools/cosign-remote.mjs \
   --base ${CALLPOOL_PUBLISH_BASE} \
   --multisig ${CALLPOOL_MULTISIG} \
   --keypair /etc/callpool/mainnet-signer-b.json \
+  --approve-only \
   --callout-store epochs/callout-store.json
 
 NoNewPrivileges=true

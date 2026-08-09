@@ -52,7 +52,9 @@ EnvironmentFile=/etc/callpool/signer.env
 ExecStart=/usr/bin/node scripts/tools/cosign-remote.mjs \
   --base ${CALLPOOL_PUBLISH_BASE} \
   --multisig ${CALLPOOL_MULTISIG} \
-  --keypair /etc/callpool/signerB.json
+  --keypair /etc/callpool/signerB.json \
+  --approve-only \
+  --trust-proposer
 
 # ── hardening ────────────────────────────────────────────────────────────
 NoNewPrivileges=true

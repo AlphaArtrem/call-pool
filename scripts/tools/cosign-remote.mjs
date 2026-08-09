@@ -61,6 +61,8 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') args.dryRun = true;
     else if (argv[i] === '--lookback') args.lookback = Number(argv[++i]);
+    else if (argv[i] === '--approve-only') args.approveOnly = true;
+    else if (argv[i] === '--trust-proposer') args.trustProposer = true;
     // Named explicitly — the generic branch would store it as `callout-store`
     // and the corroboration would silently never run.
     else if (argv[i] === '--callout-store') args.calloutStore = argv[++i];
@@ -221,6 +223,8 @@ async function main() {
         '--rpc', args.rpc,
         '--multisig', args.multisig,
         ...(args.calloutStore ? ['--callout-store', args.calloutStore] : []),
+        ...(args.approveOnly ? ['--approve-only'] : []),
+        ...(args.trustProposer ? ['--trust-proposer'] : []),
         ...(args.dryRun ? ['--dry-run'] : ['--keypair', args.keypair, '--execute', '--yes']),
       ],
       { stdio: 'inherit', cwd: REPO_ROOT },

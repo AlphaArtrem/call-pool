@@ -199,3 +199,114 @@ test('the threshold is inclusive — exactly the minimum is enough', async () =>
 
   assert.equal(await assertCanPropose(connection, PublicKey.default), PROPOSE_MIN_LAMPORTS);
 });
+
+// ── only the crank host proposes (2026-08-09, run 5) ───────────────────────
+//
+// Both members run the same command on their own timers, and both could
+// create. On run 5's epoch 0 both did: signer A created index 83, and signer B
+// — scanning a moment too early to see it — created 84. Two proposals for the
+// **same root**, one signature each, neither ever reaching 2-of-2.
+//
+// The deadlock is silent. Every host logs `approved 1/2` and looks exactly like
+// a host waiting patiently for the other one.
+//
+// The race is not worth winning: the second signer has no business proposing at
+// all. Its job is to check that a root follows from the crank's published
+// inputs and approve it, so if there is nothing to approve the answer is to
+// wait for the next tick.
+
+test('--approve-only is passed straight through to cosign', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const remote = readFileSync(resolve(REPO_ROOT, 'scripts/tools/cosign-remote.mjs'), 'utf8');
+
+  assert.match(remote, /--approve-only/, 'the remote wrapper must forward the flag');
+});
+
+test('every co-signer unit runs approve-only, on devnet and on mainnet', async () => {
+  // The crank host is the sole proposer everywhere. A unit that omits this is
+  // one timer away from re-creating the deadlock.
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+
+  for (const unit of [
+    'deploy/devnet/one_hour/callpool-cosign.service',
+    'deploy/devnet/two_hour/callpool-cosign.service',
+    'deploy/mainnet/callpool-cosign.service',
+  ]) {
+    const source = readFileSync(resolve(REPO_ROOT, unit), 'utf8');
+    assert.match(source, /--approve-only/, `${unit} must not let the second signer propose`);
+  }
+});
+
+test('the crank host is NOT approve-only, or nothing would ever be proposed', async () => {
+  // The mirror of the rule above, and the way to get it exactly wrong.
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+
+  for (const unit of [
+    'deploy/devnet/one_hour/callpool-crank.service',
+    'deploy/devnet/two_hour/callpool-crank.service',
+    'deploy/mainnet/callpool-crank.service',
+  ]) {
+    const source = readFileSync(resolve(REPO_ROOT, unit), 'utf8');
+    assert.doesNotMatch(source, /--approve-only/, `${unit} proposes; it must not be approve-only`);
+  }
+});
+
+// ── --trust-proposer: devnet only, and the reason is the product claim ─────
+//
+// Skipping the re-derivation is the whole of the second signer's value. A
+// member that signs without reproducing is not a check — it is a second key
+// held by the same decision. The 2-of-3 still stops a stolen key from moving
+// the pool; it stops nothing about a WRONG root.
+//
+// It exists because `--recheck-chain` over sixty wallets takes ~60 seconds,
+// which on a ten-minute devnet epoch is most of the window the crank spends
+// waiting. On a rehearsal that trade is reasonable. On mainnet the site tells
+// holders two independent parties check every root, and L15's custody argument
+// rests on the same claim.
+
+test('the mainnet co-signer unit does not trust the proposer', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const unit = readFileSync(resolve(REPO_ROOT, 'deploy/mainnet/callpool-cosign.service'), 'utf8');
+
+  assert.doesNotMatch(
+    unit,
+    /--trust-proposer/,
+    'mainnet must reproduce every root before signing — the site promises exactly this',
+  );
+});
+
+test('cosign refuses --trust-proposer against mainnet at runtime, not only by unit file', async () => {
+  // A unit file is a convention; this is the guard. Someone running the command
+  // by hand during an incident is precisely who would reach for it.
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const source = readFileSync(resolve(REPO_ROOT, 'scripts/cosign.mjs'), 'utf8');
+
+  const guard = source.slice(source.indexOf('if (args.trustProposer)'));
+  assert.match(
+    guard.slice(0, 400),
+    /assertNotMainnet/,
+    'the flag must be refused on mainnet by the code, not by convention',
+  );
+});
+
+test('skipping the reproduction is announced, not silent', async () => {
+  // Whoever reads the log during an incident has to be able to tell that this
+  // signature means less than the last one did.
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const source = readFileSync(resolve(REPO_ROOT, 'scripts/cosign.mjs'), 'utf8');
+
+  assert.match(source, /NOT reproduced before signing/);
+  assert.match(source, /second key, not a second opinion/);
+});
