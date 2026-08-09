@@ -23,6 +23,7 @@ import { resolve } from 'node:path';
 
 import {
   Keypair,
+  PublicKey,
   Transaction,
   sendAndConfirmTransaction,
 } from '@solana/web3.js';
@@ -35,14 +36,69 @@ import { readJson, snapshotDir, writeJson } from './lib/store.mjs';
 import { writeSnapshotIndex } from './lib/snapshot-index.mjs';
 
 /**
- * Claims per transaction.
+ * The wire limit a signed transaction has to fit inside.
  *
- * Each `claim` carries a merkle proof — about 32 bytes per tree level, so
- * ~5 levels at 30 leaves — plus nine accounts. Five per transaction stays
- * comfortably inside the 1,232-byte packet limit even for a large tree, and the
- * cost of being wrong is a rejected transaction rather than a lost payment.
+ * Solana's packet is 1,232 bytes, and that is the whole signed transaction —
+ * signatures, message header, every account key, the blockhash and all the
+ * instruction data.
  */
-const CLAIMS_PER_TX = 5;
+export const TX_SIZE_LIMIT = 1232;
+
+/**
+ * A ceiling on claims per transaction, independent of size.
+ *
+ * Size is the binding constraint in practice, but a shallow tree would let the
+ * packer build a batch large enough to run into the compute budget instead —
+ * a different limit with a much less obvious failure.
+ */
+export const MAX_CLAIMS_PER_TX = 8;
+
+/**
+ * How many claims fit in one transaction — **measured, not assumed.**
+ *
+ * This replaces a hardcoded `CLAIMS_PER_TX = 5` whose comment claimed five
+ * "stays comfortably inside the 1,232-byte packet limit even for a large tree".
+ * It never did. On 2026-08-09 **every** batch of five reverted — eleven out of
+ * eleven — and epoch 3 paid 57 people in 53 transactions instead of 12.
+ *
+ * The arithmetic the old constant missed is that a claim is not one fixed size.
+ * Seven of its nine accounts are shared by every claim in the same transaction
+ * and cost 32 bytes once; only `recipient` and its token account are per-claim.
+ * What actually scales is the **merkle proof** — 32 bytes per tree level — so
+ * the answer depends on how many leaves the epoch has, and no constant can be
+ * right for every tree.
+ *
+ * At a 57-leaf tree that works out to ~301 bytes a claim against ~905 usable,
+ * so three fit and five cannot. Rather than encode that sum and be wrong again
+ * when an account is added or the instruction grows, the packer **builds the
+ * batch and measures it**, which is the only figure that cannot drift away from
+ * what the network will accept.
+ *
+ * Nothing was ever lost to the old value: `send` retries a reverted batch one
+ * leaf at a time, so everyone was paid — at five times the transactions and
+ * five times the fees, silently. That is why it survived this long.
+ *
+ * @param measure  called with a candidate batch, returns its signed byte size.
+ */
+export function packClaims(leaves, measure, { limitBytes = TX_SIZE_LIMIT, maxPerTx = MAX_CLAIMS_PER_TX } = {}) {
+  const batches = [];
+  let current = [];
+
+  for (const leaf of leaves) {
+    // A batch is only ever grown when the grown version still fits. A single
+    // leaf that does not fit on its own is still emitted alone — it cannot be
+    // made smaller, and failing at `send` records it as the failure it is
+    // rather than dropping someone who is owed.
+    if (current.length > 0 && (current.length >= maxPerTx || measure([...current, leaf]) > limitBytes)) {
+      batches.push(current);
+      current = [];
+    }
+    current.push(leaf);
+  }
+
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
 
 /**
  * `CallpoolError::BelowMinHold` — 6014, which the RPC reports in hex.
@@ -75,12 +131,6 @@ function parseArgs(argv) {
   if (args.epoch === undefined) throw new Error('--epoch is required');
   return args;
 }
-
-const chunk = (items, size) => {
-  const out = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-};
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -131,7 +181,7 @@ async function main() {
       console.log(`  ${leaf.index.toString().padStart(4)}  ${leaf.owner}  ${leaf.amount} lamports`);
     }
     console.log(
-      `\n${chunk(outstanding, CLAIMS_PER_TX).length} transaction(s). ` +
+      `\n${packClaims(outstanding, measure).length} transaction(s). ` +
         'Anyone can send these — the destination is inside the leaf.\n',
     );
     return;
@@ -142,7 +192,7 @@ async function main() {
   );
   console.log(`submitter  ${submitter.publicKey.toBase58()} (pays gas, controls nothing)\n`);
 
-  const send = async (leaves) => {
+  const buildTx = (leaves) => {
     const tx = new Transaction();
     for (const leaf of leaves) {
       tx.add(
@@ -159,12 +209,29 @@ async function main() {
         }),
       );
     }
-    return sendAndConfirmTransaction(connection, tx, [submitter], { commitment: 'confirmed' });
+    return tx;
+  };
+
+  const send = async (leaves) =>
+    sendAndConfirmTransaction(connection, buildTx(leaves), [submitter], { commitment: 'confirmed' });
+
+  /**
+   * The signed size of a candidate batch.
+   *
+   * `serializeMessage` needs a fee payer and a blockhash; neither affects the
+   * length, so a placeholder is enough and it costs no round trip. One
+   * signature is added back because the submitter is the only signer.
+   */
+  const measure = (leaves) => {
+    const tx = buildTx(leaves);
+    tx.feePayer = submitter.publicKey;
+    tx.recentBlockhash = PublicKey.default.toBase58();
+    return tx.serializeMessage().length + 1 + 64;
   };
 
   const sent = [];
   const failed = [];
-  for (const batch of chunk(outstanding, CLAIMS_PER_TX)) {
+  for (const batch of packClaims(outstanding, measure)) {
     try {
       const signature = await send(batch);
       sent.push({ signature, leaves: batch.map((l) => l.index) });
