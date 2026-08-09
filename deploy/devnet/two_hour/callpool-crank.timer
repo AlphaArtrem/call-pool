@@ -8,11 +8,11 @@
 # epochs are a UTC day (L14), and this line is the one to change.
 
 [Unit]
-Description=CALLPOOL — settle outstanding epochs every 30 minutes (devnet, 2h profile)
+Description=CALLPOOL — settle outstanding epochs every 10 minutes (devnet, 90m profile)
 Documentation=https://github.com/AlphaArtrem/call-pool
 
 [Timer]
-OnCalendar=*:0/30:20
+OnCalendar=*:0/10:20
 AccuracySec=1s
 Persistent=true
 Unit=callpool-crank.service

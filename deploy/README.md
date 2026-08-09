@@ -334,10 +334,12 @@ the whole run, which is precisely what happened in run 2.
 
 | directory | epoch | run | reaches B12? |
 |---|---|---|---|
-| [`devnet/one_hour/`](devnet/one_hour/) | 300s | 12 epochs / 1h — the shakedown, full §5 matrix | ✅ |
-| [`devnet/ninety_min/`](devnet/ninety_min/) | 600s | 9 epochs / 90min — **the profile B12 exists for** | ✅ |
-| [`devnet/two_hour/`](devnet/two_hour/) | 1800s | 4 epochs / 2h — the long clock, 6 samples per epoch | ❌ declared |
+| [`devnet/one_hour/`](devnet/one_hour/) | 300s | 12 epochs / 1h — the shakedown | ✅ |
+| [`devnet/two_hour/`](devnet/two_hour/) | 600s | **12 epochs / 2h — the gate attempt** | ✅ with 3 spare |
 | [`mainnet/`](mainnet/) | 86400s | the live coin | — |
+
+A 30-minute-epoch profile was retired after run 4: it cost the same two hours
+and got four epochs, reaching **none** of B12, D3 or D9.
 
 **`CALLPOOL_UNREACHABLE_ROWS` in each `profile.env` names the §5 rows that clock
 cannot reach**, and a test enforces the arithmetic behind it. `LOCKOUT_EPOCHS`

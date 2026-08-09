@@ -19,7 +19,7 @@ import { resolve } from 'node:path';
 import { REPO_ROOT } from '../lib/store.mjs';
 
 const DEPLOY = resolve(REPO_ROOT, 'deploy');
-const DEVNET_PROFILES = ['devnet/one_hour', 'devnet/ninety_min', 'devnet/two_hour'];
+const DEVNET_PROFILES = ['devnet/one_hour', 'devnet/two_hour'];
 
 const read = (...parts) => readFileSync(resolve(DEPLOY, ...parts), 'utf8');
 

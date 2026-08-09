@@ -30,7 +30,7 @@ User=callpool
 Group=callpool
 WorkingDirectory=/srv/callpool
 EnvironmentFile=/etc/callpool/signer.env
-# Sized for 30-minute epochs and a 5-minute sampler. Every one of these is clock-relative, and the
+# Sized for 10-minute epochs and a 2-minute sampler. Every one of these is clock-relative, and the
 # defaults are mainnet's — leaving them in place on a devnet profile is how run 2
 # hid a dead crank for three epochs.
 #
@@ -39,7 +39,7 @@ EnvironmentFile=/etc/callpool/signer.env
 #                   co-signer timer plus the settle itself.
 #   --stale-after   the line between "late, the next tick fixes it" and "stale,
 #                   it needs a rebuild". One whole epoch past the grace period.
-#                   300 + 1800 = 2100.
+#                   180 + 600 = 780.
 #   --sample-url    where to FETCH the sample from. The sampler runs on the
 #                   crank host and this watchdog runs on the co-signer host, so
 #                   the local file is never there — run 4 alerted twice on a
@@ -49,7 +49,7 @@ EnvironmentFile=/etc/callpool/signer.env
 #                   of 7200s is sized for hourly sampling and would never fire
 #                   here, leaving F9 untestable.
 ExecStart=/usr/bin/node scripts/tools/watchdog.mjs --once \
-  --grace 300 --stale-after 2100 --sample-stale 900 \
+  --grace 180 --stale-after 780 --sample-stale 600 \
   --sample-url ${CALLPOOL_PUBLISH_BASE}/provisional.json \
   --heartbeat 1800 --min-vault 0.02
 
