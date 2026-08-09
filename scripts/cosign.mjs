@@ -125,8 +125,10 @@ function publishedRoot(dir) {
  * spends waiting. On a rehearsal, where the question is whether the machinery
  * settles and pays, that trade is reasonable and the owner asked for it.
  *
- * **On mainnet it is not, and this refuses there** — the site tells holders
- * two independent parties check every root, and L15 rests on the same claim.
+ * **Allowed on mainnet by L23 (owner, 2026-08-09)**, and announced there every
+ * run. What is given up is that the second member stops being a second opinion
+ * and becomes a second key: the 2-of-3 still stops one stolen key from moving
+ * the pool, and no longer stops a wrong root.
  */
 function reproduce(epoch, rpc, { trustProposer = false } = {}) {
   if (trustProposer) {
@@ -441,13 +443,32 @@ async function main() {
   // would produce a directory that reproduces perfectly and pays the wrong
   // people. The mint is in the epoch's own inputs; compare it.
   assertSameCoin(epoch, mint);
-  // `--trust-proposer` must never reach mainnet. The site tells holders two
-  // independent parties check every root, and L15's whole custody argument
-  // rests on the same claim — a signer that does not reproduce makes both
-  // untrue while still looking like a 2-of-3 on chain.
+  // `--trust-proposer` on mainnet — **owner's ruling, 2026-08-09 (L23)**.
+  //
+  // It was refused here until then. What that refusal was written against was
+  // partly wrong and worth correcting rather than quietly deleting: the comment
+  // claimed the website tells holders two independent parties check every root.
+  // **It does not.** The site's verification claim is addressed to the reader —
+  // it publishes the inputs and the command to re-derive them — and that stays
+  // exactly as true with one signer reproducing as with two.
+  //
+  // What is genuinely given up is real, and is L23's business to state: the
+  // second member stops being a second opinion and becomes a second key. The
+  // 2-of-3 still stops one stolen key from moving the pool. It no longer stops
+  // a wrong root, because nothing disagrees with box A any more.
+  //
+  // Said out loud on every mainnet run, because a quiet degradation is the kind
+  // nobody remembers making.
   if (args.trustProposer) {
-    const { assertNotMainnet } = await import('./tools/devnet.mjs');
-    await assertNotMainnet(connection, 'cosign.mjs --trust-proposer');
+    const genesis = await connection.getGenesisHash();
+    if (genesis === MAINNET_GENESIS_HASH) {
+      console.log(
+        '\n⚠️  MAINNET, and this signer is NOT reproducing the epoch (L23).\n' +
+          '   It checks the proposal matches the published root, the coin, and the\n' +
+          '   pool balance — it does not check that the published root is correct.\n' +
+          '   The crank host is the only thing that derives it.\n',
+      );
+    }
   }
 
   reproduce(epoch, args.rpc, { trustProposer: args.trustProposer });

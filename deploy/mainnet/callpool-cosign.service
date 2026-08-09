@@ -18,6 +18,16 @@
 # its skip path. Twelve unit tests are its entire exercise. Watch the first
 # mainnet epochs for it actually reporting a comparison.
 
+# `--trust-proposer` is set here by L23 (owner, 2026-08-09): the second signer
+# approves the crank host's proposal without re-deriving the epoch.
+#
+# It still refuses a proposal that does not match the published root, a
+# directory belonging to another coin, and an allocation the pool cannot honour.
+# What it no longer does is check that the published root is CORRECT.
+#
+# `--callout-store` is kept and still matters: it is the one input that cannot
+# be re-derived from chain at all, so corroborating it is worth more here than
+# anywhere else now that the arithmetic is checked once.
 [Unit]
 Description=CALLPOOL — co-sign post_epoch_root, re-derived here (mainnet)
 Documentation=https://github.com/AlphaArtrem/call-pool
@@ -35,6 +45,7 @@ ExecStart=/usr/bin/node scripts/tools/cosign-remote.mjs \
   --multisig ${CALLPOOL_MULTISIG} \
   --keypair /etc/callpool/mainnet-signer-b.json \
   --approve-only \
+  --trust-proposer \
   --callout-store epochs/callout-store.json
 
 NoNewPrivileges=true

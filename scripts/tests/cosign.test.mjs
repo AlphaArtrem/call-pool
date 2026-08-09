@@ -270,33 +270,34 @@ test('the crank host is NOT approve-only, or nothing would ever be proposed', as
 // holders two independent parties check every root, and L15's custody argument
 // rests on the same claim.
 
-test('the mainnet co-signer unit does not trust the proposer', async () => {
+test('mainnet trusts the proposer too — L23, and it is announced', async () => {
+  // Ruled by the owner on 2026-08-09. The second member stops being a second
+  // opinion and becomes a second key: the 2-of-3 still stops one stolen key
+  // from moving the pool, and no longer stops a wrong root.
+  //
+  // This test asserted the exact opposite until L23. It is inverted rather than
+  // deleted so the change of position stays legible.
   const { readFileSync } = await import('node:fs');
   const { resolve } = await import('node:path');
   const { REPO_ROOT } = await import('../lib/store.mjs');
   const unit = readFileSync(resolve(REPO_ROOT, 'deploy/mainnet/callpool-cosign.service'), 'utf8');
 
-  assert.doesNotMatch(
-    unit,
-    /--trust-proposer/,
-    'mainnet must reproduce every root before signing — the site promises exactly this',
-  );
+  assert.match(unit, /--trust-proposer/);
+  // The one input that cannot be re-derived from chain at all is worth MORE now
+  // that the arithmetic is only checked once.
+  assert.match(unit, /--callout-store/, 'corroboration matters more, not less, after L23');
 });
 
-test('cosign refuses --trust-proposer against mainnet at runtime, not only by unit file', async () => {
-  // A unit file is a convention; this is the guard. Someone running the command
-  // by hand during an incident is precisely who would reach for it.
+test('a mainnet run says out loud that it is not reproducing', async () => {
+  // A quiet degradation is the kind nobody remembers making.
   const { readFileSync } = await import('node:fs');
   const { resolve } = await import('node:path');
   const { REPO_ROOT } = await import('../lib/store.mjs');
   const source = readFileSync(resolve(REPO_ROOT, 'scripts/cosign.mjs'), 'utf8');
 
   const guard = source.slice(source.indexOf('if (args.trustProposer)'));
-  assert.match(
-    guard.slice(0, 400),
-    /assertNotMainnet/,
-    'the flag must be refused on mainnet by the code, not by convention',
-  );
+  assert.match(guard.slice(0, 900), /MAINNET_GENESIS_HASH/, 'mainnet must be detected, not assumed');
+  assert.match(guard.slice(0, 900), /MAINNET, and this signer is NOT reproducing/);
 });
 
 test('skipping the reproduction is announced, not silent', async () => {

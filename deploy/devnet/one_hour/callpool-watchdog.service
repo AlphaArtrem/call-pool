@@ -35,8 +35,12 @@ EnvironmentFile=/etc/callpool/signer.env
 # hid a dead crank for three epochs.
 #
 #   --grace         how long after an epoch closes before "unsettled" is a
-#                   problem. Must cover the multisig round trip: box B's
-#                   co-signer timer plus the settle itself.
+#                   problem. It must cover a WHOLE crank tick, not just the
+#                   multisig round trip: snapshot, two re-derivations, the
+#                   co-sign wait and the airdrop. Measured on run 5 a tick took
+#                   several minutes, and a grace of 180s alerted on every epoch
+#                   while it was still settling normally — which is how an
+#                   operator learns to ignore the alert that matters.
 #   --stale-after   the line between "late, the next tick fixes it" and "stale,
 #                   it needs a rebuild". One whole epoch past the grace period.
 #                   120 + 300 = 420.
@@ -49,7 +53,7 @@ EnvironmentFile=/etc/callpool/signer.env
 #                   of 7200s is sized for hourly sampling and would never fire
 #                   here, leaving F9 untestable.
 ExecStart=/usr/bin/node scripts/tools/watchdog.mjs --once \
-  --grace 120 --stale-after 420 --sample-stale 600 \
+  --grace 240 --stale-after 540 --sample-stale 600 \
   --sample-url ${CALLPOOL_PUBLISH_BASE}/provisional.json \
   --heartbeat 1800 --min-vault 0.02
 
