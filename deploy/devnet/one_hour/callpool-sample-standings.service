@@ -1,0 +1,60 @@
+# CALLPOOL — sample provisional standings. DEVNET REHEARSAL ONLY.
+#
+# Identical to the shared mainnet unit except for one flag, and that flag is
+# the whole reason this file exists.
+#
+# `sample-standings.mjs` defaults to `epochs/callout-store.json` — the store
+# the mainnet poller fills. On devnet nothing writes that path: the rehearsal's
+# records live in `epochs/devnet/callout-store.json`, written by
+# `mock-callouts.mjs`, and the crank is pointed at it explicitly. The sampler
+# was not, so every two minutes it read a file that does not exist, found no
+# callouts, and wrote a provisional standing of **nobody** — successfully, and
+# with exit status 0.
+#
+# That is the failure this project keeps meeting from new directions (the
+# crank's `--callout-base`, run 5's `samplePath`): a job wired to the wrong
+# input does not fail, it reports an empty truth. It voids group E — the site
+# is compared against settlement, and the site's estimate came from an empty
+# store — and it voids the sampler rows of group F with it.
+#
+# Mainnet must pass NO `--store`: there the default IS the real store, and
+# pointing production at a rehearsal file would show visitors a fabricated
+# estimate.
+#
+#   install -m 0644 deploy/devnet/<profile>/callpool-sample-standings.service \
+#     /etc/systemd/system/
+#   systemctl daemon-reload
+#
+
+[Unit]
+Description=CALLPOOL — sample provisional standings (devnet rehearsal)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+ExecStart=/usr/bin/node scripts/sample-standings.mjs \
+  --store epochs/devnet/callout-store.json
+
+# A few dozen callers replayed over a partial day. Minutes at the very worst,
+# and it must never still be running when the next hour's sample fires.
+TimeoutStartSec=1800
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool
