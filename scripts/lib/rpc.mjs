@@ -134,6 +134,100 @@ export function pacedFetch(underlying = fetch, { maxRps = 0, now = () => Date.no
 }
 
 /**
+ * Is this response the endpoint saying it is finished with us for now?
+ *
+ * The distinction that matters here is *busy* versus *done*. A 429 that clears
+ * on the second attempt is busy, and the retry above already handled it — this
+ * only ever sees what survived five attempts. A quota that has run out, a
+ * suspended key, a payment wall: those do not clear by waiting, and on
+ * 2026-08-08 the whole run ended on one of them (`-32003 daily request limit
+ * reached`) with both hosts pointed at the same key.
+ */
+function exhausted(response) {
+  if (response == null) return false;
+  // 429 quota or rate, 402 unpaid, 403 not allowed from here, 401 key refused.
+  // 401 is in the list because a rotated or mistyped key is the same situation
+  // from the caller's side as a spent quota — this endpoint will not serve us,
+  // and waiting will not change that. It is also the one an operator is most
+  // likely to cause at 3am, which is exactly when a second endpoint earns its
+  // keep. The switch is logged, so it cannot hide a bad key indefinitely.
+  return [401, 402, 403, 429].includes(response.status);
+}
+
+/**
+ * `fetch`, with a second endpoint for when the first one is done.
+ *
+ * Three properties this deliberately has, each one a lesson already paid for:
+ *
+ * **It fails over only after the retry has given up.** `exhausted` is asked
+ * about a response that already survived five attempts, so a busy moment does
+ * not move a run onto a smaller key.
+ *
+ * **It verifies the fallback's slot lag before trusting it.** Ankr devnet spent
+ * two sessions answering HTTP 200 with a view 250k slots old, which is worse
+ * than an outage: reads return `null` for accounts that exist while writes land
+ * fine. A fallback that has to be checked by hand is a fallback nobody checked,
+ * so a failover that cannot verify health hands the original failure back and
+ * says why.
+ *
+ * **It is sticky, and it is loud.** Once switched the process stays switched —
+ * alternating endpoints mid-run makes read-after-write staleness a coin toss —
+ * and it prints the switch, because an endpoint that changed silently is a
+ * whole class of "impossible" symptom in a system whose reads are its evidence.
+ */
+export function failoverFetch(underlying, { fallbackUrl, verify = verifyHealth, log = console.error } = {}) {
+  if (!fallbackUrl) return underlying;
+
+  let active = null; // the fallback, once we have switched to it
+  let refused = false; // the fallback was tried, and was not healthy
+
+  return async function failoverFetchImpl(input, init) {
+    if (active) return underlying(active, init);
+
+    const response = await underlying(input, init);
+    if (!exhausted(response) || refused) return response;
+
+    const health = await verify(fallbackUrl);
+    if (!health.ok) {
+      refused = true;
+      log(
+        `rpc: the primary endpoint answered ${response.status} and the fallback is not healthy ` +
+          `(${health.reason}). Staying on the primary and handing its answer back.`,
+      );
+      return response;
+    }
+
+    active = fallbackUrl;
+    log(`rpc: the primary endpoint answered ${response.status}; switched to the fallback for the rest of this process.`);
+    return underlying(active, init);
+  };
+}
+
+/**
+ * Does this endpoint serve a current view of the chain?
+ *
+ * `getHealth` is the one call that answers both questions at once: an endpoint
+ * that is behind says so here (`Node is behind by N slots`) while still
+ * answering `getSlot` with a stale number as though nothing were wrong.
+ */
+export async function verifyHealth(url, { fetchImpl = fetch, timeoutMs = 10_000 } = {}) {
+  try {
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return { ok: false, reason: `getHealth returned HTTP ${response.status}` };
+    const body = await response.json();
+    if (body?.result === 'ok') return { ok: true, reason: 'ok' };
+    return { ok: false, reason: body?.error?.message ?? `getHealth returned ${JSON.stringify(body?.result)}` };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+/**
  * The cap to pace to, from the environment.
  *
  * A provider's published limit, not a guess: set `CALLPOOL_RPC_MAX_RPS` to
@@ -160,9 +254,17 @@ function configuredMaxRps(env = process.env) {
  * a stale number look live. Different job, different answer.
  */
 export function connect(rpc, commitment = 'confirmed') {
-  // Pacing goes *underneath* the retry, so a retried attempt waits its turn
-  // like any other request. The other order would let a burst of retries walk
-  // straight through the cap that caused them.
-  const fetchImpl = retryingFetch(pacedFetch(fetch, { maxRps: configuredMaxRps() }));
+  // Three layers, and the order is the argument:
+  //
+  //   failover   outermost — asked only about what the retry could not fix
+  //   retry      a blip, five attempts with backoff
+  //   pacing     innermost — every attempt, including retries, waits its turn
+  //
+  // Pacing under the retry stops a burst of retries walking through the cap
+  // that caused them. Failover over the retry stops a busy moment from moving
+  // a run onto the smaller key.
+  const fetchImpl = failoverFetch(retryingFetch(pacedFetch(fetch, { maxRps: configuredMaxRps() })), {
+    fallbackUrl: process.env.CALLPOOL_RPC_URL_FALLBACK || null,
+  });
   return new Connection(rpc, { commitment, fetch: fetchImpl });
 }

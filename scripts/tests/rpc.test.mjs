@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { pacedFetch, retryingFetch } from '../lib/rpc.mjs';
+import { failoverFetch, pacedFetch, retryingFetch, verifyHealth } from '../lib/rpc.mjs';
 
 /** A fetch that replays a script of outcomes and counts how often it was called. */
 function scripted(outcomes) {
@@ -195,4 +195,157 @@ test('a retried attempt is paced too — the burst that caused the 429 cannot wa
   assert.equal(response.status, 200);
   assert.equal(calls.length, 2);
   assert.ok(clock.waits.includes(100), 'the second attempt claimed the next slot');
+});
+
+// --- the fallback endpoint -------------------------------------------------
+//
+// Added 2026-08-09, after QuickNode's *daily* quota ended a run with both hosts
+// on one key. The pacer holds the per-second cap; nothing held the per-day one.
+
+const okHealth = async () => ({ ok: true, reason: 'ok' });
+const silent = () => {};
+
+test('a response the retry could not fix moves the process to the fallback', async () => {
+  const seen = [];
+  const underlying = async (url) => {
+    seen.push(url);
+    return url === 'https://fallback.example' ? res(200) : res(429);
+  };
+
+  const failover = failoverFetch(underlying, {
+    fallbackUrl: 'https://fallback.example',
+    verify: okHealth,
+    log: silent,
+  });
+  const response = await failover('https://primary.example');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(seen, ['https://primary.example', 'https://fallback.example']);
+});
+
+test('the switch is sticky — later calls do not go back to the primary', async () => {
+  const seen = [];
+  const underlying = async (url) => {
+    seen.push(url);
+    return url === 'https://fallback.example' ? res(200) : res(429);
+  };
+
+  const failover = failoverFetch(underlying, {
+    fallbackUrl: 'https://fallback.example',
+    verify: okHealth,
+    log: silent,
+  });
+  await failover('https://primary.example');
+  await failover('https://primary.example');
+  await failover('https://primary.example');
+
+  // One try at the primary, then everything after it on the fallback: an
+  // endpoint that alternates makes read-after-write staleness a coin toss.
+  assert.deepEqual(seen, [
+    'https://primary.example',
+    'https://fallback.example',
+    'https://fallback.example',
+    'https://fallback.example',
+  ]);
+});
+
+test('a lagging fallback is refused, and the primary’s own answer is handed back', async () => {
+  const seen = [];
+  const underlying = async (url) => {
+    seen.push(url);
+    return res(429);
+  };
+  const lagging = async () => ({ ok: false, reason: 'Node is behind by 252127 slots' });
+
+  const logged = [];
+  const failover = failoverFetch(underlying, {
+    fallbackUrl: 'https://ankr.example',
+    verify: lagging,
+    log: (line) => logged.push(line),
+  });
+  const response = await failover('https://primary.example');
+
+  assert.equal(response.status, 429, 'the caller must see what the primary actually said');
+  assert.deepEqual(seen, ['https://primary.example'], 'nothing was sent to the lagging endpoint');
+  assert.match(logged.join(' '), /behind by 252127 slots/);
+});
+
+test('a refused fallback is not re-checked on every later call', async () => {
+  let checks = 0;
+  const failover = failoverFetch(async () => res(429), {
+    fallbackUrl: 'https://ankr.example',
+    verify: async () => {
+      checks += 1;
+      return { ok: false, reason: 'behind' };
+    },
+    log: silent,
+  });
+
+  await failover('https://primary.example');
+  await failover('https://primary.example');
+
+  assert.equal(checks, 1, 'a dead fallback must not add a health check to every failing request');
+});
+
+test('an ordinary failure is not a reason to switch endpoints', async () => {
+  const seen = [];
+  const failover = failoverFetch(
+    async (url) => {
+      seen.push(url);
+      return res(500);
+    },
+    { fallbackUrl: 'https://fallback.example', verify: okHealth, log: silent },
+  );
+
+  // A 500 has already been retried five times by the layer beneath; what it is
+  // not is the endpoint refusing to serve this key, which is what failing over
+  // is for.
+  const response = await failover('https://primary.example');
+  assert.equal(response.status, 500);
+  assert.deepEqual(seen, ['https://primary.example']);
+});
+
+test('no fallback configured returns the underlying fetch untouched', () => {
+  const { fn } = scripted([res(200)]);
+  assert.equal(failoverFetch(fn, { fallbackUrl: null }), fn);
+  assert.equal(failoverFetch(fn, {}), fn);
+});
+
+test('verifyHealth believes only an explicit ok', async () => {
+  const body = (payload) => async () => ({ ok: true, status: 200, json: async () => payload });
+
+  assert.deepEqual(await verifyHealth('https://x.example', { fetchImpl: body({ result: 'ok' }) }), {
+    ok: true,
+    reason: 'ok',
+  });
+
+  const behind = await verifyHealth('https://x.example', {
+    fetchImpl: body({ error: { message: 'Node is behind by 9 slots' } }),
+  });
+  assert.equal(behind.ok, false);
+  assert.match(behind.reason, /behind by 9 slots/);
+});
+
+test('verifyHealth treats an unreachable endpoint as unhealthy rather than throwing', async () => {
+  const result = await verifyHealth('https://x.example', {
+    fetchImpl: async () => {
+      throw new TypeError('fetch failed');
+    },
+  });
+
+  assert.deepEqual(result, { ok: false, reason: 'fetch failed' });
+});
+
+test('a refused key fails over too — 401 is not a blip either', async () => {
+  const seen = [];
+  const failover = failoverFetch(
+    async (url) => {
+      seen.push(url);
+      return url === 'https://fallback.example' ? res(200) : res(401);
+    },
+    { fallbackUrl: 'https://fallback.example', verify: okHealth, log: silent },
+  );
+
+  assert.equal((await failover('https://primary.example')).status, 200);
+  assert.deepEqual(seen, ['https://primary.example', 'https://fallback.example']);
 });
