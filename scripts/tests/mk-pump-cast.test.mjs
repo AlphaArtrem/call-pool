@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { roster, fundingBatches, alreadyBuilt, GAS_SOL } = await import('../tools/mk-pump-cast.mjs');
+const { roster, fundingBatches, alreadyBuilt, repairFromChain, GAS_SOL } = await import('../tools/mk-pump-cast.mjs');
 
 // ── the roster ─────────────────────────────────────────────────────────────
 
@@ -127,4 +127,83 @@ test('gas covers a graduated buy, which pays for two ATAs and not one', () => {
     GAS_SOL >= 2 * ATA_RENT + 0.01,
     `gas is ${GAS_SOL}; it must cover two ATAs plus fee and slippage headroom`,
   );
+});
+
+// ── the stale post-confirm read (2026-08-09) ───────────────────────────────
+//
+// Run 3's cast reported fifteen of sixty-four wallets as holding nothing,
+// seconds after buys that had each landed millions of tokens. Nothing threw:
+// `sendAndConfirmTransaction` confirmed, and the balance read that followed was
+// answered by a node behind the one that confirmed. The zeros went into the
+// manifest as fact — and `scenario-driver --assign` reads the manifest, so the
+// matrix would have been computed against holdings that never existed.
+//
+// Two defences, tested here: the manifest gets repaired from the chain, and a
+// resume never re-buys a wallet the chain says is already holding.
+
+test('a manifest zero that the chain contradicts is repaired, not believed', async () => {
+  const existing = [
+    { name: 'w01', tokenAccount: 'ATA1', rawTokens: '0', tokens: '0', aboveFloor: false },
+  ];
+  const repaired = await repairFromChain(null, existing, { read: async () => 8_580_607_519_619n });
+
+  assert.deepEqual(repaired, ['w01']);
+  assert.equal(existing[0].rawTokens, '8580607519619');
+  assert.equal(existing[0].aboveFloor, true);
+  // Raw units are 10^6 per token here, so the human figure must be divided down
+  // rather than copied — a manifest that reports raw units as tokens reads as a
+  // wallet a million times richer than it is.
+  assert.equal(existing[0].tokens, '8580607');
+});
+
+test('a wallet that really is empty stays empty — the repair is not a rescue', async () => {
+  // A buy that genuinely never landed must stay visible, or `--resume` skips
+  // the one wallet it exists to rebuild.
+  const existing = [{ name: 'w02', tokenAccount: 'ATA2', rawTokens: '0' }];
+  const repaired = await repairFromChain(null, existing, { read: async () => 0n });
+
+  assert.deepEqual(repaired, []);
+  assert.equal(alreadyBuilt(existing, 'w02'), false);
+});
+
+test('the repair only asks the chain about wallets the manifest calls empty', async () => {
+  // A balance already on file cannot have been invented by a stale read, and
+  // sixty needless reads is how a run meets a rate limit it did not have to.
+  const asked = [];
+  const existing = [
+    { name: 'w01', tokenAccount: 'ATA1', rawTokens: '500000000000' },
+    { name: 'w02', tokenAccount: 'ATA2', rawTokens: '0' },
+  ];
+  await repairFromChain(null, existing, {
+    read: async (_connection, ata) => {
+      asked.push(String(ata));
+      return 0n;
+    },
+  });
+
+  assert.deepEqual(asked, ['ATA2']);
+});
+
+test('a record with no token account is left alone rather than crashing the resume', async () => {
+  // A crash between funding and the first buy leaves exactly this shape, and a
+  // resume that throws here strands every wallet after it.
+  const existing = [{ name: 'w01', rawTokens: '0' }];
+  const repaired = await repairFromChain(null, existing, {
+    read: async () => {
+      throw new Error('should never be asked');
+    },
+  });
+
+  assert.deepEqual(repaired, []);
+});
+
+test('after the repair, resume treats the corrected wallet as already built', async () => {
+  // The whole point: `alreadyBuilt` is what decides who gets re-bought, so the
+  // repair has to land somewhere `alreadyBuilt` can see it.
+  const existing = [{ name: 'w01', tokenAccount: 'ATA1', rawTokens: '0' }];
+  assert.equal(alreadyBuilt(existing, 'w01'), false);
+
+  await repairFromChain(null, existing, { read: async () => 5_136_591_930_424n });
+
+  assert.equal(alreadyBuilt(existing, 'w01'), true);
 });

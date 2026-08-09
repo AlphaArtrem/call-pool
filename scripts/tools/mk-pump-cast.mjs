@@ -44,7 +44,7 @@
 // to hit the target. That split is deliberate: this tool is about acquiring the
 // coin, and acquiring it is the part that costs SOL and cannot be undone.
 
-import { LAMPORTS_PER_SOL, ComputeBudgetProgram, Keypair, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL, ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 import { resolve } from 'node:path';
 
 import { connect } from '../lib/rpc.mjs';
@@ -52,6 +52,7 @@ import { DEFAULT_RPC_URL, MIN_HOLD_RAW, MIN_HOLD_TOKENS, MINT_DECIMALS } from '.
 import { associatedTokenAddress, currentBalanceRaw, tokenProgramForMint } from '../lib/chain.mjs';
 import { assertNotMainnet, KEYS_DIR, loadKeypair, readManifest, writeKeypair, writeManifest } from './devnet.mjs';
 import { instructionFrom } from './mk-pump-coin.mjs';
+import { settledBalance } from './pump-trade.mjs';
 
 const COMPUTE_UNIT_LIMIT = 400_000;
 const PUMP_FEES = '../../tools/sweep/pump-fees.mjs';
@@ -175,6 +176,35 @@ export function alreadyBuilt(existing, name) {
   return BigInt(member.rawTokens ?? '0') > 0n;
 }
 
+/** The manifest stores token accounts as base58 strings; the chain wants a key. */
+const readTokenAccount = (connection, address) => currentBalanceRaw(connection, new PublicKey(address));
+
+/**
+ * Correct the manifest's zeros against the chain, in place.
+ *
+ * A record that says zero is either a buy that never landed or a read that was
+ * answered by a lagging node, and those two look identical in the file while
+ * costing very different things to get wrong. Only the chain can tell them
+ * apart, so only wallets the manifest calls empty are checked — everyone else
+ * already has a balance no stale read could have invented.
+ *
+ * Returns the names it corrected, and mutates `existing` so a caller that has
+ * already captured the array sees the repair too.
+ */
+export async function repairFromChain(connection, existing, { read = readTokenAccount } = {}) {
+  const repaired = [];
+  for (const record of existing ?? []) {
+    if (BigInt(record.rawTokens ?? '0') > 0n || !record.tokenAccount) continue;
+    const held = await read(connection, record.tokenAccount);
+    if (held <= 0n) continue;
+    record.rawTokens = held.toString();
+    record.tokens = (held / 10n ** BigInt(MINT_DECIMALS)).toString();
+    record.aboveFloor = held >= MIN_HOLD_RAW;
+    repaired.push(record.name);
+  }
+  return repaired;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const connection = connect(args.rpc);
@@ -219,6 +249,27 @@ async function main() {
   }
 
   const existing = manifest.cast ?? [];
+
+  // Repair the manifest from the chain BEFORE anything reads it to decide who
+  // still needs building.
+  //
+  // `alreadyBuilt` trusts `rawTokens`, and that figure can be wrong in the one
+  // direction that costs money: a stale post-confirm read records 0 for a wallet
+  // that is holding — fifteen of sixty-four on 2026-08-09, every one of them
+  // millions of tokens above the floor. Resuming on that figure re-buys a wallet
+  // that already bought, which spends SOL the faucet will not replace and leaves
+  // a balance at twice the size the matrix was sized for. So ask the chain about
+  // anyone the manifest calls empty, and believe the chain.
+  const repaired = args.resume ? await repairFromChain(connection, existing) : [];
+  if (repaired.length > 0) {
+    manifest.cast = existing;
+    writeManifest(manifest);
+    console.log(
+      `repaired   ${repaired.length} wallet(s) the manifest called empty are holding on chain: ` +
+        `${repaired.join(', ')}\n           re-read rather than re-bought`,
+    );
+  }
+
   const kept = only
     ? existing.filter((m) => !only.has(m.name))
     : args.resume
@@ -318,8 +369,18 @@ async function main() {
 
     // What actually arrived. The curve prices each buy against the last, so the
     // only honest number is the one on chain afterwards.
+    //
+    // Read it through `settledBalance`, not `currentBalanceRaw`. The buy above
+    // is *confirmed*, but the read that follows can be answered by a node behind
+    // the one that confirmed — and on 2026-08-09 that reported **fifteen of
+    // sixty-four** wallets as holding nothing, seconds after buys that had in
+    // fact landed millions of tokens each. The manifest recorded those zeros as
+    // fact, and the scenario driver assigns roles from the manifest, so the
+    // whole matrix would have been computed against holdings that were never
+    // real. A fresh wallet holds nothing before its buy, so `before` is 0n and
+    // any non-zero answer is the settled one.
     const ata = associatedTokenAddress(wallet.publicKey, mint, tokenProgram);
-    const held = await currentBalanceRaw(connection, ata);
+    const held = await settledBalance(connection, ata, 0n);
     const aboveFloor = held >= MIN_HOLD_RAW;
 
     if (aboveFloor !== member.wantAboveFloor) {

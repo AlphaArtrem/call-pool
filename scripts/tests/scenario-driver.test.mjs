@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { SCENARIOS, T, actionOf, assignWallets, planFor, requiredWallets } = await import(
+const { SCENARIOS, T, actionOf, assignWallets, planFor, requiredWallets, underfundedSteps } = await import(
   '../tools/scenario-driver.mjs'
 );
 
@@ -152,4 +152,106 @@ test('B5 sells to nothing, which is a target of zero and not a missing target', 
 
 test('every row carries the sentence it is asserted against', () => {
   for (const s of SCENARIOS) assert.ok(s.expect?.length > 10, `${s.id} has no expectation`);
+});
+
+// ── affordability, checked before the window rather than during it (2026-08-09)
+//
+// `mk-pump-cast` funds each scenario wallet with GAS_SOL (0.05) and spends part
+// of it immediately on the initial buy and two ATAs. Three A-rows then ask for a
+// 0.05 SOL buy, which the gas allowance was never going to cover — and because
+// the rows fire at fixed fractions of a five-minute epoch, the discovery came as
+// `custom program error: 0x1` at the exact moment A4 was due, taking twenty-one
+// later rows down with it.
+
+const LAMPORTS = 1_000_000_000;
+
+test('a wallet holding only its leftover gas cannot afford a 0.05 SOL buy', () => {
+  // 0.046 SOL is what a scenario wallet actually holds after the cast has run.
+  const plan = [{ id: 'A4', wallet: 'w03', buy: 0.05 }];
+  const balances = new Map([['w03', 0.046 * LAMPORTS]]);
+
+  const short = underfundedSteps(plan, { balances });
+  assert.equal(short.length, 1);
+  assert.equal(short[0].id, 'A4');
+});
+
+test('the reserve is counted, so a balance that only just covers the buy is still short', () => {
+  // Covering the buy exactly leaves nothing for the signature fee or ATA rent,
+  // and the transaction fails for a reason the arithmetic said would not happen.
+  const plan = [{ id: 'A4', wallet: 'w03', buy: 0.05 }];
+  const balances = new Map([['w03', 0.05 * LAMPORTS]]);
+
+  assert.equal(underfundedSteps(plan, { balances }).length, 1);
+});
+
+test('a properly funded wallet reports nothing', () => {
+  const plan = [{ id: 'A4', wallet: 'w03', buy: 0.05 }];
+  const balances = new Map([['w03', 0.2 * LAMPORTS]]);
+
+  assert.deepEqual(underfundedSteps(plan, { balances }), []);
+});
+
+test('rows that do not buy are never called underfunded', () => {
+  // Sells and transfers pay only a signature fee, and flagging them would bury
+  // the three rows that genuinely cannot run under twenty that can.
+  const plan = [
+    { id: 'A2', wallet: 'w01', target: 1n },
+    { id: 'B9', wallet: 'w17', target: 1n, transferToOwn: true },
+  ];
+  assert.deepEqual(underfundedSteps(plan, { balances: new Map() }), []);
+});
+
+test('a wallet with no balance recorded is treated as empty, not as fine', () => {
+  // An unreadable or missing balance must fail loudly toward "top this up",
+  // never silently toward "this will work".
+  const plan = [{ id: 'A4', wallet: 'w03', buy: 0.05 }];
+  assert.equal(underfundedSteps(plan, { balances: new Map() }).length, 1);
+});
+
+test('every buy row in the real matrix is checked, not just the first', () => {
+  // A4, A5 and A6 all buy 0.05 and all three were unaffordable; a check that
+  // stopped at the first would have hidden two of them.
+  const plan = SCENARIOS.filter((s) => s.buy !== undefined).map((s) => ({ ...s, wallet: 'w03' }));
+  const balances = new Map([['w03', 0]]);
+
+  assert.equal(underfundedSteps(plan, { balances }).length, plan.length);
+});
+
+// ── the two rows that prove L22 had never run (2026-08-09) ─────────────────
+//
+// `main` holds the mint as a base58 string (`config.mint.toBase58()`), and
+// `associatedTokenAddress` coerces it, so every sell, buy and top-up worked.
+// `transferTokens` handed the same string straight to spl-token's instruction
+// builders, which do not coerce — and the error surfaces from inside
+// `Transaction.add` as `x.pubkey.toBase58 is not a function`, naming neither
+// the mint nor the argument. B9 and B10 are the only rows that reach that
+// helper, so the two rows that exist to prove "a transfer is not a sale" — the
+// newest ruling in the system — had failed every time they were driven.
+
+test('the transfer rows are the only ones that build instructions directly', () => {
+  // If a third row ever takes this path, the coercion has to be checked there
+  // too — this test is what will say so.
+  const transferRows = SCENARIOS.filter((s) => s.transferToOwn).map((s) => s.id);
+  assert.deepEqual(transferRows, ['B9', 'B10']);
+});
+
+test('transferTokens coerces the mint rather than trusting its caller', async () => {
+  // Asserted against the source: the helper sends a real transaction, and what
+  // matters is that no base58 string reaches an instruction builder.
+  const { readFileSync } = await import('node:fs');
+  const { resolve, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const source = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../tools/scenario-driver.mjs'),
+    'utf8',
+  );
+  const helper = source.slice(source.indexOf('async function transferTokens'));
+  const body = helper.slice(0, helper.indexOf('\n}\n'));
+
+  assert.match(body, /new PublicKey\(mint\)/, 'the mint must be coerced before use');
+  assert.doesNotMatch(
+    body,
+    /recipient,\s*mint,\s*tokenProgram/,
+    'the raw string mint must not reach an spl-token instruction builder',
+  );
 });

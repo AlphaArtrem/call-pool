@@ -33,7 +33,7 @@
 // 50-record cap. A driver that also wrote callout records would be a second
 // writer of the one input that decides who gets paid.
 
-import { LAMPORTS_PER_SOL, ComputeBudgetProgram, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL, ComputeBudgetProgram, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
 
 import { connect } from '../lib/rpc.mjs';
 import { DEFAULT_RPC_URL, MINT_DECIMALS, MIN_HOLD_RAW } from '../lib/config.mjs';
@@ -42,8 +42,15 @@ import { iso } from '../lib/epoch.mjs';
 import { fetchConfig, windowForEpoch } from '../lib/program.mjs';
 import { assertNotMainnet, loadKeypair, readManifest, writeManifest } from './devnet.mjs';
 import { instructionFrom } from './mk-pump-coin.mjs';
+import { settledBalance } from './pump-trade.mjs';
 
 const COMPUTE_UNIT_LIMIT = 400_000;
+
+/**
+ * Headroom a buy needs beyond its own lamports: signature fees, and the
+ * associated-token-account rent a first buy on a fresh venue still has to pay.
+ */
+const RESERVE_LAMPORTS = 6_000_000;
 const PUMP_FEES = '../../tools/sweep/pump-fees.mjs';
 
 /** Raw units for a round number of whole tokens. */
@@ -146,6 +153,32 @@ export function planFor({ scenarios = SCENARIOS, window, assignment }) {
     .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
 }
 
+/**
+ * Which wallets cannot afford the step they are about to be asked to perform.
+ *
+ * `mk-pump-cast` funds each wallet with `GAS_SOL` (0.05) and spends part of it
+ * on the initial buy and two ATAs, so a scenario wallet holds roughly 0.046 SOL
+ * when the matrix starts. Three rows then ask for a **0.05 SOL buy** — more
+ * than the whole gas allowance was ever going to cover. On 2026-08-09 that
+ * surfaced as `custom program error: 0x1` from the buy at A4, twelve minutes
+ * into a five-minute window, with twenty-one later rows abandoned behind it.
+ *
+ * The failure is entirely predictable before the epoch starts, so predict it:
+ * every buy step needs its `buy` lamports plus a fee-and-rent reserve, and a
+ * wallet that is short should be topped up while there is still time, not
+ * discovered at the instant its row was supposed to fire.
+ */
+export function underfundedSteps(plan, { balances, reserveLamports = RESERVE_LAMPORTS }) {
+  const short = [];
+  for (const step of plan) {
+    if (step.buy === undefined) continue;
+    const need = BigInt(Math.round(step.buy * LAMPORTS_PER_SOL)) + BigInt(reserveLamports);
+    const have = BigInt(balances.get(step.wallet) ?? 0);
+    if (have < need) short.push({ id: step.id, wallet: step.wallet, need, have });
+  }
+  return short;
+}
+
 /** What this row does, in one word, for the log and the plan. */
 export function actionOf(step) {
   if (step.buy !== undefined) return step.topUp ? 'top-up' : 'buy';
@@ -169,12 +202,19 @@ async function transferTokens({ connection, sender, source, recipient, mint, amo
   const { createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction } =
     await import('@solana/spl-token');
 
-  const destination = associatedTokenAddress(recipient, mint, tokenProgram);
+  // `mint` arrives as a base58 string — `config.mint.toBase58()` in main.
+  // `associatedTokenAddress` coerces internally, which is why every other path
+  // in this file works with it; spl-token's instruction builders do not, and
+  // hand back `x.pubkey.toBase58 is not a function` from deep inside
+  // `Transaction.add`. B9 and B10 are the only rows that reach this helper, so
+  // the two rows that prove L22 — a transfer is not a sale — had never once run.
+  const mintKey = new PublicKey(mint);
+  const destination = associatedTokenAddress(recipient, mintKey, tokenProgram);
   const tx = new Transaction().add(
     // Idempotent: the recipient is another cast wallet and usually already has
     // the account, but B10's sink may not if it has never been bought into.
     createAssociatedTokenAccountIdempotentInstruction(
-      sender.publicKey, destination, recipient, mint, tokenProgram,
+      sender.publicKey, destination, recipient, mintKey, tokenProgram,
     ),
     createTransferInstruction(source, destination, sender.publicKey, amount, [], tokenProgram),
   );
@@ -244,7 +284,28 @@ async function main() {
   const byName = new Map(manifest.cast.map((m) => [m.name, m]));
   console.log(`\nvenue     ${ammPool.exists ? 'AMM (graduated)' : 'bonding curve'}\n`);
 
+  // Check affordability before the first row fires, not when each one does.
+  const balances = new Map();
   for (const step of plan) {
+    if (step.buy === undefined || balances.has(step.wallet)) continue;
+    const member = byName.get(step.wallet);
+    if (member) balances.set(step.wallet, await connection.getBalance(new PublicKey(member.address)));
+  }
+  const short = underfundedSteps(plan, { balances });
+  if (short.length > 0) {
+    console.log(`⚠️  ${short.length} step(s) cannot be afforded by the wallet assigned to them:\n`);
+    for (const s of short) {
+      console.log(
+        `  ${s.id.padEnd(5)} ${s.wallet}  holds ${(Number(s.have) / LAMPORTS_PER_SOL).toFixed(6)} SOL, ` +
+          `needs ${(Number(s.need) / LAMPORTS_PER_SOL).toFixed(6)}`,
+      );
+    }
+    console.log('\n  Top these up and re-run. Continuing — the rows that CAN run still will.\n');
+  }
+
+  const failures = [];
+  for (const step of plan) {
+   try {
     const member = byName.get(step.wallet);
     if (!member) throw new Error(`the assignment names ${step.wallet}, which is not in the cast`);
 
@@ -288,7 +349,7 @@ async function main() {
         amount: before - target,
         tokenProgram,
       });
-      const after = await currentBalanceRaw(connection, ata);
+      const after = await settledBalance(connection, ata, before);
       console.log(
         `  ${step.id.padEnd(5)} ${'transfer-out'.padEnd(13)} ${tokens(before)} → ${tokens(after)} ` +
           `to ${sink.name}${after >= MIN_HOLD_RAW ? '' : '  (below the floor)'}  ${signature.slice(0, 8)}…`,
@@ -326,12 +387,35 @@ async function main() {
         )
       : null;
 
-    const after = await currentBalanceRaw(connection, ata);
+    // `settledBalance`, not a bare read: the send above is confirmed, but the
+    // read that follows can be answered by a node behind the one that confirmed.
+    // On 2026-08-09 that printed `9,431,602 → 9,431,602` for A3 — a row whose
+    // sale had in fact landed it on exactly 99,999 — which reads as "the sell
+    // did nothing" and is the single most misleading thing this log can say.
+    const after = await settledBalance(connection, ata, before);
     console.log(
       `  ${step.id.padEnd(5)} ${action.padEnd(13)} ${tokens(before)} → ${tokens(after)}` +
         `${after >= MIN_HOLD_RAW ? '' : '  (below the floor)'}` +
         `${signature ? `  ${signature.slice(0, 8)}…` : ''}`,
     );
+   } catch (error) {
+    // One row must not cost the other twenty-two.
+    //
+    // These steps fire at fixed fractions of an epoch, so a throw does not just
+    // lose the failing row — every later row's moment passes while the process
+    // is dead, and the epoch cannot be re-driven because its window has closed.
+    // On 2026-08-09 a single unaffordable buy at A4 took twenty-one rows with
+    // it. Record it and keep going: a matrix with one hole and twenty-two
+    // results is worth incomparably more than a clean abort.
+    failures.push({ id: step.id, wallet: step.wallet, message: error.message.split('\n')[0] });
+    console.log(`  FAIL  ${step.id.padEnd(5)} ${step.wallet}  ${error.message.split('\n')[0]}`);
+   }
+  }
+
+  if (failures.length > 0) {
+    console.log(`\n⚠️  ${failures.length} step(s) failed and were skipped:\n`);
+    for (const f of failures) console.log(`  ${f.id.padEnd(5)} ${f.wallet}  ${f.message}`);
+    process.exitCode = 1;
   }
 
   console.log('\nEpoch driven. Assert against the `expect` column above.\n');
