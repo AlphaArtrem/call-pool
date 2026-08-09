@@ -5,12 +5,21 @@
 # exists to catch. Alert repetition is `--repeat` inside the tool, not here.
 
 [Unit]
-Description=CALLPOOL — watchdog (mainnet)
+Description=CALLPOOL — watchdog, every 60s (devnet, 5-minute epochs)
 Documentation=https://github.com/AlphaArtrem/call-pool
 
+# Every 60 seconds, not the 15 minutes this file carried until 2026-08-09.
+#
+# It was copied from the mainnet timer when the profiles were split, and only
+# the .service was re-tuned — so the watchdog checked LESS OFTEN THAN AN EPOCH
+# and its verdict could be a quarter of an hour stale. A watchdog that samples
+# slower than the thing it watches can miss an entire epoch's failure.
+#
+# The profile tests caught the crank, sampler and cosign timers and missed this
+# one, which is the argument for testing every timer in a profile rather than
+# the ones that came to mind.
 [Timer]
-OnCalendar=*:0/15
-RandomizedDelaySec=60
+OnCalendar=*:*:00
 AccuracySec=30s
 Persistent=true
 Unit=callpool-watchdog.service

@@ -274,3 +274,51 @@ test('the declared run length and epoch count agree with each other', () => {
     );
   }
 });
+
+test('the watchdog checks more often than an epoch closes', () => {
+  // It was copied from the mainnet timer when the profiles were split — every
+  // 15 minutes — and only the .service was re-tuned. On a 10-minute epoch that
+  // is a watchdog sampling slower than the thing it watches: it can miss a
+  // whole epoch's failure, and its verdict can be a quarter-hour stale.
+  //
+  // This test exists because the others checked the crank, sampler and cosign
+  // timers and simply did not think of this one.
+  const everyMinutes = (timer) => {
+    const each = /OnCalendar=\*:0\/(\d+)/.exec(timer);
+    if (each) return Number(each[1]) * 60;
+    if (/OnCalendar=\*:\*:\d+/.test(timer)) return 60;
+    return null;
+  };
+
+  for (const dir of DEVNET_PROFILES) {
+    const interval = everyMinutes(read(dir, 'callpool-watchdog.timer'));
+    const epoch = Number(profileEnv(dir).CALLPOOL_EPOCH_SECONDS);
+
+    assert.ok(interval !== null, `${dir}: watchdog timer should declare a recognisable interval`);
+    assert.ok(
+      interval < epoch,
+      `${dir}: watchdog every ${interval}s must be more frequent than a ${epoch}s epoch`,
+    );
+  }
+});
+
+test('every timer in a devnet profile is faster than mainnet\'s equivalent', () => {
+  // The blanket version of the rule above. A devnet profile that inherits any
+  // mainnet cadence is running a rehearsal on the real coin's clock.
+  const interval = (dir, unit) => {
+    const timer = read(dir, unit);
+    const each = /OnCalendar=\*:0\/(\d+)/.exec(timer);
+    if (each) return Number(each[1]) * 60;
+    if (/OnCalendar=\*:\*:\d+/.test(timer)) return 60;
+    return Infinity; // hourly, daily, or a fixed time of day
+  };
+
+  for (const dir of DEVNET_PROFILES) {
+    for (const unit of ['callpool-watchdog.timer', 'callpool-cosign.timer', 'callpool-sample-standings.timer']) {
+      assert.ok(
+        interval(dir, unit) <= interval('mainnet', unit),
+        `${dir}/${unit} is no faster than mainnet's — it was probably copied and not re-tuned`,
+      );
+    }
+  }
+});
