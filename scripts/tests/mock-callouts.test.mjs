@@ -205,3 +205,40 @@ test('staged records carry the full mainnet field set, not the seven we read', (
   }
   assert.ok(Array.isArray(record.mentions));
 });
+
+test('a staged multi-epoch plan leaks nothing across windows', () => {
+  // The S3.10 class of trap, asserted over a whole plan rather than one epoch:
+  // every record in every window must have been staged FOR that window. This is
+  // what run 3 lost an epoch to (--before writing into C4's count), and what a
+  // small --update-age does from a new direction.
+  const EPOCH = 600;
+  const windowAt = (n) => ({ start: WINDOW.start + n * EPOCH, end: WINDOW.start + (n + 1) * EPOCH });
+
+  let store = {};
+  for (let e = 0; e <= 4; e++) {
+    const w = windowAt(e);
+    const records = selectRecords({
+      cast: cast(70), epoch: e, mint: 'MintAddr', window: w, createdAt: w.start + 1,
+      epochsIn: e, fadeAfter: 99, count: 50, updates: 15,
+      // 27,301s (the measured median delay) is 45 epochs back at this clock —
+      // parents land before "genesis" and belong to no staged window.
+      ...(e === 3 ? { updateAgeSeconds: 27_301 } : {}),
+    });
+    store = Object.fromEntries([...Object.entries(store), ...records.map((r) => [r.id, r])]);
+  }
+
+  for (let e = 0; e <= 4; e++) {
+    for (const r of recordsInWindow(store, windowAt(e))) {
+      assert.ok(r.id.startsWith(`mock-${e}-`), `${r.id} leaked into epoch ${e}'s window`);
+    }
+  }
+});
+
+test('a small --update-age dates the parent inside the previous epoch — the trap is real', () => {
+  // Kept as a test so the warning in main() never gets "simplified" away: this
+  // is the behaviour it warns about, and it is fatal to a cap-boundary row.
+  const records = select({ count: 0, updates: 1, updateAgeSeconds: 600 });
+  const parent = records.find((r) => r.id.endsWith('-parent'));
+  const previous = { start: WINDOW.start - 600, end: WINDOW.start };
+  assert.equal(recordsInWindow({ [parent.id]: parent }, previous).length, 1);
+});

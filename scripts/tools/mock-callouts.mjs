@@ -300,6 +300,27 @@ async function main() {
     );
   }
 
+  // The --before trap (S3.10), reached from a new direction: an --update-age
+  // parent is a record dated BEFORE this window, and if it lands inside a
+  // staged epoch's window it changes THAT epoch's count — silently, which on a
+  // cap-boundary row like C4 turns "exactly 50" into 51 and destroys the row.
+  // 27,301s (the measured median) is 45 epochs back at this clock and lands
+  // before genesis; a small value does not. Say where each one lands.
+  for (const r of records) {
+    const at = Math.floor(Date.parse(r.createdAt) / 1000);
+    if (at >= window.start || !r.id.endsWith('-parent')) continue;
+    const landsIn = Math.floor((at - config.genesisTs) / config.epochSeconds);
+    if (landsIn >= 0) {
+      console.log(
+        `⚠️ WARNING  ${r.id} is dated inside epoch ${landsIn}'s window and will be COUNTED\n` +
+          `            there. If epoch ${landsIn} is staged at a cap boundary (C4), this breaks\n` +
+          '            it — raise --update-age until the parent predates genesis.',
+      );
+    } else {
+      console.log(`note      ${r.id} predates genesis (harmless — belongs to no epoch)`);
+    }
+  }
+
   // Retroactive moderation (L7): the flag lands on a record already in the
   // store, before settlement, and the wallet moves from `counted` to `excluded`
   // in the published callouts.json. The flags are a third party's, mutable and
