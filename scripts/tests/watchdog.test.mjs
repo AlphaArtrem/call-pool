@@ -565,7 +565,7 @@ test('a clock that has run backwards does not read as stale', () => {
 // made F9 ("stop the sampler and watch it page") untestable, because it was
 // already paging.
 
-const { readSample } = await import('../tools/watchdog.mjs');
+const { readSample, sampleSource, sampleStaleMessage } = await import('../tools/watchdog.mjs');
 
 const response = (body, ok = true) => ({ ok, json: async () => body });
 
@@ -609,4 +609,77 @@ test('without a URL it still reads the local file, which is mainnet behaviour', 
   // Null or a parsed object, depending on whether this checkout has a sample —
   // what matters is that it did not fetch.
   assert.ok(sample === null || typeof sample === 'object');
+});
+
+// ── the alert must RENDER, not just be reachable (2026-08-09) ──────────────
+//
+// The `--sample-url` change removed a `samplePath` binding the alert body still
+// referenced. Every test above passed: they exercised `readSample` and never
+// built the message. The watchdog then died with `samplePath is not defined` at
+// the only moment it mattered — a fresh deployment, where no sample exists yet.
+//
+// **The missing sample alert was not the cost.** The throw aborted the whole
+// run, so the overdue, unpaid and vault checks never reported either. The
+// watchdog stopped watching exactly when it was needed, and announced it only
+// as a crash.
+//
+// So: render it. A reachability test on an alert proves nothing about whether
+// the alert can be built.
+
+const describeAge = (seconds) => `${Math.round(seconds / 60)}m`;
+
+test('the stale-sample alert renders when the file was never written', () => {
+  // The exact case that crashed: `ageSeconds` is null and there is no sample.
+  const message = sampleStaleMessage({
+    problem: { reason: 'missing', ageSeconds: null },
+    source: 'http://box-a:8100/provisional.json',
+    staleAfterSeconds: 600,
+    describeAge,
+  });
+
+  assert.match(message, /never written/);
+  assert.match(message, /http:\/\/box-a:8100\/provisional\.json/);
+  assert.ok(!message.includes('undefined'), 'no binding may render as undefined');
+});
+
+test('the alert renders for a sample that exists but is old', () => {
+  const message = sampleStaleMessage({
+    problem: { reason: 'stale', ageSeconds: 1800 },
+    source: '/srv/callpool/epochs/devnet/snapshots/provisional.json',
+    staleAfterSeconds: 600,
+    describeAge,
+  });
+
+  assert.match(message, /30m/);
+  assert.ok(!message.includes('undefined'));
+});
+
+test('the alert states the interval it actually expects, not a hardcoded hour', () => {
+  // It said "every hour" on a profile sampling every two minutes, which tells
+  // the reader the wrong thing about how late the sample is.
+  const message = sampleStaleMessage({
+    problem: { reason: 'missing', ageSeconds: null },
+    source: '/x',
+    staleAfterSeconds: 600,
+    describeAge,
+  });
+
+  assert.match(message, /at least every 10m/);
+  assert.doesNotMatch(message, /every hour/);
+});
+
+test('the alert names the wrong-host cause, which is the one that looks like a dead sampler', () => {
+  const message = sampleStaleMessage({
+    problem: { reason: 'missing', ageSeconds: null },
+    source: '/x',
+    staleAfterSeconds: 600,
+    describeAge,
+  });
+  assert.match(message, /WHICH HOST/);
+  assert.match(message, /--sample-url/);
+});
+
+test('sampleSource names the URL when fetching and the local path otherwise', () => {
+  assert.equal(sampleSource('http://box-a:8100/provisional.json'), 'http://box-a:8100/provisional.json');
+  assert.match(sampleSource(undefined), /provisional\.json$/);
 });

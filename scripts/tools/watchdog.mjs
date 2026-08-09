@@ -271,6 +271,51 @@ export async function unpaidEpochs({ now, config, lookback, graceSeconds, readEp
  * A fetch that fails is reported as missing rather than thrown: the sampler
  * being unreachable is itself the condition this check exists to report.
  */
+/**
+ * Where the sample was looked for, for an alert to name.
+ *
+ * The alert has to say which file or URL it checked, or the reader cannot tell
+ * a sampler that stopped from a watchdog pointed at the wrong host — which is
+ * the whole reason `--sample-url` exists.
+ */
+export function sampleSource(url) {
+  return url || resolve(SNAPSHOTS_DIR, 'provisional.json');
+}
+
+/**
+ * The stale-sample alert, as text.
+ *
+ * Extracted from `main` so it can be **rendered** in a test. It referenced a
+ * `samplePath` binding that the `--sample-url` change removed, and nothing
+ * caught it because the tests exercised `readSample` and never built the
+ * message. The watchdog then died with `samplePath is not defined` at the only
+ * moment it mattered — a fresh deployment, where no sample exists yet.
+ *
+ * **The cost was not the missing sample alert.** The throw aborted the whole
+ * run, so the overdue, unpaid and vault checks never reported either: the
+ * watchdog stopped watching precisely when it was needed, and said so only as a
+ * crash. Anything that can throw inside this function takes the rest of the
+ * watchdog with it.
+ */
+export function sampleStaleMessage({ problem, source, staleAfterSeconds, describeAge }) {
+  const age = problem.ageSeconds == null ? 'never written' : describeAge(problem.ageSeconds);
+  return (
+    `🟡 CALLPOOL — the site's estimate has stopped updating\n\n` +
+    `file    ${source}\n` +
+    `state   ${problem.reason} (${age})\n` +
+    `expected  a fresh sample at least every ${describeAge(staleAfterSeconds)}\n\n` +
+    'MEANING: `sample-standings.mjs` publishes the provisional standings the wallet ' +
+    'panel estimates from. Nothing settles from that file and no money is at risk — ' +
+    'the payout is computed from scratch at settlement either way.\n\n' +
+    'What it does cost is trust. The page keeps showing the last figure it fetched, ' +
+    'and to a visitor a stale estimate looks exactly like a fresh one.\n\n' +
+    'FIX: restart the timer. If it fails on start, the cause is almost always the ' +
+    'same as any other chain read failing — check the RPC before anything else. ' +
+    'If the sampler is demonstrably writing, check WHICH HOST: it writes on the ' +
+    'crank host, and a watchdog on the co-signer host needs --sample-url to see it.'
+  );
+}
+
 export async function readSample(url, { read = fetch } = {}) {
   if (!url) {
     const path = resolve(SNAPSHOTS_DIR, 'provisional.json');
@@ -575,22 +620,13 @@ async function check(args) {
     const key = 'sample-stale';
     keys.push(key);
     if (shouldAlert(state, key, now, args.repeat)) {
-      const age =
-        sampleProblem.ageSeconds == null ? 'never written' : `${minutes(sampleProblem.ageSeconds)} old`;
       addProblem(
-        `🟡 CALLPOOL — the site's hourly estimate has stopped updating\n\n` +
-          `file    ${samplePath}\n` +
-          `state   ${sampleProblem.reason} (${age})\n` +
-          `expected  a fresh sample every hour\n\n` +
-          'MEANING: `sample-standings.mjs` publishes the provisional standings the wallet ' +
-          'panel estimates from. Nothing settles from that file and no money is at risk — ' +
-          'the payout is computed from scratch at 00:00 UTC either way.\n\n' +
-          'What it does cost is trust. The page keeps showing the last figure it fetched, ' +
-          'and to a visitor a stale estimate looks exactly like a fresh one. The page does ' +
-          'label a sample older than 90 minutes, so this is visible to anyone reading ' +
-          'closely — but nobody running the system finds out unless this alert does it.\n\n' +
-          'FIX: restart the timer. If it fails on start, the cause is almost always the ' +
-          'same as any other chain read failing — check the RPC before anything else.',
+        sampleStaleMessage({
+          problem: sampleProblem,
+          source: sampleSource(args.sampleUrl),
+          staleAfterSeconds: args.sampleStale,
+          describeAge: minutes,
+        }),
         {
           commands: [
             { what: '1 — why the last run stopped', command: readLog({ ...t.crank, unit: 'callpool-sample-standings' }, 40) },
