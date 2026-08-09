@@ -288,16 +288,25 @@ test('mainnet trusts the proposer too — L23, and it is announced', async () =>
   assert.match(unit, /--callout-store/, 'corroboration matters more, not less, after L23');
 });
 
-test('a mainnet run says out loud that it is not reproducing', async () => {
+test('a mainnet run says out loud that it is not reproducing — and the notice can be BUILT', async () => {
   // A quiet degradation is the kind nobody remembers making.
-  const { readFileSync } = await import('node:fs');
-  const { resolve } = await import('node:path');
-  const { REPO_ROOT } = await import('../lib/store.mjs');
-  const source = readFileSync(resolve(REPO_ROOT, 'scripts/cosign.mjs'), 'utf8');
+  //
+  // This test used to grep the source for `MAINNET_GENESIS_HASH`, which proved
+  // the name appeared and not that it resolved — and it did not: the constant
+  // was never imported, so every `--trust-proposer` run (every co-sign tick
+  // under L23, on every profile) died with a ReferenceError before approving
+  // anything. Rendering the message is the check that would have caught it.
+  const { mainnetTrustProposerNotice } = await import('../cosign.mjs');
+  const { MAINNET_GENESIS_HASH } = await import('../lib/config.mjs');
 
-  const guard = source.slice(source.indexOf('if (args.trustProposer)'));
-  assert.match(guard.slice(0, 900), /MAINNET_GENESIS_HASH/, 'mainnet must be detected, not assumed');
-  assert.match(guard.slice(0, 900), /MAINNET, and this signer is NOT reproducing/);
+  const onMainnet = mainnetTrustProposerNotice(MAINNET_GENESIS_HASH);
+  assert.match(onMainnet, /MAINNET, and this signer is NOT reproducing/);
+  assert.doesNotMatch(onMainnet, /undefined/, 'every field renders');
+
+  // Off mainnet the L23 announcement stays silent — devnet runs already get
+  // the generic --trust-proposer warning from reproduce().
+  assert.equal(mainnetTrustProposerNotice('EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG'), null);
+  assert.equal(mainnetTrustProposerNotice(undefined), null);
 });
 
 test('skipping the reproduction is announced, not silent', async () => {

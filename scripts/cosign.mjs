@@ -54,7 +54,7 @@ import { Keypair, PublicKey, TransactionMessage } from '@solana/web3.js';
 import * as multisig from '@sqds/multisig';
 
 import { connect } from './lib/rpc.mjs';
-import { DEFAULT_RPC_URL } from './lib/config.mjs';
+import { DEFAULT_RPC_URL, MAINNET_GENESIS_HASH } from './lib/config.mjs';
 import { corroborateCallouts } from './lib/corroborate.mjs';
 import { fetchConfig, fetchEpoch, poolAvailable, postEpochRootIx } from './lib/program.mjs';
 import { readJson, REPO_ROOT, snapshotDir } from './lib/store.mjs';
@@ -251,6 +251,27 @@ function corroborate(epoch, storePath) {
     );
   }
   if (result.reason) console.log(`             ⚠️  ${result.reason}`);
+}
+
+/**
+ * The L23 announcement, as text — or null off mainnet.
+ *
+ * Extracted from `main` so it can be **rendered** in a test. The inline version
+ * referenced `MAINNET_GENESIS_HASH` without importing it, and the test that
+ * covered it only grepped the source for the name — so the suite was green
+ * while every `--trust-proposer` run (which is every co-sign tick under L23,
+ * devnet and mainnet alike) died with a ReferenceError before approving
+ * anything. That is the watchdog's `samplePath` failure again: a reachability
+ * test on a message proves nothing about whether the message can be built.
+ */
+export function mainnetTrustProposerNotice(genesisHash) {
+  if (genesisHash !== MAINNET_GENESIS_HASH) return null;
+  return (
+    '\n⚠️  MAINNET, and this signer is NOT reproducing the epoch (L23).\n' +
+    '   It checks the proposal matches the published root, the coin, and the\n' +
+    '   pool balance — it does not check that the published root is correct.\n' +
+    '   The crank host is the only thing that derives it.\n'
+  );
 }
 
 /** Block until the multisig account itself reports the new transaction index. */
@@ -460,15 +481,8 @@ async function main() {
   // Said out loud on every mainnet run, because a quiet degradation is the kind
   // nobody remembers making.
   if (args.trustProposer) {
-    const genesis = await connection.getGenesisHash();
-    if (genesis === MAINNET_GENESIS_HASH) {
-      console.log(
-        '\n⚠️  MAINNET, and this signer is NOT reproducing the epoch (L23).\n' +
-          '   It checks the proposal matches the published root, the coin, and the\n' +
-          '   pool balance — it does not check that the published root is correct.\n' +
-          '   The crank host is the only thing that derives it.\n',
-      );
-    }
+    const notice = mainnetTrustProposerNotice(await connection.getGenesisHash());
+    if (notice) console.log(notice);
   }
 
   reproduce(epoch, args.rpc, { trustProposer: args.trustProposer });

@@ -101,6 +101,57 @@ export function packClaims(leaves, measure, { limitBytes = TX_SIZE_LIMIT, maxPer
 }
 
 /**
+ * A transaction of `claim` instructions for a batch of leaves.
+ *
+ * At module scope, not inside `main`, because two paths need it: the paying
+ * path (with the real submitter) and the `--keypair`-less "would send" path.
+ * The measurer used to be a `const` declared after the dry-run block that
+ * called it — a temporal-dead-zone ReferenceError on every dry run, invisible
+ * to a suite that only exercised `packClaims` with a modelled measure.
+ *
+ * @param {object} context  `{ submitter: PublicKey, mint, epoch, tokenProgram }`
+ */
+export function claimTxBuilder({ submitter, mint, epoch, tokenProgram }) {
+  return (leaves) => {
+    const tx = new Transaction();
+    for (const leaf of leaves) {
+      tx.add(
+        claimIx({
+          submitter,
+          mint,
+          recipient: leaf.owner,
+          recipientTokenAccount: associatedTokenAddress(leaf.owner, mint, tokenProgram),
+          epoch,
+          index: leaf.index,
+          amount: BigInt(leaf.amount),
+          proof: leaf.proof.map((hex) => Buffer.from(hex, 'hex')),
+          tokenProgram,
+        }),
+      );
+    }
+    return tx;
+  };
+}
+
+/**
+ * The signed size of a candidate batch, for `packClaims`.
+ *
+ * `serializeMessage` needs a fee payer and a blockhash; neither affects the
+ * length, so any 32-byte key does — which is what lets the dry run measure
+ * without a keypair. One signature is added back because the submitter is the
+ * only signer.
+ */
+export function claimTxMeasurer(context) {
+  const build = claimTxBuilder(context);
+  return (leaves) => {
+    const tx = build(leaves);
+    tx.feePayer = context.submitter;
+    tx.recentBlockhash = PublicKey.default.toBase58();
+    return tx.serializeMessage().length + 1 + 64;
+  };
+}
+
+/**
  * `CallpoolError::BelowMinHold` — 6014, which the RPC reports in hex.
  *
  * A recipient who sold below the floor between the snapshot and the payout is
@@ -180,8 +231,9 @@ async function main() {
     for (const leaf of outstanding) {
       console.log(`  ${leaf.index.toString().padStart(4)}  ${leaf.owner}  ${leaf.amount} lamports`);
     }
+    const wouldMeasure = claimTxMeasurer({ submitter: PublicKey.default, mint, epoch, tokenProgram });
     console.log(
-      `\n${packClaims(outstanding, measure).length} transaction(s). ` +
+      `\n${packClaims(outstanding, wouldMeasure).length} transaction(s). ` +
         'Anyone can send these — the destination is inside the leaf.\n',
     );
     return;
@@ -192,42 +244,12 @@ async function main() {
   );
   console.log(`submitter  ${submitter.publicKey.toBase58()} (pays gas, controls nothing)\n`);
 
-  const buildTx = (leaves) => {
-    const tx = new Transaction();
-    for (const leaf of leaves) {
-      tx.add(
-        claimIx({
-          submitter: submitter.publicKey,
-          mint,
-          recipient: leaf.owner,
-          recipientTokenAccount: associatedTokenAddress(leaf.owner, mint, tokenProgram),
-          epoch,
-          index: leaf.index,
-          amount: BigInt(leaf.amount),
-          proof: leaf.proof.map((hex) => Buffer.from(hex, 'hex')),
-          tokenProgram,
-        }),
-      );
-    }
-    return tx;
-  };
+  const txContext = { submitter: submitter.publicKey, mint, epoch, tokenProgram };
+  const buildTx = claimTxBuilder(txContext);
+  const measure = claimTxMeasurer(txContext);
 
   const send = async (leaves) =>
     sendAndConfirmTransaction(connection, buildTx(leaves), [submitter], { commitment: 'confirmed' });
-
-  /**
-   * The signed size of a candidate batch.
-   *
-   * `serializeMessage` needs a fee payer and a blockhash; neither affects the
-   * length, so a placeholder is enough and it costs no round trip. One
-   * signature is added back because the submitter is the only signer.
-   */
-  const measure = (leaves) => {
-    const tx = buildTx(leaves);
-    tx.feePayer = submitter.publicKey;
-    tx.recentBlockhash = PublicKey.default.toBase58();
-    return tx.serializeMessage().length + 1 + 64;
-  };
 
   const sent = [];
   const failed = [];

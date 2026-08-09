@@ -101,6 +101,15 @@ export const MAX_ELIGIBLE_WALLETS = Number(FLOOR_DENOMINATOR / FLOOR_NUMERATOR);
 export const DUST_THRESHOLD_LAMPORTS = 10_000n;
 
 /**
+ * Solana's mainnet-beta genesis hash — the cluster's identity, which a URL
+ * cannot fake. It lives here because two very different callers need it:
+ * `tools/devnet.mjs` uses it to refuse to write rehearsal data to mainnet, and
+ * `cosign.mjs` uses it to announce, on mainnet only, that L23 has it signing
+ * without re-deriving. `devnet.mjs` re-exports it.
+ */
+export const MAINNET_GENESIS_HASH = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
+
+/**
  * Default cluster for every script. Devnet is where Phase 06's proofs run.
  *
  * `globalThis.process?.` rather than `process.` because the website imports

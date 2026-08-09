@@ -37,8 +37,12 @@ export const DEVNET_STORE_PATH = resolve(DEVNET_DIR, 'callout-store.json');
 /** Where throwaway secrets go. Worthless keys, but keys — never committed. */
 export const KEYS_DIR = resolve(DEVNET_DIR, 'keys');
 
-/** Solana's mainnet-beta genesis hash. The one cluster nothing here may touch. */
-export const MAINNET_GENESIS_HASH = '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d';
+/** Solana's mainnet-beta genesis hash. The one cluster nothing here may touch.
+ * Defined in config.mjs so `cosign.mjs` can read it too; imported (not
+ * `export … from`, which binds nothing locally) because `assertNotMainnet`
+ * below compares against it. */
+import { MAINNET_GENESIS_HASH } from '../lib/config.mjs';
+export { MAINNET_GENESIS_HASH };
 
 /**
  * Refuse to run against mainnet, cheaply and before any RPC call.

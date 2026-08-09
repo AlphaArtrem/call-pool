@@ -182,3 +182,35 @@ test('the packer never emits an empty batch', () => {
     assert.ok(packClaims(leaves(n), realistic()).every((b) => b.length > 0), `n=${n}`);
   }
 });
+
+test('the dry run can measure a batch with no keypair at all', async () => {
+  // The "would send" path prints how many transactions the payout needs, and
+  // it runs precisely when there is no submitter. The measurer it used was a
+  // `const` declared AFTER the dry-run block that called it — a temporal-dead-
+  // zone ReferenceError on every keypair-less invocation, invisible to a suite
+  // that only ever measured with a modelled function. This builds the real
+  // instructions with a placeholder submitter and asserts the measure is a
+  // usable byte count.
+  const { claimTxMeasurer } = await import('../airdrop.mjs');
+  const { Keypair, PublicKey } = await import('@solana/web3.js');
+
+  const measure = claimTxMeasurer({
+    submitter: PublicKey.default,
+    mint: Keypair.generate().publicKey.toBase58(),
+    epoch: 3,
+    tokenProgram: undefined,
+  });
+
+  // Owners must be on-curve — the ATA derivation refuses anything else.
+  const leaf = (index) => ({
+    index,
+    owner: Keypair.generate().publicKey.toBase58(),
+    amount: '12345',
+    proof: Array.from({ length: 6 }, () => '11'.repeat(32)),
+  });
+
+  const one = measure([leaf(0)]);
+  const two = measure([leaf(0), leaf(1)]);
+  assert.ok(Number.isFinite(one) && one > 0, `one claim measured ${one}`);
+  assert.ok(two > one, 'a second claim grows the transaction');
+});
