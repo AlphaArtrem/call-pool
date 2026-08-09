@@ -177,6 +177,35 @@ async function fund(connection, payer, to, lamports) {
   );
 }
 
+/**
+ * What a re-run must not destroy.
+ *
+ * This tool rebuilds the manifest from scratch every time, which is right for
+ * the values it owns and wrong for the ones it does not. Adopting a real coin
+ * (`--mint`) means the cast was **bought before this ran** — that is the whole
+ * point of the ordering the final devnet test settled on, because `initialize`
+ * starts the clock and everything after it is an epoch that must settle.
+ * `mk-pump-cast.mjs` owns `cast`; `scenario-driver --assign` owns
+ * `scenarioAssignment`,
+ * and says plainly that re-assigning mid-run would hand one row's history to a
+ * different wallet.
+ *
+ * On 2026-08-09 the rebuild threw both away: sixty-four funded wallets holding
+ * real coin, and eighteen assigned matrix rows, erased by the step that comes
+ * *after* them. Nothing on chain was lost — the keypairs are on disk and the
+ * tokens stayed where they were — but the file that knows what those wallets
+ * ARE was, and the driver's next call failed with "no cast in the manifest".
+ *
+ * `cast` is carried only on the adopted path: on the synthetic path this tool
+ * mints its own cast, and that one is authoritative.
+ */
+export function carryForward(previous, { adopted } = {}) {
+  const carried = {};
+  if (adopted && (previous?.cast ?? []).length > 0) carried.cast = previous.cast;
+  if (previous?.scenarioAssignment) carried.scenarioAssignment = previous.scenarioAssignment;
+  return carried;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const connection = connect(args.rpc);
@@ -340,8 +369,38 @@ async function main() {
   //   2. mk-pump-coin.mjs                       ← the real coin + fee split
   //   3. deploy-devnet.mjs --skip-build --skip-deploy --mint <MINT>
   if (args.stopAfterPool) {
+    // Write the manifest before returning.
+    //
+    // Everything downstream — `mk-pump-coin`, `mk-pump-cast`, `pump-trade` —
+    // opens `deployment.json` for its addresses, and this flag exists precisely
+    // so the coin and its cast can be built **before** `initialize` starts the
+    // clock. Returning without a manifest makes that order impossible on a
+    // clean box: the next tool fails with "no devnet deployment", and the only
+    // way to get one is to run the `initialize` this flag exists to defer.
+    //
+    // It went unnoticed through three runs because each inherited the previous
+    // run's stale manifest, which had the right shape and the wrong addresses.
+    // A genuinely fresh box is what surfaced it.
+    //
+    // No `mint`, no `genesisTs`, no `snapshotKey` — none of them exist yet, and
+    // writing placeholders would be worse than omitting them.
+    writeManifest({
+      ...readManifest(MANIFEST_PATH, { optional: true }),
+      cluster: args.rpc,
+      genesisHash,
+      deployedAt: new Date().toISOString(),
+      programId: PROGRAM_ID.toBase58(),
+      pool: poolPda().toBase58(),
+      epochSeconds: args.epochSeconds,
+      challengeSeconds: args.challengeSeconds,
+      minHoldRaw: MIN_HOLD_RAW.toString(),
+      payer: { address: payer.publicKey.toBase58(), keypair: resolve(args.keypair) },
+      stoppedAfterPool: true,
+    });
+
     console.log(
       '\n--stop-after-pool: the program is deployed and the pool exists.\n\n' +
+        `wrote ${relative(REPO_ROOT, MANIFEST_PATH)} — the coin and the cast can be built now.\n\n` +
         'Next, create the coin and then finish the deployment against it:\n' +
         `  node scripts/tools/mk-pump-coin.mjs --keypair ${args.keypair} --rpc <RPC>\n` +
         '  node scripts/tools/deploy-devnet.mjs --skip-build --skip-deploy \\\n' +
@@ -507,6 +566,10 @@ async function main() {
     config,
   );
 
+  // What other tools have already written into the manifest, and which this one
+  // has no business discarding.
+  const carried = carryForward(readManifest(MANIFEST_PATH, { optional: true }), { adopted: Boolean(adopted) });
+
   const manifest = {
     cluster: args.rpc,
     genesisHash,
@@ -525,8 +588,18 @@ async function main() {
     snapshotKey: { address: snapshotKeyAddress.toBase58(), keypair: snapshotKeyPath },
     creatorVault: { address: vault.publicKey.toBase58(), keypair: vaultPath },
     cast,
+    ...carried,
   };
   writeManifest(manifest);
+
+  if (carried.cast) {
+    console.log(`cast      ${carried.cast.length} wallet(s) carried forward from the existing manifest`);
+  }
+  if (carried.scenarioAssignment) {
+    console.log(
+      `scenarios ${Object.keys(carried.scenarioAssignment).length} matrix row(s) carried forward`,
+    );
+  }
 
   console.log(`\npool      ${poolPda().toBase58()}`);
   console.log(`vault     ${vault.publicKey.toBase58()}  (stand-in for pump.fun's creator vault)`);

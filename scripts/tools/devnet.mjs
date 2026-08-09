@@ -122,7 +122,17 @@ function fromPortablePaths(manifest) {
   return manifest;
 }
 
-export function readManifest(path = MANIFEST_PATH) {
+/**
+ * The deployment manifest, or a clear instruction to go and make one.
+ *
+ * `{ optional: true }` is for the one caller that legitimately runs before any
+ * manifest exists: `deploy-devnet.mjs` itself, which reads the old file only to
+ * carry forward what it must not destroy. Everything else wants the throw —
+ * a tool that silently proceeds with no addresses does something arbitrary.
+ */
+export function readManifest(path = MANIFEST_PATH, { optional = false } = {}) {
+  if (optional && !existsSync(path)) return {};
+
   // The existence check is here rather than expressed as `readJson`'s fallback,
   // because `readJson(path, null)` does not mean "return null if absent" — null
   // *is* its no-fallback sentinel, so it throws `missing file: …` and the
