@@ -74,7 +74,27 @@ export function memberPubkey(spec) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const connection = connect(args.rpc);
-  await assertNotMainnet(connection, 'mk-multisig.mjs');
+
+  // `--mainnet true` is the launch path MAINNET-PREP P3 prescribes. The guard
+  // below exists so rehearsal data never lands on the real cluster, but the
+  // custody property the header describes — no machine sees more than one
+  // member's secret — is carried by the *address form* of `--members`, not by
+  // the cluster check. So mainnet is allowed exactly when every member is a
+  // bare address: a keypair file in the list is proof the secrets met on this
+  // machine, and that stays devnet-only.
+  if (args.mainnet) {
+    for (const spec of args.members.split(',')) {
+      const trimmed = spec.trim();
+      if (trimmed.endsWith('.json') || existsSync(trimmed)) {
+        throw new Error(
+          `--mainnet requires every --members entry to be a base58 address; got a keypair ` +
+            `file (${trimmed}). Member secrets must not meet on one machine for the real 2-of-3.`,
+        );
+      }
+    }
+  } else {
+    await assertNotMainnet(connection, 'mk-multisig.mjs');
+  }
 
   const payer = load(args.payer);
   const members = args.members.split(',').map(memberPubkey);
