@@ -133,3 +133,75 @@ test('asking for more callers than exist is refused, not quietly truncated', () 
   assert.throws(() => select({ cast: cast(4), count: 50 }), /only 4 are available/);
   assert.throws(() => select({ cast: cast(4), count: 3, before: 2 }), /distinct callers/);
 });
+
+// ── updates: the L2 path nothing could stage until 2026-08-09 ───────────────
+//
+// `mock-callouts` wrote callouts only, so `parentCalloutId`/`isUpdate` records
+// existed in production and in unit fixtures and nowhere in between — C9 was
+// listed in the gate matrix as unobserved and was in fact unstageable.
+// Measured on five live coins: 30% of callouts carry an update, mean 2.42,
+// max 29, median delay ~7.6h.
+
+const { stageUpdates } = await import('../tools/mock-callouts.mjs');
+
+test('an update is staged against its author\'s own callout (L2/C9)', () => {
+  const records = select({ count: 5, updates: 2 });
+  const updates = records.filter((r) => r.isUpdate);
+
+  assert.equal(updates.length, 2);
+  for (const u of updates) {
+    const parent = records.find((r) => r.id === u.parentCalloutId);
+    assert.ok(parent, 'every update names a callout in the same batch');
+    // The rule the whole ruling rests on: an update can only ever be the
+    // author's own. A staged update authored by anyone else would be a fixture
+    // asserting something the API cannot produce.
+    assert.equal(u.walletAddress, parent.walletAddress);
+  }
+});
+
+test('updates land inside the window, so they count', () => {
+  const seen = asSnapshotSees(select({ count: 3, updates: 3 }));
+  assert.equal(seen.filter((r) => r.isUpdate).length, 3);
+});
+
+test('--update-age earns the window on the update alone', () => {
+  // The real median delay is ~7.6h — forty-five epochs at a ten-minute clock —
+  // so the callout is long outside the window and only the update is in it.
+  // A settlement that looked at callouts alone would credit nobody here.
+  const records = select({ count: 0, updates: 2, updateAgeSeconds: 27_301 });
+  const seen = asSnapshotSees(records);
+
+  assert.equal(seen.length, 2, 'only the updates are in the window');
+  assert.ok(seen.every((r) => r.isUpdate));
+
+  // The parents exist, and are outside.
+  const parents = records.filter((r) => !r.isUpdate);
+  assert.equal(parents.length, 2);
+  for (const p of parents) {
+    assert.ok(Math.floor(Date.parse(p.createdAt) / 1000) < WINDOW.start);
+  }
+});
+
+test('an update with no callout to attach to is refused, not invented', () => {
+  assert.throws(
+    () => stageUpdates({ callers: cast(2), epoch: 3, mint: 'MintAddr', window: WINDOW,
+      createdAt: CREATED_AT, updates: 1, staged: [] }),
+    /no callout in epoch 3 to update/,
+  );
+});
+
+test('staged records carry the full mainnet field set, not the seven we read', () => {
+  // The rehearsal settled against seven-field records for five runs while the
+  // real API returns twenty-nine. Anything downstream that touches a field we
+  // do not read — the mock API, the site, a verifier — met a shape in the
+  // rehearsal that does not exist in production.
+  const [record] = select({ count: 1 });
+  for (const field of [
+    'id', 'communityId', 'userId', 'username', 'displayName', 'content', 'likeCount',
+    'createdAt', 'multiplier', 'isSpam', 'isHarmful', 'replyCount', 'tokenAddress',
+    'walletAddress', 'deletedAt', 'mentions', 'mentionedUserIds',
+  ]) {
+    assert.ok(field in record, `a real callout has ${field}`);
+  }
+  assert.ok(Array.isArray(record.mentions));
+});

@@ -63,16 +63,27 @@ const BY_ID = /^\/api\/v1\/communities\/([1-9A-HJ-NP-Za-km-z]{32,44})\/callouts\
 const REPLIES = /^\/api\/v1\/communities\/([1-9A-HJ-NP-Za-km-z]{32,44})\/callouts\/([A-Za-z0-9-]+)\/replies\/public$/;
 
 /**
- * Every record this wallet has ever posted, newest first.
+ * Every **callout** this wallet has posted, newest first.
  *
  * Deliberately **unfiltered by window**: pump returns a wallet's history and
  * the caller decides what counts. Filtering here would mean the mock and the
  * settlement disagreed about the rule, and the rehearsal would be proving the
  * mock rather than the crank.
+ *
+ * ⚠️ **Updates are excluded, and that is the whole point.** The rehearsal store
+ * is one flat map holding callouts and their updates together, but pump keeps
+ * them on different routes: a callout is reachable by-mint and by-id, while an
+ * author's update is reachable *only* through its parent's `/replies/public`.
+ * Without this filter the newest record for a wallet is usually its update, so
+ * `by-mint` handed the fallback an update id, the callout it belonged to was
+ * never recovered, and the wallet was credited for the update alone.
+ *
+ * Measured 2026-08-09 on a mainnet-shaped store: 15 of 50 callouts vanished
+ * exactly this way, silently, with the totals still looking plausible.
  */
 export function calloutsForWallet(store, address) {
   return Object.values(store.callouts ?? {})
-    .filter((record) => record?.walletAddress === address)
+    .filter((record) => record?.walletAddress === address && !record.isUpdate)
     .sort((a, b) => Date.parse(b.createdAt ?? 0) - Date.parse(a.createdAt ?? 0));
 }
 

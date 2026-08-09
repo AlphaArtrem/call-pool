@@ -129,3 +129,35 @@ test('the replies route 404s for a callout the store does not hold', () => {
   const { status } = respond({ callouts: {} }, `/api/v1/communities/${wallet()}/callouts/mock-9-x/replies/public`);
   assert.equal(status, 404);
 });
+
+test('an update never shadows the callout it belongs to', () => {
+  // The rehearsal store is one flat map holding callouts and their updates
+  // together; pump keeps them on different routes. An update is almost always
+  // NEWER than its parent, so without the isUpdate filter `by-mint` handed the
+  // fallback an update id and the callout it belonged to was never recovered —
+  // measured on a mainnet-shaped store, 15 of 50 callouts vanished this way,
+  // silently, with the totals still looking plausible.
+  const author = wallet();
+  const mint = wallet();
+  const s = {
+    callouts: {
+      'mock-3-w01': {
+        id: 'mock-3-w01', walletAddress: author, tokenAddress: mint,
+        createdAt: '2026-08-09T10:00:00.000Z', isSpam: false, isHarmful: false, deletedAt: null,
+      },
+      'mock-3-w01-update': {
+        id: 'mock-3-w01-update', walletAddress: author, tokenAddress: mint,
+        parentCalloutId: 'mock-3-w01', isUpdate: true,
+        createdAt: '2026-08-09T18:00:00.000Z', isSpam: false, isHarmful: false, deletedAt: null,
+      },
+    },
+  };
+
+  // by-mint must answer with the CALLOUT, never the newer update.
+  const { body } = respond(s, `/api/v1/users/${author}/callouts/by-mint/${mint}`);
+  assert.equal(body.callout.calloutId, 'mock-3-w01');
+
+  // and the update is reachable only through the parent's replies route.
+  const replies = respond(s, `/api/v1/communities/${mint}/callouts/mock-3-w01/replies/public`);
+  assert.deepEqual(replies.body.replies.map((r) => r.id), ['mock-3-w01-update']);
+});

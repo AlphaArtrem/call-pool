@@ -25,6 +25,18 @@
 //   ... --count 60              # C6 — well over
 //   ... --before 1 --after 1    # C10/C11 — near-misses at each edge
 //
+// Updates — the L2 path, which nothing staged until 2026-08-09 (C9):
+//   ... --updates 5             # 5 callers also update their own callout
+//   ... --updates 3 --update-age 27301
+//                               # the parent is dated BEFORE the window and only
+//                               # the update lands in it, so the update alone
+//                               # earns the epoch. 27,301s is the real median
+//                               # delay measured across five live coins.
+//
+// Records are written in the **full mainnet shape** (29 fields), not the seven
+// the settlement happens to read — see `capture-callouts.mjs` for where that
+// shape was measured and why a seven-field rehearsal was proving too little.
+//
 // ⚠️ It proves **our settlement** and nothing whatsoever about pump.fun's API.
 // Devnet proofs 1, 1b, 2, 2b, 3, 12b and 22 still need the real feed on devnet,
 // and they are the ones that gate launch.
@@ -38,6 +50,7 @@ import { DEFAULT_RPC_URL } from '../lib/config.mjs';
 import { iso } from '../lib/epoch.mjs';
 import { epochIndexFor, fetchConfig, windowForEpoch } from '../lib/program.mjs';
 import { readStore, STORE_PATH, writeStore } from '../lib/store.mjs';
+import { shapedRecord, shapedUpdate } from './capture-callouts.mjs';
 import { assertNotMainnet, DEVNET_STORE_PATH, readManifest } from './devnet.mjs';
 
 /**
@@ -75,10 +88,16 @@ function callsOut(name, epochsIn, fadeAfter) {
  *   must not count, and they are what turns 50 into "50 with one outside".
  * @param {number} after  extra records dated after it closes. Same, at the
  *   other end (C11).
+ * @param {number} updates  how many of the in-window callers also post an
+ *   update to their own callout (L2 / C9). See `stageUpdates` below.
+ * @param {number} updateAgeSeconds  when > 0, the callout being updated is
+ *   dated this far BEFORE the window and only the update lands inside it —
+ *   the case that earns the window on the update alone.
  */
 export function selectRecords({
   cast, epoch, mint, window, createdAt, epochsIn, fadeAfter,
   only = null, silent = false, count = null, before = 0, after = 0,
+  updates = 0, updateAgeSeconds = 0,
 }) {
   if (silent) return [];
 
@@ -104,30 +123,103 @@ export function selectRecords({
     );
   }
 
-  const record = (member, at) => ({
-    // Stable per wallet per epoch, so re-running inside the same window
-    // merges rather than duplicating — and `firstSeenAt` keeps the first
-    // sighting, exactly as the hourly poll does. The suffix keeps an
-    // out-of-window record from colliding with the same wallet's real one.
-    id: `mock-${epoch}-${member.name}${at === createdAt ? '' : `-${at < window.start ? 'pre' : 'post'}`}`,
-    walletAddress: member.address,
-    tokenAddress: mint,
-    createdAt: new Date(at * 1000).toISOString(),
-    isSpam: false,
-    isHarmful: false,
-    deletedAt: null,
-  });
+  const record = (member, at, index) =>
+    shapedRecord({
+      // Stable per wallet per epoch, so re-running inside the same window
+      // merges rather than duplicating — and `firstSeenAt` keeps the first
+      // sighting, exactly as the hourly poll does. The suffix keeps an
+      // out-of-window record from colliding with the same wallet's real one.
+      id: `mock-${epoch}-${member.name}${at === createdAt ? '' : `-${at < window.start ? 'pre' : 'post'}`}`,
+      walletAddress: member.address,
+      tokenAddress: mint,
+      createdAt: new Date(at * 1000).toISOString(),
+      index,
+    });
 
-  const inWindow = eligible.slice(0, wanted).map((m) => record(m, createdAt));
+  const inWindow = eligible.slice(0, wanted).map((m, i) => record(m, createdAt, i));
 
   // Dated a minute outside on each side. Far enough that no rounding pulls
   // them back in, close enough that they are obviously meant to be near-misses.
   const outside = [
-    ...eligible.slice(wanted, wanted + before).map((m) => record(m, window.start - 60)),
-    ...eligible.slice(wanted + before, wanted + before + after).map((m) => record(m, window.end + 60)),
+    ...eligible.slice(wanted, wanted + before).map((m, i) => record(m, window.start - 60, wanted + i)),
+    ...eligible
+      .slice(wanted + before, wanted + before + after)
+      .map((m, i) => record(m, window.end + 60, wanted + before + i)),
   ];
 
-  return [...inWindow, ...outside];
+  const staged = [...inWindow, ...outside];
+  if (updates <= 0) return staged;
+
+  return [...staged, ...stageUpdates({ callers: eligible, epoch, mint, window, createdAt, updates, updateAgeSeconds, staged })];
+}
+
+/**
+ * Author updates on their own callouts — the L2 path, and C9.
+ *
+ * **Nothing in this repository has ever staged one.** Until now `mock-callouts`
+ * wrote callouts only, so `parentCalloutId`/`isUpdate` records existed in
+ * production and in the unit tests and nowhere in between — C9 was listed in
+ * the gate matrix as unobserved and was, in fact, unstageable.
+ *
+ * Measured on five live coins 2026-08-09: **30% of callouts carry an update**,
+ * 2.42 on average, up to 29 on one — so an epoch with none is the unusual one.
+ *
+ * `updateAgeSeconds` is the case that matters most and the one an optimisation
+ * would break. The real median delay between a callout and its update is ~7.6
+ * hours, which at a ten-minute epoch is forty-five epochs later: the callout is
+ * long outside the window and **the update alone earns it**. Set it and the
+ * parent is dated before the window, so a settlement that only looks at
+ * callouts credits nobody and a correct one credits the author.
+ */
+export function stageUpdates({ callers, epoch, mint, window, createdAt, updates, updateAgeSeconds = 0, staged = [] }) {
+  const chosen = callers.slice(0, updates);
+  if (chosen.length < updates) {
+    throw new Error(
+      `--updates ${updates} needs ${updates} callers and only ${chosen.length} are available.`,
+    );
+  }
+
+  const out = [];
+  const byWallet = new Map(staged.map((r) => [r.walletAddress, r]));
+
+  for (const [i, member] of chosen.entries()) {
+    let parent = byWallet.get(member.address);
+
+    if (updateAgeSeconds > 0) {
+      // Re-date the parent outside the window (or create one there), so only
+      // the update falls inside it. A distinct id, because this is a different
+      // callout from the in-window one and must not merge with it.
+      parent = shapedRecord({
+        id: `mock-${epoch}-${member.name}-parent`,
+        walletAddress: member.address,
+        tokenAddress: mint,
+        createdAt: new Date((window.start - updateAgeSeconds) * 1000).toISOString(),
+        index: i,
+      });
+      out.push(parent);
+    }
+
+    if (!parent) {
+      throw new Error(
+        `${member.name} has no callout in epoch ${epoch} to update. Stage the callouts ` +
+          'first, or pass --update-age to date the parent before the window.',
+      );
+    }
+
+    out.push(
+      shapedUpdate({
+        id: `mock-${epoch}-${member.name}-update`,
+        parentCalloutId: parent.id,
+        walletAddress: member.address,
+        tokenAddress: mint,
+        // Inside the window regardless of where the parent sits — that is the
+        // whole point of the row.
+        createdAt: new Date((createdAt + 1) * 1000).toISOString(),
+        index: i,
+      }),
+    );
+  }
+  return out;
 }
 
 function parseArgs(argv) {
@@ -193,6 +285,8 @@ async function main() {
     count: args.count === undefined ? null : Number(args.count),
     before: args.before === undefined ? 0 : Number(args.before),
     after: args.after === undefined ? 0 : Number(args.after),
+    updates: args.updates === undefined ? 0 : Number(args.updates),
+    updateAgeSeconds: args['update-age'] === undefined ? 0 : Number(args['update-age']),
   });
 
   const inWindowCount = records.filter((r) => {
