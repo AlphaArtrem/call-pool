@@ -288,8 +288,9 @@
             </div>
             <h3>Call it out</h3>
             <p>
-              Post a callout for this coin on pump.fun. Each day counts on its own — one callout
-              does not carry over to tomorrow.
+              Post a callout for this coin on pump.fun, or update one you already posted — both
+              count. A call does not carry over to the next day, so it has to happen again
+              before 00:00&nbsp;UTC. Ten callouts in a day count exactly the same as one.
             </p>
           </li>
           <li class="card step">
@@ -306,10 +307,8 @@
             <h3>Hold <span id="floor-tokens" class="mono"></span></h3>
             <p>
               At any moment you are credited with the <em>smallest</em> balance you still hold
-              for the rest of the day — so buying more counts from the moment it lands, and
-              selling costs you the whole day. Trimming is allowed: stay at or above the minimum
-              and you keep earning. Buy today and you are in today, scaled by how much of the
-              day you held.
+              for the rest of the day — so buying counts from when it lands, and selling costs
+              you the whole day. Trimming is fine if you stay at or above the minimum.
             </p>
           </li>
           <li class="card step">
@@ -326,7 +325,8 @@
             <h3>Get paid</h3>
             <p>
               Your share is worked out at 00:00&nbsp;UTC and sent to you. You never claim
-              anything and you never connect a wallet.
+              anything and you never connect a wallet. Amounts too small to be worth their own
+              transaction roll into the next day and pay automatically once they clear it.
             </p>
           </li>
         </ol>
@@ -344,7 +344,8 @@
           position is not a sale — as long as you stay at or above
           <span class="floor-inline mono"></span> you keep earning, and the day is simply
           counted at your lowest balance. Go under it, to 50,000 or to zero alike, and the next
-          7 days earn nothing. Buying back does not shorten it.
+          7 days earn nothing. Buying back does not shorten it — though the day you went under
+          is still paid for the hours you held, at the balance you held.
           <strong>Supplying liquidity to this coin’s own pump.fun pool is the one exception and
           does not lock you out even though it takes your balance to zero.</strong>
         </p>
@@ -360,10 +361,9 @@
             </span>
             <h3>Going under the minimum</h3>
             <p>
-              Whether you sell, or send tokens to another wallet you own, what matters is where
-              your balance lands. Stay at or above the minimum and you keep earning. Drop below
-              it and the next 7 days earn nothing — and buying back does not shorten it. There is
-              no netting and no summing across accounts: only this wallet's balance counts.
+              Whether you sell or send tokens to another wallet you own, what matters is where
+              your balance lands. Stay at or above the minimum and you keep earning; drop below
+              it and the next 7 days earn nothing.
             </p>
           </div>
           <div class="card">
@@ -376,7 +376,8 @@
             <h3>Only your main token account counts</h3>
             <p>
               Tokens parked in any other token account earn nothing. The daily settlement and the
-              on-chain check both read the wallet’s associated token account and nothing else.
+              on-chain payout both read the wallet’s associated token account and nothing else,
+              with no summing across accounts.
             </p>
           </div>
           <div class="card">
@@ -386,10 +387,11 @@
                 <path d="M6.4 6.4 17.6 17.6"/>
               </svg>
             </span>
-            <h3>Sell out entirely and you cannot be paid</h3>
+            <h3>Sell before the payout lands</h3>
             <p>
-              The payout checks that you still hold the coin. Because rewards go out daily rather
-              than monthly the exposure is one day — but it is real.
+              The payout re-checks your balance when it lands, and it looks for the minimum — not
+              a token or two. Because it goes out daily rather than monthly that exposure is one
+              day, but it is real.
             </p>
           </div>
         </div>
@@ -405,10 +407,10 @@
           it renders before launch and needs no chain read to be true.
         -->
         <h3 class="subhead">What happens in every case</h3>
-        <p class="lede">
+        <p class="lede lede-wide">
           Two things are decided separately each day: <strong>what today is worth</strong>, and
           <strong>whether the next 7 days are locked</strong>. Only dropping below the minimum
-          does both. Trimming your position while staying above it costs you today's weight and
+          does both. Trimming your position while staying above it costs you today’s weight and
           nothing else.
         </p>
 
@@ -462,7 +464,7 @@
               </tr>
               <tr class="is-bad">
                 <th scope="row">Dipped below the minimum, then bought back</th>
-                <td><strong>Nothing</strong></td>
+                <td>Counted, but the hours before the dip count at the low balance</td>
                 <td><strong>Locked out</strong></td>
               </tr>
               <tr class="is-bad">
@@ -491,7 +493,7 @@
           <summary>A worked example, with real numbers</summary>
           <div class="detail-body">
             <p>
-              Four wallets, each holding through to midnight, each having called out. The share
+              Eight wallets, each still holding at midnight, each having called out. The share
               column is what the day’s split is divided by — so a wallet with twice the number
               gets twice the money.
             </p>
@@ -533,6 +535,24 @@
                     <th scope="row">Held 500,000, sold down to 50,000 at 18:00&nbsp;UTC</th>
                     <td><strong>Nothing</strong> — under the minimum, so the next 7 days are locked</td>
                   </tr>
+                  <!--
+                    The counter-intuitive row, and the reason it is spelled out: going
+                    under the minimum and buying back does NOT cost you the day. Today
+                    is still paid, at the low balance for the hours it was low. The
+                    lockout is a separate penalty and it still applies. Reading either
+                    half alone gives the wrong answer in opposite directions.
+                  -->
+                  <tr>
+                    <th scope="row">
+                      Held 500,000, sold to 50,000 at 18:00&nbsp;UTC, topped back up to 1,000,000
+                      at 20:00&nbsp;UTC
+                    </th>
+                    <td>
+                      208,333 — today is still paid: the first 20 hours count at 50,000, the last
+                      4 at 1,000,000. But it went under the minimum, so the next 7 days are
+                      <strong>locked</strong> anyway, and buying back does not shorten that
+                    </td>
+                  </tr>
                   <tr>
                     <th scope="row">Bought 500,000 at 20:00&nbsp;UTC</th>
                     <td>83,333 — four hours of the day</td>
@@ -558,17 +578,46 @@
         <details class="tech">
           <summary>The exact rule, and what each part of it stops</summary>
           <div class="detail-body">
+            <!--
+              Two different numbers, and the page was collapsing them into one
+              until 2026-08-09. `sustained` decides IF you are paid; `hold`
+              decides HOW MUCH. They are equal for a wallet that held all day,
+              which is why this read as correct for so long — but they differ
+              for anyone who bought partway through, and the block said the
+              floor was checked against `hold`. Under that rule the worked
+              example above ("bought 500,000 at 20:00 UTC → 83,333") would fail
+              a 100,000 floor and earn nothing; in scripts/lib/epoch-build.mjs
+              it is paid, because the floor sees the 500,000 it sustained. See
+              epoch-build.mjs:66-73 and timeline.mjs:213-258 — that comment says
+              in as many words that checking the floor against the prorated
+              number "would exclude exactly the holders this rule exists to
+              include". Do not re-merge them.
+            -->
             <pre class="formula"><code>eligible(w, d)  =  called_out(w, d)
-                   AND  hold(w, d) >= <span id="floor-tokens-formula"></span>
+                   AND  sustained(w, d) >= <span id="floor-tokens-formula"></span>
                    AND  NOT locked(w, d)
 
-hold(w, d)      =  the MINIMUM balance of w's associated token
-                   account at any point during UTC day d
+sustained(w, d) =  the LOWEST balance w held while holding
+                   anything during UTC day d
+                   — this decides IF you are paid
 
-locked(w, d)    =  w's balance decreased during any of the 7
-                   whole epochs before d
+hold(w, d)      =  the smallest balance w still holds for the
+                   rest of the day, at each moment, averaged
+                   across the whole day
+                   — this decides HOW MUCH
 
-share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
+locked(w, d)    =  w's balance ended BELOW the minimum at any
+                   point during any of the 7 whole epochs
+                   before d. Supplying liquidity to this coin's
+                   own pump.fun pool is the one exception.
+
+share(w, d)     =  divisible(d) × hold(w, d) / Σ hold(v, d)
+                   rounded down, so the remainder stays in
+                   the pool for tomorrow
+
+divisible(d)    =  the pool's balance, less rent, less what
+                   earlier days still owe, and less the carry
+                   already promised</code></pre>
 
             <table class="facts">
               <tbody>
@@ -808,7 +857,8 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
             <h3>The payout — this is the real one</h3>
             <p id="daily-clock" class="clock-label"></p>
             <p class="note">
-              Every transfer of the day is replayed exactly, then the money goes out.
+              Every transfer of the day is replayed exactly, then the money goes out. Nothing is
+              sampled and nothing is estimated — this is the number you are paid.
             </p>
           </div>
           <div class="clock clock-hourly">
@@ -825,6 +875,41 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
           <summary>Why the estimate and the payout can differ</summary>
           <div class="detail-body">
             <p id="provisional-explanation"></p>
+          </div>
+        </details>
+
+        <!--
+          Decision 18, stated in public copy for the first time on 2026-08-09.
+          js/standing.js has always explained this — but only to someone who had
+          already pasted an address, and the prose above simply said the share
+          "is sent to you". Under daily epochs a share below the threshold is the
+          common case rather than the edge case (the comment at
+          scripts/lib/epoch-build.mjs:113-122 says so outright), so a reader who
+          never checks a wallet was being told the wrong thing about most of
+          their days. The threshold comes from the same constant the crank reads.
+        -->
+        <details class="tech">
+          <summary>Why a very small share is carried instead of sent</summary>
+          <div class="detail-body">
+            <p>
+              A day’s share can come out smaller than the network fee to send it, and paying it
+              would cost more than it is worth. Anything under
+              <span class="dust-inline mono"></span> is <strong>withheld, not forfeited</strong>:
+              it stays credited to the address and goes out with a later day, as soon as the
+              running total clears that threshold. Under daily settlement this is the ordinary
+              case, not an unusual one.
+            </p>
+            <p>
+              It is paid on the next day the address is eligible again — a callout, the minimum
+              held, no lockout — so an address that stops qualifying leaves its carry sitting.
+              Carry expires after 30 days and returns to the pool, and adding to it does not
+              restart that clock: it runs from when the first amount was credited.
+            </p>
+            <p>
+              Every carried amount is listed in that day’s <code>carry.json</code>, and each file
+              records the hash of the one before it, so the ledger is append-only and can be
+              checked end to end rather than a day at a time.
+            </p>
           </div>
         </details>
       </section>
@@ -861,13 +946,13 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
           <div class="metric">
             <dt>Caller pool</dt>
             <dd id="pool-balance" class="big"></dd>
-            <p class="note">What today’s split divides.</p>
+            <p class="note">What today’s split divides between the callers.</p>
           </div>
           <div class="metric">
             <dt>Fees not yet swept in</dt>
             <dd id="vault-balance" class="big"></dd>
             <p class="note">
-              Sitting in pump.fun’s creator vault. On its way, but not part of today’s split yet.
+              In pump.fun’s creator vault. On its way, not in today’s split.
             </p>
           </div>
           <div class="metric">
@@ -1000,10 +1085,11 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
             <div class="verify-grid">
               <article class="verification-card">
                 <h3>The pool balance, straight from a node</h3>
-                <pre><code>solana balance &lt;pool address&gt; --url devnet</code></pre>
+                <pre><code>solana balance &lt;pool address&gt; --url mainnet-beta</code></pre>
                 <p class="note">
-                  The same account the number above is read from. No part of this command talks
-                  to us.
+                  The same account “Caller pool” above is read from, asked of a node of your
+                  choosing rather than ours. No part of this command talks to us, and the
+                  address it takes is printed under <em>Addresses</em> in the section above.
                 </p>
               </article>
 
@@ -1023,7 +1109,8 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
                 <p class="note">
                   Replays every caller’s transfer history from a node and recomputes every
                   <code>hold</code>. This is the check that does not take our word for anything
-                  except the callout list.
+                  except the callout list. It is the slow one, it is the one that matters, and it
+                  needs a node that will serve full signature history.
                 </p>
               </article>
 
@@ -1032,8 +1119,8 @@ share(w, d)     =  pool(d) × hold(w, d) / Σ hold(v, d)</code></pre>
                 <pre><code>curl -H "x-api-key: &lt;pump.fun's public key&gt;" \
   https://api.coin-communities.xyz/api/v1/users/by-wallet/&lt;address&gt;/callouts</code></pre>
                 <p class="note">
-                  The same request this page makes from your browser. It is pump.fun’s record,
-                  not ours.
+                  The same request this page makes from your browser — pump.fun’s record of who
+                  called out, not ours, and the one input not derivable from chain history.
                 </p>
               </article>
             </div>

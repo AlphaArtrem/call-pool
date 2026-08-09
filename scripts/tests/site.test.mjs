@@ -1202,3 +1202,160 @@ test('the exact value is always available beside the short one', () => {
   assert.equal(exactTitle(1n), '0.000000001 SOL exactly');
   assert.equal(exactTitle(null), '');
 });
+
+// ── the L22 copy, pinned (2026-08-09) ──────────────────────────────────────
+//
+// Run 3 settled the question the page had been answering two different ways:
+// a wallet that dips below the minimum mid-day and buys back **is still paid
+// for that day**, at the low balance for the hours it was low, **and is still
+// locked out for the next 7**. Confirmed on chain — B7 was paid 16,983 lamports
+// in epoch 5 and read `locked=true, eligible=false` in epochs 7 and 8.
+//
+// The page had said "Nothing" for that day, and its formula block still stated
+// the pre-L22 trigger — "w's balance decreased" — which L22 replaced on
+// 2026-08-08. Both are corrected; these tests stop either from drifting back,
+// because the page's whole claim is that anyone can check the payout against it.
+
+test('the page does not state the pre-L22 "any decrease" lockout trigger', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const html = readFileSync(resolve(REPO_ROOT, 'site/index.html'), 'utf8');
+
+  assert.doesNotMatch(
+    html,
+    /balance decreased during any of the 7/,
+    'the formula still describes the trigger L22 replaced — any decrease, rather than dropping below the floor',
+  );
+  assert.match(
+    html,
+    /ended BELOW the minimum/,
+    'the formula must state the floor-based trigger L22 actually implements',
+  );
+});
+
+test('the page says a dip below the minimum still earns that day', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const html = readFileSync(resolve(REPO_ROOT, 'site/index.html'), 'utf8');
+
+  const row = html.slice(html.indexOf('Dipped below the minimum, then bought back'));
+  const cells = row.slice(0, row.indexOf('</tr>'));
+
+  assert.doesNotMatch(
+    cells,
+    /<strong>Nothing<\/strong>/,
+    'dipping and buying back is paid for that day — only the next 7 are lost',
+  );
+  assert.match(cells, /Locked out/, 'the lockout still applies and must still be stated');
+});
+
+// ── the L20/L21 formula copy, pinned (2026-08-09) ──────────────────────────
+//
+// The "exact rule" block was still stating the pre-L21 mechanic: `hold` as a
+// plain minimum over the day, and the floor checked against `hold`. Both are
+// wrong, and the second one changes who gets paid rather than only how the rule
+// reads.
+//
+// The page's own worked example says a wallet that bought 500,000 at 20:00 UTC
+// counts as 83,333. Under the block as it stood, that wallet failed the 100,000
+// floor and earned nothing. In epoch-build.mjs it is paid, because the floor is
+// checked against `sustained` (500,000) and only the weight is prorated — the
+// comment there says checking the floor against the prorated number "would
+// exclude exactly the holders this rule exists to include".
+//
+// A page whose whole claim is that anyone can check a payout against the rule it
+// publishes cannot publish a rule that disagrees with the settlement. These
+// tests stop the two from being collapsed back into one number.
+
+/** The `<pre class="formula">` block, which is the page's "exact rule". */
+async function formulaBlock() {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const html = readFileSync(resolve(REPO_ROOT, 'site/index.html'), 'utf8');
+  const start = html.indexOf('<pre class="formula">');
+  assert.notEqual(start, -1, 'the formula block is gone — it is the page\'s statement of the rule');
+  return html.slice(start, html.indexOf('</pre>', start));
+}
+
+test('the formula does not describe hold as a plain minimum (L21)', async () => {
+  const formula = await formulaBlock();
+
+  assert.doesNotMatch(
+    formula,
+    /hold\(w, d\)\s*=\s*the MINIMUM balance/,
+    'this is the pre-L21 rule — hold is time-weighted, per timeline.mjs:213-258',
+  );
+  assert.match(
+    formula,
+    /rest of the day/,
+    'the suffix-minimum half of the rule must be stated',
+  );
+  assert.match(
+    formula,
+    /averaged/,
+    'the time-weighting must be stated — it is why an hour held is worth an hour',
+  );
+});
+
+test('the formula gates eligibility on sustained, not on the weighted hold (L20)', async () => {
+  const formula = await formulaBlock();
+  const eligible = formula.slice(formula.indexOf('eligible(w, d)'), formula.indexOf('locked(w, d)'));
+
+  assert.match(
+    eligible,
+    /sustained\(w, d\)\s*>=/,
+    'the floor is checked against sustained — epoch-build.mjs:66-73',
+  );
+  assert.doesNotMatch(
+    eligible,
+    /hold\(w, d\)\s*>=/,
+    'checking the floor against the prorated hold excludes the late buyer this rule exists to include',
+  );
+  assert.match(formula, /sustained\(w, d\)\s*=/, 'sustained must be defined, not just used');
+});
+
+test('the formula names the one exception to the lockout (L16)', async () => {
+  const formula = await formulaBlock();
+  const locked = formula.slice(formula.indexOf('locked(w, d)'));
+
+  assert.match(
+    locked,
+    /liquidity/i,
+    'the LP exemption is part of the rule and this block claims to be exact',
+  );
+});
+
+test('the page says a sub-threshold share is carried, not dropped (Decision 18)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const html = readFileSync(resolve(REPO_ROOT, 'site/index.html'), 'utf8');
+
+  // Under daily epochs this is most wallets on most days (epoch-build.mjs:113),
+  // so it belongs in the static prose and not only in the wallet checker.
+  assert.match(html, /withheld, not forfeited/i, 'the page must say dust is not lost');
+  assert.match(
+    html,
+    /class="dust-inline/,
+    'the threshold must come from DUST_THRESHOLD_LAMPORTS, not a hardcoded number in the copy',
+  );
+});
+
+test('no verification command on the page points at devnet', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve } = await import('node:path');
+  const { REPO_ROOT } = await import('../lib/store.mjs');
+  const html = readFileSync(resolve(REPO_ROOT, 'site/index.html'), 'utf8');
+
+  // The public page is mainnet, always (site/js/config.js:83-84). A command a
+  // reader copies must query the cluster the numbers above it came from.
+  const grid = html.slice(html.indexOf('<div class="verify-grid">'));
+  assert.doesNotMatch(
+    grid.slice(0, grid.indexOf('</details>')),
+    /--url devnet/,
+    'a devnet command under mainnet numbers checks a different chain and proves nothing',
+  );
+});
