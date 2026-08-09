@@ -114,3 +114,48 @@ test('stop-after-pool writes the addresses the cast builder needs', async () => 
   // The clock is not known yet and a placeholder would be read as fact.
   assert.doesNotMatch(body, /genesisTs:/, 'genesis does not exist until initialize runs');
 });
+
+// ── the manifest must not carry the provider key ──────────────────────────
+//
+// `--rpc` holds the provider key as a PATH segment, and `deployment.json` is
+// the one file that gets copied out of the gitignored `epochs/devnet/` — into a
+// report, an archive, another machine. Run 6 archived a manifest into the
+// (separate, private) docs repository and took the live dRPC key with it.
+// Console output was already redacted; disk was not.
+
+test('the manifest records the cluster with the provider key stripped', async () => {
+  const { clusterForManifest } = await import('../tools/deploy-devnet.mjs');
+
+  const url = 'https://lb.drpc.live/solana-devnet/FAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKEKEY11';
+  const recorded = clusterForManifest(url);
+
+  assert.doesNotMatch(recorded, /FAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKEKEYFAKEKEY11/, 'the key must not survive');
+  assert.match(recorded, /^https:\/\/lb\.drpc\.live/, 'the host is kept — which provider served a run is evidence');
+});
+
+test('a keyless endpoint is still readable, so the field stays useful', async () => {
+  const { clusterForManifest } = await import('../tools/deploy-devnet.mjs');
+  assert.match(clusterForManifest('https://api.devnet.solana.com'), /^https:\/\/api\.devnet\.solana\.com/);
+});
+
+test('no path segment of any RPC URL reaches the manifest', async () => {
+  const { clusterForManifest } = await import('../tools/deploy-devnet.mjs');
+  // Every shape these runs have actually used, including the two spare
+  // providers in signer.env. A key can sit at any depth.
+  for (const url of [
+    'https://lb.drpc.live/solana-devnet/KEYKEYKEY',
+    'https://rpc.ankr.com/solana_devnet/0031609f9fed053302d47e49c790d048',
+    'https://multi-x.solana-devnet.quiknode.pro/abc123def456/',
+  ]) {
+    const recorded = clusterForManifest(url);
+    const path = new URL(url).pathname.replace(/^\/|\/$/g, '');
+    for (const segment of path.split('/').filter(Boolean)) {
+      assert.doesNotMatch(recorded, new RegExp(segment), `${segment} leaked from ${url}`);
+    }
+  }
+});
+
+test('an undefined rpc does not throw or write the string "undefined"', async () => {
+  const { clusterForManifest } = await import('../tools/deploy-devnet.mjs');
+  assert.equal(clusterForManifest(undefined), '');
+});

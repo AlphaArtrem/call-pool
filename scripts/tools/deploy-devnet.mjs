@@ -199,6 +199,31 @@ async function fund(connection, payer, to, lamports) {
  * `cast` is carried only on the adopted path: on the synthetic path this tool
  * mints its own cast, and that one is authoritative.
  */
+/**
+ * What the manifest records as the cluster it was deployed against.
+ *
+ * **The provider key lives in the URL path**, so the raw `--rpc` value is a
+ * credential and `deployment.json` is the one file that leaves
+ * `epochs/devnet/` — into a report, an archive, a paste to another machine.
+ * `.gitignore` protects the directory; it does not protect the copies. Run 6
+ * archived a manifest into the (separate, private) docs repository and carried
+ * the live dRPC key with it.
+ *
+ * The console output has always been redacted here. Disk was not, which made
+ * the safer-looking path the leaky one.
+ *
+ * It is a named function rather than an inline `redactSecrets(...)` so the
+ * decision is testable: this file's other logic is unreachable without a chain,
+ * and a test that greps the source for `redactSecrets` would prove only that
+ * the word appears — the same empty check that shipped the L23 crash.
+ *
+ * `genesisHash` is what actually identifies the cluster, and nothing reads this
+ * field back as a URL.
+ */
+export function clusterForManifest(rpc) {
+  return redactSecrets(String(rpc ?? ''));
+}
+
 export function carryForward(previous, { adopted } = {}) {
   const carried = {};
   if (adopted && (previous?.cast ?? []).length > 0) carried.cast = previous.cast;
@@ -386,7 +411,13 @@ async function main() {
     // writing placeholders would be worse than omitting them.
     writeManifest({
       ...readManifest(MANIFEST_PATH, { optional: true }),
-      cluster: args.rpc,
+      // Redacted on the way to disk, exactly as it is on the way to the
+      // terminal above. The provider key lives in the URL path, and the
+      // manifest is the one file that gets copied out of `epochs/devnet/` —
+      // into a report, an archive, a paste. `.gitignore` protects the
+      // directory, not the copies. `genesisHash` is what actually identifies
+      // the cluster, and nothing reads this field back as a URL.
+      cluster: clusterForManifest(args.rpc),
       genesisHash,
       deployedAt: new Date().toISOString(),
       programId: PROGRAM_ID.toBase58(),
@@ -571,7 +602,9 @@ async function main() {
   const carried = carryForward(readManifest(MANIFEST_PATH, { optional: true }), { adopted: Boolean(adopted) });
 
   const manifest = {
-    cluster: args.rpc,
+    // See the note on the other writeManifest call: redacted on the way to
+    // disk, because this file gets copied out of the gitignored directory.
+    cluster: clusterForManifest(args.rpc),
     genesisHash,
     deployedAt: new Date().toISOString(),
     programId: PROGRAM_ID.toBase58(),
