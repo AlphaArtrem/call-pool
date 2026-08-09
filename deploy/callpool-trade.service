@@ -1,0 +1,49 @@
+# CALLPOOL — keep real creator fees accruing during a devnet run.
+#
+#   install -m 0755 deploy/callpool-trade-loop.sh /usr/local/bin/callpool-trade-loop
+#   install -m 0644 deploy/callpool-trade.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-trade.service
+#
+# **Devnet only.** On mainnet the fees come from real holders trading a real
+# coin; a unit that buys its own coin on a schedule is a rehearsal prop, and
+# installing it there would be market-making with the payer's SOL.
+#
+# ## Why a run needs this at all
+#
+# Creator fees accrue only while the coin is **traded**. Run 3's cast bought
+# during epochs 0-5 and then stopped, and by epoch 9 the pool's available
+# balance had fallen to 12,853 lamports — so each of 61 callers was owed ~210
+# lamports, under the 10,000-lamport dust threshold, and every share was carried
+# instead of paid.
+#
+# Nothing was broken. Dust-carry is correct behaviour, the root was still
+# posted, and the epochs looked healthy. That is the trap: **a run with no
+# trading settles cleanly and proves nothing about payouts.** Keep this running
+# for the whole window, not just the build phase.
+#
+# ## Why it alternates buy and sell
+#
+# A buy-only loop walks the bonding curve to completion. At the sizes a run
+# needs, that graduates the coin in about twenty minutes — in the middle of a
+# run whose ordering exists to graduate LAST, after the matrix is banked.
+# Alternating accrues fees on both sides while leaving the curve roughly where
+# it is. Check `readCurveState().complete` is still false at every epoch
+# boundary, not only at the end.
+#
+# `CALLPOOL_TRADE_SOL` sizes the buy; the profile.env for each run sets it.
+
+[Unit]
+Description=CALLPOOL — generate real creator fees by trading (devnet rehearsal only)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/callpool/trade.env
+ExecStart=/usr/local/bin/callpool-trade-loop
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

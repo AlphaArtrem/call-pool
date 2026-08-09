@@ -16,12 +16,11 @@
 # `Persistent=true` because their inputs decide money. This one does not.
 
 [Unit]
-Description=CALLPOOL — sample provisional standings hourly (mainnet)
+Description=CALLPOOL — sample provisional standings every 2 minutes (devnet, 1h profile)
 Documentation=https://github.com/AlphaArtrem/call-pool
 
 [Timer]
-OnCalendar=hourly
-RandomizedDelaySec=180
+OnCalendar=*:0/2:00
 AccuracySec=30s
 Persistent=false
 Unit=callpool-sample-standings.service

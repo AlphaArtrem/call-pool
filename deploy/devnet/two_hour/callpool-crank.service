@@ -1,0 +1,70 @@
+# CALLPOOL — the crank tick, as the chain sees it.
+#
+# One tick asks the chain which closed epochs have no root and settles them
+# oldest first, capped, stopping at the first failure. That is
+# `settle-outstanding.mjs`, and it replaces the hand-written
+# /usr/local/bin/callpool-crank-once wrapper from the second rehearsal — the
+# one that computed "the epoch that just closed" from the manifest and was
+# never in the repository. Both rehearsals wedged the same way: a single
+# transient failure left epoch N unsettled, and a wrapper that only ever tried
+# "the epoch that just closed" went back for it never. Asking the chain what is
+# outstanding removes that arithmetic entirely.
+#
+#   install -m 0644 deploy/callpool-rehearsal.service /etc/systemd/system/
+#   install -m 0644 deploy/callpool-rehearsal.timer /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now callpool-rehearsal.timer
+#
+# /etc/callpool/signer.env must set CALLPOOL_MULTISIG (and SOLANA_RPC_URL for
+# the devnet provider). The keypair paths live in /etc/callpool, never under
+# /srv/callpool — that directory is a web root on box A.
+#
+# ⚠️ Rehearsal values, in two places. `--and-pay --await-root 200` waits the
+# 60-second challenge window out in-process, which is only sensible on
+# 300-second epochs; mainnet runs the airdrop on its own timer instead
+# (NEXT-SESSION.md, mainnet checklist #8). And the devnet callout store is
+# `epochs/devnet/callout-store.json`, written by mock-callouts.mjs — pump's
+# callout feed has no devnet surface.
+
+[Unit]
+Description=CALLPOOL — settle outstanding epochs every 30 minutes (devnet, 2h profile)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+# `--await-root 400` MUST exceed the 300s challenge window this profile
+# initializes with, or the crank gives up before the root can be posted and
+# every epoch lands unpaid.
+# `--holders` is what lets a TRUNCATED feed settle at all (C7); without it the
+# crank refuses and blocks every later epoch behind it (C8).
+ExecStart=/usr/bin/node scripts/tools/settle-outstanding.mjs \
+  --multisig ${CALLPOOL_MULTISIG} --keypair /etc/callpool/signerA.json \
+  --payer /etc/callpool/devnet-payer.json --and-pay --await-root 400 \
+  --store epochs/devnet/callout-store.json \
+  --holders epochs/devnet/holders.json \
+  --lookback 50 --max 15
+
+# ── hardening ────────────────────────────────────────────────────────────
+#
+# Unlike the site and the publisher, this unit *writes*: snapshots, carry
+# ledgers, the callout store. ProtectSystem=strict denies everything else,
+# and ReadWritePaths opens exactly the tree the crank maintains.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool

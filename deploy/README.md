@@ -322,3 +322,38 @@ launch. Until then, whoever holds it can bind the coin with a wrong mint,
 snapshot key or floor, permanently.
 
 Phase 08 §8.5 reads the value back off chain before the coin is created.
+
+---
+
+## Which units to install — the three profiles
+
+This directory is split by **clock**, because the timings are the thing that
+changes between a rehearsal and the real coin, and getting them wrong is silent:
+mainnet's `--stale-after 14400` on a 5-minute devnet epoch hides a dead crank for
+the whole run, which is precisely what happened in run 2.
+
+| directory | epoch | run | reaches B12? |
+|---|---|---|---|
+| [`devnet/one_hour/`](devnet/one_hour/) | 300s | 12 epochs / 1h — the shakedown, full §5 matrix | ✅ |
+| [`devnet/ninety_min/`](devnet/ninety_min/) | 600s | 9 epochs / 90min — **the profile B12 exists for** | ✅ |
+| [`devnet/two_hour/`](devnet/two_hour/) | 1800s | 4 epochs / 2h — the long clock, 6 samples per epoch | ❌ declared |
+| [`mainnet/`](mainnet/) | 86400s | the live coin | — |
+
+**`CALLPOOL_UNREACHABLE_ROWS` in each `profile.env` names the §5 rows that clock
+cannot reach**, and a test enforces the arithmetic behind it. `LOCKOUT_EPOCHS`
+is 7, so proving the lockout *lifts* needs nine epochs: sell in epoch 0, locked
+across 1–7, earning again at 8, and epoch 8 must itself settle. Four epochs is
+3.5 hours short. **The field exists so a short run cannot quietly be reported as
+a long one's worth of evidence.**
+
+Each holds only the files whose contents depend on the clock, plus a
+`profile.env` carrying `epoch_seconds` and `challenge_seconds` — the two values
+`initialize` writes **permanently**, with no `set_params` and no admin path.
+
+Everything clock-independent stays here at the top level and is shared by all
+three: `callpool-publish.service`, `callpool-site.service`,
+`callpool-cosign.service`, `Caddyfile`, and the devnet-only
+`callpool-trade.service` + `callpool-trade-loop.sh`.
+
+Start from the profile's own README — each one explains why its numbers are what
+they are, and what its clock cannot prove.

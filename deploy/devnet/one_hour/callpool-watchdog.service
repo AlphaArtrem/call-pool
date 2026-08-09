@@ -1,0 +1,68 @@
+# CALLPOOL — the thing that notices nothing happened. BOX B. MAINNET.
+#
+# Every other check fires when something goes wrong. This one fires when
+# nothing goes right — the crank stops, no error is raised because no code ran,
+# fees keep accruing, and from outside it is indistinguishable from a rug.
+#
+#   install -m 0644 deploy/callpool-watchdog.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-watchdog.timer
+#
+# **It lives on box B on purpose.** A watchdog on the machine it watches dies
+# with that machine, silently, which is the exact scenario it exists for. It
+# holds no keys and reads only public chain state, so it can report that the
+# crank is dead without depending on anything the crank maintains.
+#
+# The grace values are the MAINNET clock under L19: settlement AND payment both
+# happen within minutes of 00:00 UTC, so an hour late is already abnormal —
+# unlike under L14, where a payout legitimately lagged the epoch by a day.
+# `--stale-after` defaults to grace plus one epoch, which on a daily clock is a
+# day too slow to be useful, so it is set explicitly.
+
+[Unit]
+Description=CALLPOOL — alert on the ABSENCE of a settlement (mainnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+# Sized for 5-minute epochs and a 2-minute sampler. Every one of these is clock-relative, and the
+# defaults are mainnet's — leaving them in place on a devnet profile is how run 2
+# hid a dead crank for three epochs.
+#
+#   --grace         how long after an epoch closes before "unsettled" is a
+#                   problem. Must cover the multisig round trip: box B's
+#                   co-signer timer plus the settle itself.
+#   --stale-after   the line between "late, the next tick fixes it" and "stale,
+#                   it needs a rebuild". One whole epoch past the grace period.
+#                   120 + 300 = 420.
+#   --sample-url    where to FETCH the sample from. The sampler runs on the
+#                   crank host and this watchdog runs on the co-signer host, so
+#                   the local file is never there — run 4 alerted twice on a
+#                   sampler that was writing perfectly every five minutes.
+#   --sample-stale  the SAMPLER's own staleness, and a separate flag from
+#                   --stale-after. Two missed samples is a pattern; the default
+#                   of 7200s is sized for hourly sampling and would never fire
+#                   here, leaving F9 untestable.
+ExecStart=/usr/bin/node scripts/tools/watchdog.mjs --once \
+  --grace 120 --stale-after 420 --sample-stale 600 \
+  --sample-url ${CALLPOOL_PUBLISH_BASE}/provisional.json \
+  --heartbeat 1800 --min-vault 0.02
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool

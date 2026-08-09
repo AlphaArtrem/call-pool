@@ -27,7 +27,7 @@
 # callout feed has no devnet surface.
 
 [Unit]
-Description=CALLPOOL — settle outstanding epochs (rehearsal)
+Description=CALLPOOL — settle outstanding epochs every 5 minutes (devnet, 1h profile)
 Documentation=https://github.com/AlphaArtrem/call-pool
 After=network-online.target
 Wants=network-online.target
@@ -38,10 +38,16 @@ User=callpool
 Group=callpool
 WorkingDirectory=/srv/callpool
 EnvironmentFile=/etc/callpool/signer.env
+# `--await-root 200` waits out the 60s challenge window in-process.
+# `--holders` is what lets a TRUNCATED feed settle at all (C7) — without it the
+# crank refuses and blocks every later epoch behind it (C8). `--max 15` clears a
+# full twelve-epoch backlog in one tick; run 2's default of 5 could not.
 ExecStart=/usr/bin/node scripts/tools/settle-outstanding.mjs \
   --multisig ${CALLPOOL_MULTISIG} --keypair /etc/callpool/signerA.json \
   --payer /etc/callpool/devnet-payer.json --and-pay --await-root 200 \
-  --store epochs/devnet/callout-store.json
+  --store epochs/devnet/callout-store.json \
+  --holders epochs/devnet/holders.json \
+  --lookback 50 --max 15
 
 # ── hardening ────────────────────────────────────────────────────────────
 #

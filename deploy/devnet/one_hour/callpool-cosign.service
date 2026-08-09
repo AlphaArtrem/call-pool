@@ -1,0 +1,73 @@
+# CALLPOOL — the second signer, on box B. Devnet.
+#
+#   install -m 0644 deploy/devnet/two_hour/callpool-cosign.service /etc/systemd/system/
+#   install -m 0644 deploy/devnet/two_hour/callpool-cosign.timer /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-cosign.timer
+#
+# `/etc/callpool/signer.env` must set `CALLPOOL_PUBLISH_BASE` — the URL box A
+# publishes epoch directories at, normally `http://<box A>:8100`.
+#
+# ## Why this is a separate file from the mainnet unit
+#
+# It was not, until 2026-08-09, and that cost run 4 its first epoch.
+#
+# `deploy/callpool-cosign.service` sat at the top level looking shared. It is
+# not: it names `/etc/callpool/mainnet-signer-b.json`, points `--callout-store`
+# at the mainnet path, and takes `--base` from an environment variable that only
+# the mainnet box sets. Box B had been hand-patched for three runs with the
+# devnet values, and nobody had compared the running unit to the file.
+#
+# Installing the repo version over that patch produced a co-signer that failed
+# every 60 seconds with `--base <URL> is required`, so every epoch sat at 1-of-2
+# while both hosts logged normally — exactly the F13 failure the checklist warns
+# about, arrived at from a direction the checklist did not cover.
+#
+# **A unit that names a key path is not shared.** Devnet and mainnet get their
+# own.
+#
+# ## --callout-store is deliberately absent
+#
+# On devnet there is no independent callout feed to corroborate against: the
+# store is written by `mock-callouts.mjs` on box A, so pointing this at a copy
+# of it would corroborate box A against box A and report a pass that means
+# nothing. `cosign.mjs` says so out loud when the flag is missing — that
+# disclosure is D12, and it is the honest state for a devnet run.
+#
+# **Mainnet must set it.** There the flag is the difference between checking
+# that a root follows from box A's inputs and checking that those inputs are
+# real.
+
+[Unit]
+Description=CALLPOOL — co-sign post_epoch_root, re-derived here (devnet)
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+WorkingDirectory=/srv/callpool
+EnvironmentFile=/etc/callpool/signer.env
+ExecStart=/usr/bin/node scripts/tools/cosign-remote.mjs \
+  --base ${CALLPOOL_PUBLISH_BASE} \
+  --multisig ${CALLPOOL_MULTISIG} \
+  --keypair /etc/callpool/signerB.json
+
+# ── hardening ────────────────────────────────────────────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6
+ReadWritePaths=/srv/callpool
+
+[Install]
+WantedBy=multi-user.target
