@@ -31,7 +31,8 @@ Group=callpool
 WorkingDirectory=/srv/callpool
 EnvironmentFile=/etc/callpool/signer.env
 ExecStart=/usr/bin/node scripts/tools/watchdog.mjs --once \
-  --grace 3600 --stale-after 14400 --heartbeat 86400 --min-vault 0.05
+  --grace 3600 --stale-after 14400 --heartbeat 86400 --min-vault 0.05 \
+  --sample-url ${CALLPOOL_PUBLISH_BASE}/provisional.json
 
 NoNewPrivileges=true
 PrivateTmp=true
