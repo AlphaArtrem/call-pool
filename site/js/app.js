@@ -10,7 +10,13 @@
 //   3. the floor check — the browser half of devnet proof 20. Loudly.
 //   4. everything else, each region failing independently.
 
-import { MINT_DECIMALS, MIN_HOLD_RAW, MIN_HOLD_TOKENS, EPOCH_SECONDS } from '../../scripts/lib/config.mjs';
+import {
+  DUST_THRESHOLD_LAMPORTS,
+  MINT_DECIMALS,
+  MIN_HOLD_RAW,
+  MIN_HOLD_TOKENS,
+  EPOCH_SECONDS,
+} from '../../scripts/lib/config.mjs';
 
 import { lamportsOf } from './chain.js';
 import { configPda, connect, poolPda } from './addresses.js';
@@ -348,6 +354,13 @@ function renderRules() {
   for (const slot of document.querySelectorAll('.floor-inline')) slot.textContent = floor;
   el('floor-percent').textContent = FLOOR_PERCENT_LABEL;
   el('provisional-explanation').textContent = PROVISIONAL_EXPLANATION;
+  // Same reasoning as the floor slots above: the dust threshold is a crank
+  // parameter, and copy that hardcoded it would be a second source of truth for
+  // a number the settlement actually uses. DUST_THRESHOLD_LAMPORTS lives in
+  // config.mjs rather than carry.mjs precisely so this page can read it without
+  // pulling in node:crypto — see the note at scripts/lib/carry.mjs:26.
+  const dust = `${formatSol(DUST_THRESHOLD_LAMPORTS)} SOL`;
+  for (const slot of document.querySelectorAll('.dust-inline')) slot.textContent = dust;
 }
 
 /**

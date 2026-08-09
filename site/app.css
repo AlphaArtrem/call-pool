@@ -582,6 +582,23 @@ pre code {
   color: var(--fg);
 }
 
+/* The one lede that introduces a full-width block rather than sitting in a
+ * column, and so is exempt from the cap above.
+ *
+ * Same reasoning as `.note` below: a sentence that introduces the scenarios
+ * table reads as belonging to it only if it is the same width as it. At 40em it
+ * ended 440px narrower than the table directly beneath it, which looks like a
+ * wrapping bug rather than a measure.
+ *
+ * The cost is the one the comment on `.wrap` warns about, and is accepted here:
+ * past ~1500px this runs longer than a comfortable measure. It is tolerable for
+ * two sentences of framing above a table — do not take it as licence to drop
+ * the cap on body copy, and note the hero lede is NOT this case: its grid
+ * column already holds it to ~450px, so it keeps the cap. */
+.lede-wide {
+  max-width: none;
+}
+
 /* Deliberately NOT capped to `--measure`, unlike the other prose on the page.
  *
  * A note is a footnote to the block above it — the history table, the footer —

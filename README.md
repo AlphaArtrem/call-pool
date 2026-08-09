@@ -1,17 +1,29 @@
 # Callpool
 
 A pump.fun coin that routes 90% of its creator fee to the holders who call it
-out — settled **daily, paid in SOL**, sized by what they held continuously
-through the day, and never by the callout itself.
+out — settled **daily, paid in SOL**, sized by how much they held and for how
+much of the day, and never by the callout itself.
 
 ```
-hold(w)     = the MINIMUM balance w held at any point that day
-locked(w)   = w's balance decreased at any point in the last 7 days
-active(w)   = a callout OR a callout update by w in the last 24 h
-eligible(w) = active(w)  AND  hold(w) >= 100,000 CALLPOOL  AND  NOT locked(w)
-weight(w)   = hold(w)
-payout(w)   = pool · weight(w) / Σ weight     airdropped daily, in SOL
+sustained(w) = the LOWEST balance w held while holding anything that day
+hold(w)      = the smallest balance w still holds for the rest of the day,
+               at each moment, averaged across the whole day
+locked(w)    = w's balance ended BELOW the floor at any point in the last
+               7 whole days — supplying liquidity to this coin's own
+               pump.fun pool is the one exception
+active(w)    = a callout OR a callout update by w in the last 24 h
+eligible(w)  = active(w) AND sustained(w) >= 100,000 CALLPOOL AND NOT locked(w)
+weight(w)    = hold(w)
+payout(w)    = divisible · weight(w) / Σ weight     airdropped daily, in SOL
 ```
+
+`sustained` decides **if** you are paid; `hold` decides **how much**. They are
+the same number for a wallet that held all day, and they differ for one that
+bought partway through — which is the point: 500,000 tokens bought at 20:00 UTC
+clears the floor on what it sustained, and is paid on 4/24 of it. Checking the
+floor against the prorated number instead would exclude exactly the holders the
+rule exists to include. `divisible` is the pool less rent, less what earlier
+epochs still owe, and less the carry already promised.
 
 The floor is **100,000 tokens — 0.01% of the supply**, written on chain once and
 never changed. There is no dollar threshold and no price feed anywhere in the
@@ -33,12 +45,21 @@ needed to see any of it**, and none needed to be paid. A claim page exists as a
 fallback if a payout ever fails to land; the destination is fixed on chain, so
 nothing about connecting can redirect it.
 
-Selling costs you two things: that day's reward, because the minimum you held
-collapses — and the next seven days, because any decrease locks you out. Buying
-back does not shorten it. **Sending your tokens anywhere counts as selling**,
-including to another wallet you own — there is no netting and no exemption for
-housekeeping. **A first-time buyer is not penalised**: hold through one full day
-and you are paid, which is roughly 24 hours from your first buy.
+Two penalties, decided separately. **Any decrease collapses that day's weight**,
+because a sale at 18:00 caps every earlier hour at the lower balance too —
+trimming costs you the day even when it is not a sale. **Dropping below the floor
+additionally locks the next seven days**, and buying back does not shorten it.
+Staying at or above the floor is not a lockout. **Sending your tokens anywhere is
+judged exactly like selling** — including to another wallet you own, since there
+is no netting and no exemption for housekeeping. **A first-time buyer is not
+penalised**: they are paid from their first day, prorated by the part of it they
+held.
+
+Shares below the fee it would cost to send them are **withheld, not forfeited**:
+they are carried forward and paid on the next day the address is eligible, once
+the running total clears the threshold. Under daily settlement this is the
+ordinary case. Carry expires after 30 days and returns to the pool, and adding to
+it does not restart that clock.
 
 **Status: built, tested, and deployed nowhere.** The program, the settlement
 crank, the verifier and the website are all here and all pass their tests. **No
@@ -55,18 +76,18 @@ Pay *per callout* and the cheapest way to earn is a hundred wallets holding a
 dollar each. Pay *per token held through the day*, gated on a callout, and
 every one of those attacks costs more than it returns.
 
-Everything below falls out of two choices: **the minimum balance over the day,
-not the balance at any instant** — a snapshot has a moment you can time, a
-minimum does not — and **a 7-day lockout on any decrease**, so dumping costs a
-week rather than a day.
+Everything below falls out of two choices: **what you keep for the rest of the
+day, not the balance at any instant** — a snapshot has a moment you can time, a
+suffix minimum does not — and **a 7-day lockout on dropping below the floor**,
+so dumping costs a week rather than a day.
 
 | Attack | Why it fails |
 |---|---|
 | Buy a dollar, call out, collect | The floor is 100,000 tokens — 0.01% of the supply. A dust position is not eligible at all, and at most 10,000 wallets can ever qualify at once. |
-| Call out, let followers buy, sell into them | Hit twice: that day's minimum collapses, **and** the wallet is locked out for the next 7 days. |
-| Call, sell, rebuy, call again | The sale locks the wallet out for 7 days, and buying back does not shorten it. Calling out during those 7 days earns nothing. |
+| Call out, let followers buy, sell into them | Hit twice: the sale caps every earlier hour of that day at the lower balance, **and** if it lands below the floor the wallet is locked out for the next 7 days. |
+| Call, sell, rebuy, call again | A sale below the floor locks the wallet out for 7 days, and buying back does not shorten it. Calling out during those 7 days earns nothing. |
 | Split a bag across 50 wallets, 50 callouts | Weight is **linear**, so 50 wallets of size *h* earn exactly what one wallet of size *50h* earns. Any concave weight function would pay sybils a premium; this one pays them nothing extra. Each wallet must clear the floor on its own. |
-| Buy an hour before the day closes | The minimum includes every hour you held nothing. Weight is zero. |
+| Buy an hour before the day closes | Weight is scaled by the part of the day you held, so an hour is worth an hour — about 1/24 of the balance, not the whole of it. |
 | Wash-trade to inflate the fee pool | You pay the full pump.fun trading fee to recover a fraction of the creator fee. It loses money by construction. |
 
 Every row above is asserted, not argued: the rules are implemented in
@@ -290,9 +311,12 @@ checked whether callouts are on chain.
 dispute process by design, so the 24 hours before money moves are time for
 anyone to find a bad root and say so — not time for anyone to stop it.
 
-**Selling or sending any tokens costs you 7 days.** Any decrease, however small,
-to any destination, including a wallet you own yourself. Buying back does not
-shorten it. This is deliberately blunt and it will catch people out.
+**Going below the floor costs you 7 days.** Any decrease that lands under it, to
+any destination, including a wallet you own yourself. Buying back does not
+shorten it. This is deliberately blunt and it will catch people out. Trimming
+while staying at or above the floor is not a lockout — but it still collapses
+that day's weight to the balance you trimmed to, which catches people out just
+as often.
 
 **The minimum is 0.01% of the supply**, which rises in dollar terms as the coin
 does. At a $10M market cap it is about $1,000. It is written on chain once and
