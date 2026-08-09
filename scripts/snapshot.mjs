@@ -34,7 +34,13 @@ import { resolve } from 'node:path';
 
 import { connect } from './lib/rpc.mjs';
 
-import { collectByWallet, isTruncated, mergeById, recordsInWindow } from './lib/callouts.mjs';
+import {
+  collectByWallet,
+  isTruncated,
+  mergeById,
+  recordsInWindow,
+  WALLET_FEED_CAP,
+} from './lib/callouts.mjs';
 import { createCalloutKeySource } from './lib/callout-key.mjs';
 import { DEFAULT_RPC_URL, LOCKOUT_EPOCHS } from './lib/config.mjs';
 import { previousCarryFor, reconcile } from './lib/carry.mjs';
@@ -107,7 +113,30 @@ async function resolveCallouts({ store, window, mint, keySource, holdersAboveFlo
   // empty caller set that looked like a clean run. `--callout-base` points it
   // at `mock-pump-api.mjs`, which answers the same per-wallet endpoint from the
   // rehearsal's own store. Production passes nothing and reaches pump.
-  const recovered = await collectByWallet(holdersAboveFloor, mint, window, { keySource, baseUrl });
+  const { records: recovered, incomplete } = await collectByWallet(
+    holdersAboveFloor,
+    mint,
+    window,
+    { keySource, baseUrl },
+  );
+
+  // The fallback is the last line. If a candidate's own history came back full
+  // with its oldest record still inside the window, pump has no page left to
+  // give and we cannot tell whether that wallet called out. Settling anyway
+  // would pay out a list we know is short — the same trade this function
+  // already refuses above when the holder list is missing.
+  if (incomplete.length > 0) {
+    throw new Error(
+      `the callout feed was truncated for this window, and the per-wallet ` +
+        `fallback was itself truncated for ${incomplete.length} candidate(s): ` +
+        `${incomplete.join(', ')}. Their history came back at the ${WALLET_FEED_CAP}-record ` +
+        `ceiling with the oldest record still inside the window, so whether they ` +
+        `called out cannot be established from the API. Settle this epoch once ` +
+        `their histories have moved on, or resolve each by permalink (§5.9a). ` +
+        `Publishing a list we know is short would be worse than settling late.`,
+    );
+  }
+
   const merged = mergeById(
     Object.fromEntries(records.map((r) => [r.id, r])),
     recovered,

@@ -27,6 +27,22 @@ export const DEFAULT_BASE_URL = 'https://api.coin-communities.xyz';
 /** The `/public` route's hard cap. Not a page size — there is no next page. */
 export const FEED_CAP = 50;
 
+/**
+ * The per-wallet route's ceiling, and the `limit` we must ask for to reach it.
+ *
+ * Measured against the live API on 2026-08-09, against real mainnet wallets:
+ * `/users/by-wallet/:w/callouts` **defaults to 50** and honours `limit` up to
+ * 100, above which it silently clamps. `offset`, `page` and `cursor` are all
+ * ignored, exactly as they are on the per-mint feed, so 100 is a ceiling and
+ * not a page size.
+ *
+ * This is why the fallback asks explicitly. The comment above `collectByWallet`
+ * used to say this endpoint was "not tightly capped"; it is capped at 50 unless
+ * asked otherwise, which halved the depth of the one path that is supposed to
+ * survive the per-mint feed being full.
+ */
+export const WALLET_FEED_CAP = 100;
+
 /** Phase 02 §2.6a / L5: the per-wallet fallback runs in sublists this big. */
 export const FALLBACK_BATCH_SIZE = 150;
 
@@ -48,7 +64,10 @@ export class CalloutError extends Error {
 // module that knows how to talk to the callout API stays free of any knowledge
 // of how its key was obtained.
 
-async function get(path, { apiKey, keySource, baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch }) {
+async function get(
+  path,
+  { apiKey, keySource, baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch, notFound } = {},
+) {
   const send = (key) =>
     fetchImpl(`${baseUrl}${path}`, {
       headers: { 'x-api-key': key, accept: 'application/json' },
@@ -78,6 +97,14 @@ async function get(path, { apiKey, keySource, baseUrl = DEFAULT_BASE_URL, fetchI
       { path, status: response.status },
     );
   }
+  // `notFound` is opt-in per call and covers exactly one status. A wallet that
+  // has never touched pump's social product legitimately has no user record,
+  // and for a candidate list read off the chain that is the *common* case, not
+  // an error. It is a sentinel rather than a blanket catch because widening it
+  // to "any failure means no callout" is how an outage would quietly become a
+  // settlement that pays nobody.
+  if (response.status === 404 && notFound !== undefined) return notFound;
+
   if (!response.ok) {
     throw new CalloutError(`callout API returned ${response.status}`, {
       path,
@@ -133,6 +160,22 @@ export async function fetchMintCallouts(mint, options) {
 /**
  * The updates on one callout. These are callouts for our purposes (L2).
  *
+ * **This route returns only the callout author's own updates**, never other
+ * users' replies. Measured 2026-08-09 across 38 callouts on four live coins:
+ * every returned record was authored by the callout's own wallet, and not one
+ * foreign reply appeared. A public callout with `replyCount: 116` returned
+ * exactly 2 — the author's two updates.
+ *
+ * So `replyCount` counts the whole public thread while this returns the author's
+ * subset, and the two diverge freely (`replyCount: 1` with 0 returned is a reply
+ * by somebody else). **Never treat `replyCount` as the expected length here** —
+ * it is not a completeness check, and reading it as one would make a normal
+ * thread look like a truncated fetch.
+ *
+ * The upshot for L2 is that "an update is activity" can only ever credit the
+ * callout's author. A third party replying to someone else's callout is not
+ * exposed by the public API at all, so it has never been creditable by any path.
+ *
  * Tagged with the parent id so the published record shows where each came
  * from — a verifier re-reading the feed needs to be able to follow the same
  * path we did.
@@ -146,9 +189,86 @@ export async function fetchCalloutUpdates(mint, calloutId, options) {
   return replies.map((r) => ({ ...r, parentCalloutId: calloutId, isUpdate: true }));
 }
 
-/** One wallet's callout history, across all coins. Not tightly capped. */
+/**
+ * A Solana address, structurally. Checked before any wallet lookup.
+ *
+ * Not pedantry. `by-wallet` answers `404 {"message":"No user linked to this
+ * wallet"}` for a malformed address and for a real address with no pump
+ * account — the *same* response. Without this check a typo in a candidate list
+ * is indistinguishable from an honest "never called out", and that wallet
+ * silently loses its payout. Measured 2026-08-09.
+ */
+export const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * The pump user behind a wallet, or `null` if there is no account.
+ *
+ * `null` means "no pump user", a complete and correct answer for most holders —
+ * they hold the coin and never touched the social product. Any other failure
+ * throws, because "we could not ask" must never read as "they did not call out".
+ */
+export async function resolveUserId(address, options) {
+  if (!BASE58_ADDRESS.test(String(address ?? ''))) {
+    throw new CalloutError(
+      `"${address}" is not a Solana address, and the wallet lookup answers 404 ` +
+        'for a malformed address exactly as it does for a wallet with no pump ' +
+        'account — so this would silently read as "did not call out"',
+      { address },
+    );
+  }
+  const body = await get(`/api/v1/users/by-wallet/${address}`, { ...options, notFound: null });
+  return body?.userId ?? null;
+}
+
+/**
+ * The callout this user made for this coin, by id, or `null`.
+ *
+ * The cap-immune answer, and the reason this path exists. There is no feed here
+ * and therefore nothing to truncate: the route takes a user and a mint and
+ * returns that user's one callout for that coin. Measured on live mainnet data
+ * 2026-08-09 — across 220 records on five coins every wallet had **at most one**
+ * callout per coin, which is the shape this route assumes.
+ *
+ * ⚠️ A userId that does not exist returns `200 {"callout": null}` rather than a
+ * 404 — indistinguishable from a real "never called out". That is why
+ * `resolveUserId` throws rather than returning a fallback id, and why nothing
+ * here invents or guesses a userId.
+ */
+export async function fetchCalloutIdForMint(userId, mint, options) {
+  const body = await get(`/api/v1/users/${userId}/callouts/by-mint/${mint}`, options);
+  return body?.callout?.calloutId ?? null;
+}
+
+/**
+ * One callout in the canonical feed shape, by id.
+ *
+ * `by-mint` returns a *different, lossier* record: `calloutId`/`coinMint`,
+ * `createdAt` in epoch millis, and **no** `walletAddress`, `isSpam`,
+ * `isHarmful` or `deletedAt`. Settlement needs all of those — L7's moderation
+ * rule is not optional — so the id it hands back is resolved here to the full
+ * public record rather than normalised by hand. One extra request per *caller*
+ * (not per candidate) buys a record identical in shape to the feed's, so
+ * everything downstream stays unchanged.
+ */
+export async function fetchCalloutById(mint, calloutId, options) {
+  const body = await get(`/api/v1/communities/${mint}/callouts/${calloutId}/public`, options);
+  return body?.callout ?? body;
+}
+
+/**
+ * One wallet's callout history, across all coins. Newest first, ceiling 100.
+ *
+ * The `limit` is not optional tuning. Without it the API answers with 50, and
+ * a wallet that has posted more than 50 callouts since the window opened would
+ * have its callout for our coin fall off the end — reported as "did not call
+ * out" rather than as "cannot tell", which is the one failure mode this whole
+ * module exists to avoid.
+ */
 export async function fetchWalletCallouts(address, options) {
-  const body = await get(`/api/v1/users/by-wallet/${address}/callouts`, options);
+  const body = await get(
+    `/api/v1/users/by-wallet/${address}/callouts?limit=${WALLET_FEED_CAP}`,
+    options,
+  );
   return body.callouts ?? [];
 }
 
@@ -279,38 +399,77 @@ export async function pollMint(mint, window, options) {
 }
 
 /**
- * The fallback: ask per wallet, in batches, for a known candidate list.
+ * Recover a window's callers for a known candidate list, exactly.
  *
- * Immune to the 50-cap because no individual wallet has many callouts, and
- * bounded because eligibility requires holding the floor — so the candidates
- * are *holders*, which are enumerable from chain, rather than *callers*, which
- * are not. At a 0.01% floor at most 10,000 wallets can qualify (L12), so this
- * is at most ~70 batches in the impossible worst case and a handful in practice.
+ * Runs when the per-mint feed truncated, which on an active coin is the normal
+ * case rather than the exception (four of five real coins measured 2026-08-09
+ * were already at the 50-cap). Bounded because eligibility requires holding the
+ * floor, so the candidates are *holders*, which are enumerable from chain,
+ * rather than *callers*, which are not. At a 0.01% floor at most 10,000 wallets
+ * can qualify (L12).
  *
- * `POST /api/v1/communities/callouts/batch` would collapse each batch into one
- * request; it takes the public key and 404'd only on a guessed body shape
- * (Phase 02 §2.4). Worth another attempt — until then this is one request per
- * wallet, which is why the candidate list must be the holders above the floor
- * and never "everyone".
+ * Two routes per candidate, and the order matters:
+ *
+ *   1. `by-wallet/{address}` → userId, or `null` when there is no pump account.
+ *      Most holders never touched the social product; `null` ends it, cheaply.
+ *   2. `users/{userId}/callouts/by-mint/{mint}` → that user's callout id for
+ *      this coin, **or null**. No feed, no cap, nothing to truncate.
+ *   3. only if there *is* one, the full public record by id, for the canonical
+ *      shape and L7's moderation flags.
+ *
+ * So it costs 2 requests per candidate and a third per actual caller. That is
+ * more requests than reading a wallet's history, and it buys the thing the
+ * history could not give: an answer that cannot be truncated. The history route
+ * caps at 100 with no cursor (`WALLET_FEED_CAP`), so a wallet busy enough to
+ * fill it had its callout for this coin fall off the end and read as silence.
+ *
+ * `POST /api/v1/communities/callouts/batch/server` would collapse this into one
+ * request per batch, but its bundle definition requires `x-server-key` and
+ * `x-server-secret` — pump's internal server credentials, not the public
+ * browser key (measured 2026-08-09). `batches` stays exported for the day that
+ * changes.
+ *
+ * @returns {{records: object[], incomplete: string[]}} `incomplete` is retained
+ *   for the caller's guard and is always empty here — this path has no cap to
+ *   hit. It is not removed because the guard downstream is what would catch a
+ *   regression back to a truncating route.
  */
 export async function collectByWallet(candidates, mint, window, options) {
-  // A flat loop, because that is what this is: one request per wallet, awaited
-  // in turn. It used to iterate `batches(candidates)` and then each address
-  // within a batch, which grouped the addresses without doing anything per
-  // group — identical behaviour, arranged to look like it had a reason.
-  // `batches` stays, tested and exported, for the batch POST described above:
-  // that is where a sublist becomes one request and the grouping starts to mean
-  // something.
   const records = [];
   for (const address of candidates) {
-    const history = await fetchWalletCallouts(address, options);
-    for (const record of history) {
-      if (!isForMint(record, mint)) continue;
-      const at = calloutTime(record);
-      if (at >= window.start && at < window.end) records.push(record);
+    const userId = await resolveUserId(address, options);
+    if (userId === null) continue; // no pump account: a complete answer, not a gap
+
+    const calloutId = await fetchCalloutIdForMint(userId, mint, options);
+    if (calloutId === null) continue; // never called out this coin
+
+    const record = await fetchCalloutById(mint, calloutId, options);
+
+    // A callout persists across epochs, so the route being scoped to this coin
+    // is not enough — only the ones *made* inside this window earn it, and
+    // `isForMint` stays as the check that the record we were handed is the
+    // record we asked for.
+    const inWindow = (r) => {
+      const at = calloutTime(r);
+      return at >= window.start && at < window.end;
+    };
+    if (isForMint(record, mint) && inWindow(record)) records.push(record);
+
+    // L2: an update is activity. A callout made *before* the window that the
+    // caller updated *inside* it earns the window, so the callout falling
+    // outside is not a reason to skip the updates — they are fetched either way.
+    //
+    // Deliberately the same route the hourly poll uses, so a recovered update is
+    // byte-identical to a polled one. `by-mint` also returns an `updates` array,
+    // but its entries carry only id/content/createdAt/likeCount — no
+    // `walletAddress`, and none of L7's moderation flags — so they cannot be
+    // settled from directly.
+    const updates = await fetchCalloutUpdates(mint, calloutId, options);
+    for (const update of updates) {
+      if (isForMint(update, mint) && inWindow(update)) records.push(update);
     }
   }
-  return records;
+  return { records, incomplete: [] };
 }
 
 /**
