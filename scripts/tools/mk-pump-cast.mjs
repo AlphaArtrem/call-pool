@@ -353,6 +353,39 @@ async function main() {
     const wallet = wallets.get(member.name);
     const spend = BigInt(Math.round(member.sol * LAMPORTS_PER_SOL));
 
+    // Has the curve filled up under us?
+    //
+    // Every buy pushes the bonding curve toward completion, and completion is
+    // **graduation** — after it, the curve refuses with `BondingCurveComplete`
+    // (6005 / 0x1775) and the AMM is the only venue. On devnet pump may never
+    // migrate (G12), so there is then no venue at all and the run is over: the
+    // matrix needs nine buy and top-up steps it can no longer perform.
+    //
+    // Run 5 completed the curve on its **sixty-fourth** wallet and only found
+    // out from the failure. Checking first turns a dead deployment into a
+    // stopped build with sixty-three usable wallets and a clear instruction.
+    //
+    // The threshold is lower than it looks: run 2 measured ~3.9 SOL to
+    // complete, run 5 completed at ~2.8. Do not size a cast against a
+    // remembered figure — ask the chain.
+    if (!graduated) {
+      const curve = await pump.readCurveState(args.rpc, mint);
+      if (curve.complete) {
+        console.log(
+          `\n🛑 the bonding curve completed before ${member.name} was built.\n\n` +
+            `   ${cast.length} wallet(s) are built and recorded; the rest cannot buy, because a\n` +
+            '   completed curve refuses every buy and the AMM pool exists only once pump\n' +
+            '   migrates — which on devnet it may never do.\n\n' +
+            '   Lower --scenario-sol and build a FRESH coin. Re-running against this one\n' +
+            '   cannot work.\n',
+        );
+        manifest.cast = cast;
+        writeManifest(manifest);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
     const buy = graduated
       ? await pump.buildAmmBuyInstructions(args.rpc, mint, wallet.publicKey.toBase58(), spend.toString())
       : await pump.buildBuyInstructions(args.rpc, mint, wallet.publicKey.toBase58(), spend.toString());

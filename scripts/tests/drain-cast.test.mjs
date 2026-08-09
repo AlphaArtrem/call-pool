@@ -48,3 +48,59 @@ test('the cast is walked in a stable order, and only keypairs are walked', () =>
   const readdir = () => ['w02.json', 'steady.json', 'notes.txt', 'w01.json'];
   assert.deepEqual(castNames('/keys', { readdir }), ['steady', 'w01', 'w02']);
 });
+
+// ── when "sell first" is impossible (2026-08-09, run 5) ────────────────────
+//
+// The guard tells you to sell before draining, and that is right in every case
+// but one: a **completed bonding curve with no AMM pool**. A complete curve
+// refuses buys and sells alike, and the AMM exists only once pump migrates —
+// which on devnet has never been observed. The tokens are unrecoverable at that
+// point, and leaving the gas beside them recovers nothing. Run 5 stranded ~3.2
+// SOL across sixty-three wallets exactly this way.
+
+test('a token holder is still skipped by default', () => {
+  // The guard is the thing protecting real value; the override must not soften
+  // the default even slightly.
+  const plan = planFor({ name: 'w01', lamports: 50_000_000n, tokens: 5_000_000n, keep: [] });
+  assert.equal(plan.action, 'skip');
+  assert.match(plan.why, /sell first/);
+});
+
+test('--tokens-are-unsellable drains a holder whose tokens cannot be sold', () => {
+  const plan = planFor({
+    name: 'w01',
+    lamports: 50_000_000n,
+    tokens: 5_000_000n,
+    keep: [],
+    tokensAreUnsellable: true,
+  });
+  assert.notEqual(plan.action, 'skip');
+});
+
+test('the override does not overrule --keep', () => {
+  // `--keep` is an explicit instruction about a named wallet; a blanket flag
+  // about token sellability has nothing to say about it.
+  const plan = planFor({
+    name: 'steady',
+    lamports: 50_000_000n,
+    tokens: 5_000_000n,
+    keep: ['steady'],
+    tokensAreUnsellable: true,
+  });
+  assert.equal(plan.action, 'skip');
+  assert.match(plan.why, /--keep/);
+});
+
+test('the override does not drain dust either', () => {
+  // Below the threshold a transfer costs more than it moves, whatever the
+  // tokens are doing.
+  const plan = planFor({
+    name: 'w01',
+    lamports: 1n,
+    tokens: 5_000_000n,
+    keep: [],
+    tokensAreUnsellable: true,
+  });
+  assert.equal(plan.action, 'skip');
+  assert.match(plan.why, /dust/);
+});

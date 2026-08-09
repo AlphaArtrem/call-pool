@@ -207,3 +207,62 @@ test('after the repair, resume treats the corrected wallet as already built', as
 
   assert.equal(alreadyBuilt(existing, 'w01'), true);
 });
+
+// ── the curve can fill up mid-build (2026-08-09, run 5) ────────────────────
+//
+// Every buy pushes the bonding curve toward completion, and completion is
+// graduation: the curve then refuses with `BondingCurveComplete` (0x1775) and
+// the AMM is the only venue — which on devnet may never exist, because pump has
+// never been observed migrating a devnet coin (G12).
+//
+// Run 5 completed the curve on its sixty-fourth wallet and learned about it
+// from the failure, leaving a coin that could neither be bought on nor
+// graduated away from. The matrix needs nine buy and top-up steps, so that
+// deployment was dead.
+//
+// The sizing lesson is in the numbers: run 2 measured ~3.9 SOL to complete the
+// curve, run 5 completed at ~2.8. A cast sized against a remembered figure is
+// sized against the wrong coin.
+
+test('the builder checks the curve before each buy, not only after the last', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const source = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../tools/mk-pump-cast.mjs'),
+    'utf8',
+  );
+
+  const loop = source.slice(source.indexOf('for (const member of wanted)'));
+  const beforeBuy = loop.slice(0, loop.indexOf('buildBuyInstructions'));
+
+  assert.match(
+    beforeBuy,
+    /readCurveState/,
+    'the loop must ask the chain whether the curve is still open before spending',
+  );
+  assert.match(
+    beforeBuy,
+    /writeManifest/,
+    'the wallets already built must be persisted before the build stops',
+  );
+});
+
+test('a completed curve stops the build rather than letting it fail per wallet', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { resolve, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const source = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../tools/mk-pump-cast.mjs'),
+    'utf8',
+  );
+
+  // The instruction has to name the only thing that works: a fresh coin. A
+  // `--resume` against a completed curve cannot succeed, and suggesting it
+  // would send the operator round the loop that just failed.
+  const stop = source.slice(source.indexOf('the bonding curve completed before'));
+  const message = stop.slice(0, stop.indexOf('process.exitCode'));
+
+  assert.match(message, /FRESH coin/, 'the fix is a new coin, and the message must say so');
+  assert.match(message, /Lower --scenario-sol/, 'and that the cast must be sized smaller');
+});

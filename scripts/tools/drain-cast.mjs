@@ -46,6 +46,9 @@ function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL, 'dry-run': false, keep: '' };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--dry-run') args['dry-run'] = true;
+    // Named explicitly — the generic branch below would swallow the NEXT
+    // argument as this flag's value and silently leave the flag unset.
+    else if (argv[i] === '--tokens-are-unsellable') args.tokensAreUnsellable = true;
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }
@@ -70,9 +73,22 @@ export function castNames(dir = KEYS_DIR, { readdir = readdirSync } = {}) {
  * that a token holder is never drained is the one that protects real value, and
  * it should not need a cluster to check.
  */
-export function planFor({ name, lamports, tokens, keep }) {
+export function planFor({ name, lamports, tokens, keep, tokensAreUnsellable = false }) {
   if (keep.includes(name)) return { action: 'skip', why: 'kept by --keep' };
-  if (tokens > 0n) {
+  // `--tokens-are-unsellable` is for the one case where "sell first" is not
+  // advice but an impossibility: a **completed bonding curve with no AMM pool**.
+  // A complete curve refuses every buy AND every sell, and the AMM exists only
+  // once pump migrates — which on devnet has never been observed (G12).
+  //
+  // The tokens are already unrecoverable there, and leaving the gas beside them
+  // recovers nothing while costing the payer real SOL: run 5 stranded ~3.2 SOL
+  // across sixty-three wallets exactly this way.
+  //
+  // Named for its consequence rather than for what it enables, so it cannot be
+  // reached for casually. **Confirm `readCurveState().complete` is true and
+  // `readAmmPool().exists` is false first** — anywhere else it does precisely
+  // the damage this guard exists to prevent.
+  if (tokens > 0n && !tokensAreUnsellable) {
     return { action: 'skip', why: `still holds ${tokens} raw units — sell first (pump-trade --sell all)` };
   }
   if (lamports <= DUST) return { action: 'skip', why: `${sol(lamports)} SOL is dust` };
@@ -111,7 +127,7 @@ async function main() {
     const lamports = BigInt(await connection.getBalance(wallet.publicKey));
     const ata = associatedTokenAddress(wallet.publicKey, mint, tokenProgram);
     const tokens = await currentBalanceRaw(connection, ata);
-    const plan = planFor({ name, lamports, tokens, keep });
+    const plan = planFor({ name, lamports, tokens, keep, tokensAreUnsellable: args.tokensAreUnsellable });
 
     if (plan.action === 'skip') {
       skipped.push(`${name.padEnd(16)} ${plan.why}`);
@@ -122,13 +138,22 @@ async function main() {
     // into the wallet, and the transfer that follows sweeps it out again. Two
     // transactions would leave that rent behind on any failure between them.
     const tx = new Transaction();
+    // The ATA is closed to reclaim its rent — but **only when it is empty**.
+    // `close_account` fails with `NonNativeHasBalance` (0xb) on an account that
+    // still holds tokens, and under `--tokens-are-unsellable` it always does.
+    // Attempting it there fails the whole transaction and recovers nothing,
+    // which is how run 5 first "recovered" 0.08 SOL of an available 3.2.
+    //
+    // So the rent stays stranded with the tokens, and the wallet's own SOL —
+    // by far the larger part — still comes back.
     const ataInfo = await connection.getAccountInfo(ata);
-    if (ataInfo != null) {
+    const closeable = ataInfo != null && tokens === 0n;
+    if (closeable) {
       tx.add(createCloseAccountInstruction(ata, wallet.publicKey, wallet.publicKey, [], tokenProgram));
     }
     // The close credits the wallet before the transfer reads it, so the rent it
     // releases has to be part of the amount moved or it stays behind.
-    const moving = plan.lamports + BigInt(ataInfo?.lamports ?? 0);
+    const moving = plan.lamports + BigInt(closeable ? (ataInfo?.lamports ?? 0) : 0);
     tx.add(
       SystemProgram.transfer({
         fromPubkey: wallet.publicKey,
@@ -139,7 +164,7 @@ async function main() {
     tx.feePayer = payer.publicKey;
 
     if (args['dry-run']) {
-      console.log(`${name.padEnd(16)} would send ${sol(moving)} SOL${ataInfo ? ' (incl. ATA rent)' : ''}`);
+      console.log(`${name.padEnd(16)} would send ${sol(moving)} SOL${closeable ? ' (incl. ATA rent)' : ''}`);
       recovered += moving;
       drained += 1;
       continue;
