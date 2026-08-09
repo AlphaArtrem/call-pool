@@ -86,6 +86,8 @@ function parseArgs(argv) {
     // Same trap as `--stale-after`: the generic branch would store this under
     // `sample-stale` and leave the default quietly in force.
     else if (argv[i] === '--sample-stale') args.sampleStale = Number(argv[++i]);
+    // Same trap again: the generic branch would store this as `sample-url`.
+    else if (argv[i] === '--sample-url') args.sampleUrl = argv[++i];
     else if (argv[i] === '--min-vault') args.minVault = Number(argv[++i]);
     else if (argv[i].startsWith('--')) args[argv[i].slice(2)] = argv[++i];
     else throw new Error(`unexpected argument: ${argv[i]}`);
@@ -245,6 +247,42 @@ export async function unpaidEpochs({ now, config, lookback, graceSeconds, readEp
     }
   }
   return unpaid;
+}
+
+/**
+ * The site's estimate — from disk, or over HTTP when it lives on another host.
+ *
+ * `sample-standings.mjs` runs on the **crank** host and writes
+ * `provisional.json` there. This watchdog runs on the **co-signer** host, which
+ * has no copy of it and never will: box B fetches epoch inputs over HTTP
+ * precisely so it holds nothing of box A's.
+ *
+ * Reading the local path on a two-box deployment therefore reports
+ * `missing (never written)` forever, however healthy the sampler is — which is
+ * exactly what run 4 did, twice, while the sampler was writing on schedule
+ * every five minutes. **An alert that always fires is worse than no alert**: it
+ * costs the operator the attention that a real one needs, and it makes F9 —
+ * "stop the sampler and watch it page" — untestable, because it was already
+ * paging.
+ *
+ * `--sample-url` points at the published copy. Unset, this keeps the local-file
+ * behaviour, which is correct for a single-box deployment and for mainnet.
+ *
+ * A fetch that fails is reported as missing rather than thrown: the sampler
+ * being unreachable is itself the condition this check exists to report.
+ */
+export async function readSample(url, { read = fetch } = {}) {
+  if (!url) {
+    const path = resolve(SNAPSHOTS_DIR, 'provisional.json');
+    return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+  }
+  try {
+    const response = await read(url);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -530,10 +568,7 @@ async function check(args) {
   // The site's estimate. Checked last because it is the only thing here that
   // costs nobody any money when it breaks — and reported anyway, because it is
   // the only thing here that breaks without looking broken.
-  const samplePath = resolve(SNAPSHOTS_DIR, 'provisional.json');
-  const sample = existsSync(samplePath)
-    ? JSON.parse(readFileSync(samplePath, 'utf8'))
-    : null;
+  const sample = await readSample(args.sampleUrl);
   const sampleProblem = staleSample({ now, sample, staleAfterSeconds: args.sampleStale });
 
   if (sampleProblem) {

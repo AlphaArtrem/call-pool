@@ -553,3 +553,60 @@ test('a clock that has run backwards does not read as stale', () => {
     null,
   );
 });
+
+// ── the sample lives on the other host (2026-08-09) ────────────────────────
+//
+// `sample-standings.mjs` writes `provisional.json` on the CRANK host; this
+// watchdog runs on the CO-SIGNER host, which deliberately holds nothing of box
+// A's. Reading the local path there reports `missing (never written)` forever.
+//
+// Run 4 alerted twice on exactly that while the sampler was writing on schedule
+// every five minutes. An alert that always fires is worse than none — and it
+// made F9 ("stop the sampler and watch it page") untestable, because it was
+// already paging.
+
+const { readSample } = await import('../tools/watchdog.mjs');
+
+const response = (body, ok = true) => ({ ok, json: async () => body });
+
+test('with a URL, the sample is fetched rather than read from local disk', async () => {
+  const asked = [];
+  const sample = await readSample('http://box-a:8100/provisional.json', {
+    read: async (url) => {
+      asked.push(url);
+      return response({ sampledAt: 1786267259, kind: 'provisional-standings' });
+    },
+  });
+
+  assert.deepEqual(asked, ['http://box-a:8100/provisional.json']);
+  assert.equal(sample.sampledAt, 1786267259);
+});
+
+test('a 404 reads as missing, not as an error', async () => {
+  // The publisher being up but the file absent IS the condition this check
+  // exists to report.
+  assert.equal(await readSample('http://box-a:8100/provisional.json', { read: async () => response(null, false) }), null);
+});
+
+test('an unreachable publisher reads as missing rather than crashing the watchdog', async () => {
+  // Every other check in this run — overdue epochs, unpaid epochs, vault
+  // balance — must still report. A throw here would take them all down.
+  const sample = await readSample('http://box-a:8100/provisional.json', {
+    read: async () => {
+      throw new Error('ECONNREFUSED');
+    },
+  });
+  assert.equal(sample, null);
+});
+
+test('without a URL it still reads the local file, which is mainnet behaviour', async () => {
+  // Single-box deployments and mainnet must keep working unchanged.
+  const sample = await readSample(undefined, {
+    read: async () => {
+      throw new Error('should never fetch when no URL is given');
+    },
+  });
+  // Null or a parsed object, depending on whether this checkout has a sample —
+  // what matters is that it did not fetch.
+  assert.ok(sample === null || typeof sample === 'object');
+});
