@@ -15,6 +15,13 @@
 // Usage:
 //   node scripts/poll-callouts.mjs --mint <MINT>
 //   ... --day 2026-08-04     # which window to judge truncation against
+//   ... --store /tmp/probe.json   # somewhere other than the production store
+//
+// **Use `--store` for any probe.** The production store is the one file
+// settlement reads, and it holds exactly one coin: polling a different mint into
+// it makes every later poll throw `the store holds callouts for X, not Y`. That
+// is the right behaviour, and it is why MAINNET-PREP's P2 probes a stranger's
+// coin into a scratch file rather than the real one.
 //
 // No key needs to be supplied. pump.fun's public callout key is derived from
 // their own bundle and cached (`lib/callout-key.mjs`), and re-derived when the
@@ -25,6 +32,8 @@
 // Exits non-zero on an API failure, so a scheduler alerts. Phase 09 §9.3 wants
 // the alert on the *absence* of a successful poll, not only on errors — that is
 // the runner's job, not this script's.
+
+import { resolve } from 'node:path';
 
 import { alert } from './lib/alert.mjs';
 import { CalloutError, mergeById, pollMint } from './lib/callouts.mjs';
@@ -53,6 +62,25 @@ export const TRUNCATION_RETENTION_DAYS = LOCKOUT_EPOCHS + 2;
 export function pruneTruncations(truncations, observedAt) {
   const cutoff = observedAt - TRUNCATION_RETENTION_DAYS * 86_400;
   return (truncations ?? []).filter((entry) => entry.observedAt >= cutoff);
+}
+
+/**
+ * Which store this poll reads and writes.
+ *
+ * `--store` was parsed and then ignored: every poll used the production store
+ * whatever it was told. MAINNET-PREP's P2 probe says to point it at a scratch
+ * file and poll **a stranger's coin** — so following the instructions wrote
+ * someone else's callouts into the one file settlement reads, and the mint
+ * guard in `main` then refuses every later poll. Loud rather than silent, and
+ * survivable, but it fires on launch day at the step that must run FIRST,
+ * before genesis.
+ *
+ * Exported so the choice is testable: `main` needs the network and a real
+ * store, and a test that grepped for `writeStore(store, path)` would prove only
+ * that the text appears — the empty check that shipped the L23 crash.
+ */
+export function resolveStorePath(store, cwd = process.cwd()) {
+  return store ? resolve(cwd, store) : STORE_PATH;
 }
 
 function parseArgs(argv) {
@@ -90,7 +118,8 @@ export async function pollOnce({ mint, window, store, apiKey, keySource, baseUrl
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const window = windowForDay(args.day);
-  const previous = readStore();
+  const storePath = resolveStorePath(args.store);
+  const previous = readStore(storePath);
 
   if (previous.mint && previous.mint !== args.mint) {
     throw new Error(
@@ -122,7 +151,7 @@ async function main() {
     }),
     baseUrl: args.baseUrl,
   });
-  writeStore(result.store);
+  writeStore(result.store, storePath);
 
   const total = Object.keys(result.store.callouts).length;
   console.log(
@@ -136,7 +165,7 @@ async function main() {
         'still inside the window. Settlement must use the per-wallet fallback (L5).',
     );
   }
-  console.log(`store: ${STORE_PATH}`);
+  console.log(`store: ${storePath}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
