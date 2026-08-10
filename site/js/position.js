@@ -4,10 +4,13 @@
 // widget. Paste any address, no wallet connection, and get an answer derived
 // in this browser from chain history plus a published snapshot.
 //
-// The callout lookup goes **from the visitor's browser straight to pump.fun**,
-// not proxied through us (§7.8). That is what makes this a verification tool
-// rather than a dashboard: the confirmation that a callout exists does not
-// depend on our snapshot being right.
+// The callout lookup was designed to go from the visitor's browser straight
+// to pump.fun (§7.8) — but their API answers 403 to any request whose Origin
+// is another website (measured at launch, 2026-08-10), which a browser always
+// sends. So it goes through `/callouts`, a dumb relay on this site's origin
+// that forwards exactly one path shape and cannot enrich what comes back
+// (scripts/lib/callout-proxy.mjs). The check stays advisory either way:
+// settlement pays from the published snapshots, not from this panel.
 
 import { computeHold, computeLocked, TimelineError } from '../../scripts/lib/timeline.mjs';
 import { lockoutWindow } from '../../scripts/lib/epoch.mjs';
@@ -167,7 +170,11 @@ async function loadCallouts({ config, address, window: epochWindow }) {
   }
 
   try {
-    const records = await fetchWalletCallouts(address, { apiKey: config.calloutApiKey });
+    const records = await fetchWalletCallouts(address, {
+      apiKey: config.calloutApiKey,
+      // Same-origin relay — pump.fun 403s a browser's cross-site Origin.
+      baseUrl: '/callouts',
+    });
     const forMint = records.filter((r) => isForMint(r, config.mint));
     const usable = forMint.filter(countable);
 
@@ -359,7 +366,7 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
           : 'no callout found'
       : null,
     source: SOURCES.pumpfun,
-    unavailable: loaded.callout.checked ? null : 'could not check — asked pump.fun and got no answer',
+    unavailable: loaded.callout.checked ? null : 'could not check — pump.fun did not answer',
   });
   table.append(row('called out today?', calloutCell, 'A call does not carry over to the next day.'));
 

@@ -146,7 +146,7 @@ export function standingFor(facts) {
       eligible: null,
       headline: 'Holdings qualify. The callout could not be checked.',
       detail: [
-        'This page asks pump.fun directly, from your browser, and the request did not come back.',
+        'This page asked pump.fun (relayed through this site, which pump.fun requires) and the request did not come back.',
         'Eligibility also needs a callout or a callout update today, so this is not an answer yet.',
       ],
     };

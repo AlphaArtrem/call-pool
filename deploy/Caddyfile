@@ -42,6 +42,14 @@ callpool.fun, www.callpool.fun {
 		reverse_proxy 127.0.0.1:8099
 	}
 
+	# The callout relay — same Node process, same narrowness argument as /rpc:
+	# lib/callout-proxy.mjs forwards exactly one path shape to pump.fun's
+	# callout API, because that API 403s any browser Origin that is not
+	# pump.fun and the wallet panel's check cannot be made from the page.
+	handle /callouts/* {
+		reverse_proxy 127.0.0.1:8099
+	}
+
 	# ── the page ────────────────────────────────────────────────────────
 	#
 	# `/` serves site/index.html with the URL unchanged — a rewrite, not a
@@ -152,15 +160,13 @@ callpool.fun, www.callpool.fun {
 	# The page loads no third-party anything — the web3.js bundle is
 	# vendored precisely so it does not — so most of this can be strict.
 	#
-	# `connect-src` is the one that earns its place: with the key behind
-	# /rpc, this is what stops anything on the page from talking to a chain
-	# endpoint that is not ours. `api.coin-communities.xyz` is the single
-	# allowed exception (launch day, 2026-08-10): the wallet panel's callout
-	# check deliberately asks pump.fun's callout API from the visitor's own
-	# browser — that browser-direct path is the point of the feature — and
-	# 'self' alone blocked it, which surfaced only on the live site because
-	# no rehearsal runs a real browser against the real API. Chain
-	# endpoints stay blocked; this is the callout database, not a chain.
+	# `connect-src 'self'` is the one that earns its place: with the key
+	# behind /rpc, this is what stops anything on the page from talking to a
+	# chain endpoint that is not ours. (Launch day 2026-08-10: it was briefly
+	# widened for the wallet panel's browser-direct callout check, before
+	# measurement showed pump's API 403s every foreign browser Origin anyway
+	# — the check now rides the same-origin /callouts relay, so 'self' is
+	# again the whole policy.)
 	#
 	# ⚠️ `script-src` carries 'unsafe-inline' because index.html has two
 	# inline pieces, and a hash covers neither well:
@@ -181,7 +187,7 @@ callpool.fun, www.callpool.fun {
 	# style-src is strict: the page has one stylesheet, no <style> blocks, no
 	# style attributes and nothing writing cssText. Verified 2026-08-05.
 	header {
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.coin-communities.xyz; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		Referrer-Policy "no-referrer"
 		X-Content-Type-Options "nosniff"
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

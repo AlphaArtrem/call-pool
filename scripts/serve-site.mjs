@@ -46,7 +46,8 @@ import { createServer } from 'node:http';
 import { extname, join } from 'node:path';
 
 import { REPO_ROOT } from './lib/store.mjs';
-import { createRateLimiter, handleRpc, resolveUpstream } from './lib/rpc-proxy.mjs';
+import { CALLOUT_PROXY_PREFIX, handleCalloutProxy } from './lib/callout-proxy.mjs';
+import { clientKey, createRateLimiter, handleRpc, resolveUpstream } from './lib/rpc-proxy.mjs';
 import { resolvePath } from './lib/site-paths.mjs';
 
 const TYPES = {
@@ -58,6 +59,7 @@ const TYPES = {
   '.csv': 'text/csv; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.png': 'image/png',
 };
 
 const args = process.argv.slice(2);
@@ -133,6 +135,18 @@ const server = createServer(async (req, res) => {
       trustProxy,
       log: (line) => console.warn(line),
     });
+    return;
+  }
+
+  // The callout relay (see lib/callout-proxy.mjs for why a browser cannot ask
+  // pump.fun itself). Behind the same limiter as /rpc: alternating routes must
+  // not buy anyone a second budget.
+  if (route.startsWith(`${CALLOUT_PROXY_PREFIX}/`)) {
+    if (!limiter.take(clientKey(req, { trustProxy })).allowed) {
+      res.writeHead(429, { 'content-type': 'text/plain' }).end('rate limited\n');
+      return;
+    }
+    await handleCalloutProxy(req, res, { log: (line) => console.warn(line) });
     return;
   }
 
