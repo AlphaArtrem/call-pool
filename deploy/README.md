@@ -244,6 +244,64 @@ exactly like a fresh one. That is why `watchdog.mjs` checks the file's age
 (`--sample-stale`, default 2h) — it is the only failure in the system whose
 symptom is a page that looks completely healthy.
 
+## Counting visitors without a third party
+
+The page loads no analytics script, sets no cookie and asks for no consent —
+`connect-src 'self'` would block one anyway, and shipping someone else's
+JavaScript to a page whose whole claim is "nothing here passed through anyone
+else's server" would be a poor trade for a dashboard.
+
+The number comes from our own log instead. Caddy already writes one JSON line
+per request to journald; `scripts/tools/visitor-rollup.mjs` turns a day of them
+into one record and throws the identifiers away.
+
+```bash
+install -m 0644 deploy/callpool-visitor-rollup.{service,timer} /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now callpool-visitor-rollup.timer
+
+# the numbers, any time
+sudo -u callpool node /srv/callpool/scripts/tools/visitor-rollup.mjs --print
+```
+
+Box A only — the journal is on the machine that served the requests.
+
+Three figures per UTC day, and the middle one is the one people misread:
+
+| field | what it is |
+|---|---|
+| `pageviews` | requests for the page. Traffic, not people. |
+| `visitors` | distinct ip+UA on the page, minus agents that admit they are bots. **An upper bound.** |
+| `rendered` | distinct ip+UA that also fetched `/site/app.css`. A browser drew the page. |
+
+`rendered` is the honest headcount, and the gap is not small: over the first
+28 hours of live traffic, **60% of the requests for `/` never fetched a single
+asset afterwards.** Scanners read markup; they do not fetch stylesheets.
+
+Two properties worth not breaking:
+
+- **Nothing identifying is written.** A day is aggregated in one pass, the
+  ip+UA pairs live in a `Set` for the duration of it, and what lands on disk is
+  `{"date":…,"rendered":25}`. There is no salt and no stored hash because there
+  is no stored row for one to protect. The price is that distinct counts cannot
+  be merged — summing seven days over-counts anyone who returned, which is why
+  the tool prints "browser visits" rather than "visitors" under the total.
+- **`epochs/visitors.jsonl` is not in Caddy's allowlist**, and `epochs/` must
+  stay out of it.
+
+### journald is the clock, and it is shorter than it looks
+
+Caddy has been up since 2026-08-05 10:52 UTC. On 2026-08-10 the oldest access
+line in the journal was from **08-09 05:52** — three and a half days of
+launch-week traffic gone. Not rotated for size (35 MB against a 1 GB cap); lost
+when the journal was reinitialised, with nothing logged about it, because from
+journald's point of view nothing went wrong.
+
+So the timer runs hourly rather than daily, and `Persistent=true` so a missed
+run catches up on boot. Once a day has left the journal, `visitors.jsonl` is
+the only place it still exists — which is why a rollup never drops a stored day
+it cannot re-derive.
+
 ## The callout API key needs no configuration
 
 There is deliberately nothing to set. `x-api-key` for `api.coin-communities.xyz`

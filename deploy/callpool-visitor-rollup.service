@@ -1,0 +1,63 @@
+# CALLPOOL — count the site's visitors from our own access log.
+#
+#   install -m 0644 deploy/callpool-visitor-rollup.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now callpool-visitor-rollup.timer
+#
+# **Box A only.** The journal it reads is on the machine that served the
+# requests; there is no central log and this is not a reason to build one.
+#
+# The page loads no analytics script, sets no cookie and asks for no consent —
+# the same property `connect-src 'self'` protects in the Caddyfile. This is how
+# we still get a number: Caddy already writes one JSON line per request to
+# journald, and this turns a day of them into `{"date":…,"rendered":25}`.
+# Nothing that could identify a visitor is written anywhere; see the header of
+# scripts/lib/visitors.mjs for why there is no salt and no stored hash.
+#
+# ## Why it needs the journal group, and nothing else
+#
+# `journalctl -u caddy` reads another unit's log, which needs `systemd-journal`
+# membership. That is the whole privilege escalation here: no network
+# (PrivateNetwork=true — this job talks to nobody), no key, no chain access.
+# It is the only unit in this directory that holds no secret at all, which is
+# also why it is safe to leave running through a launch.
+#
+# ## What breaks it silently
+#
+# Writing to `epochs/visitors.jsonl` under /srv/callpool, which is a **web
+# root**. It is not in Caddy's allowlist — only site/, scripts/lib/ and
+# snapshots/ are — so it is not reachable, and that must stay true if the
+# allowlist is ever widened.
+
+[Unit]
+Description=CALLPOOL — roll up website visitor counts from the Caddy log
+Documentation=https://github.com/AlphaArtrem/call-pool
+After=caddy.service
+
+[Service]
+Type=oneshot
+User=callpool
+Group=callpool
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/srv/callpool
+ExecStart=/usr/bin/node scripts/tools/visitor-rollup.mjs --days 2
+
+# Two days of one small site's access log, parsed once. Seconds. If this ever
+# approaches the limit, the journal has grown far past what a per-request
+# parser should be reading and the answer is a narrower --since, not a longer
+# timeout.
+TimeoutStartSec=300
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/srv/callpool/epochs

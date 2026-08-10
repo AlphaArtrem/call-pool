@@ -1,0 +1,45 @@
+# CALLPOOL — hourly visitor rollup.
+#
+# The only timer at this level of deploy/. The others live under the profile
+# directories because their period is the epoch length, and getting that wrong
+# is how run 2 hid a dead crank for two hours. This one has nothing to do with
+# the epoch clock: it counts a calendar day of web traffic, and a calendar day
+# is 24 hours on devnet, on mainnet and during a rehearsal alike.
+#
+# ## Hourly, though the record is daily
+#
+# The file is keyed by UTC date, so once a day would be enough to finish each
+# day. Hourly is for the two things that only hourly gives:
+#
+#   * a figure on disk that is never more than an hour stale, so `--print`
+#     answers "how is launch day going" without waiting for midnight;
+#   * twenty-four chances to capture a day rather than one. journald has
+#     already eaten three and a half days of this site's launch-week traffic
+#     without reporting anything, and every hour that passes between a request
+#     and its rollup is an hour it can be lost in. The re-run is exactly
+#     idempotent — `mergeHistory` replaces a day's record rather than adding to
+#     it — so the extra runs cost a log parse and nothing else.
+#
+# **Persistent=true**, unlike the hourly sampler next to it. That one refuses
+# to catch up because republishing a stale estimate with a fresh timestamp is
+# worse than a gap. This is the opposite case: a missed run is a day that may
+# no longer be in the journal by the time anyone notices, and catching up on
+# boot is the only thing that recovers it.
+
+[Unit]
+Description=CALLPOOL — roll up website visitor counts hourly
+Documentation=https://github.com/AlphaArtrem/call-pool
+
+[Timer]
+OnCalendar=hourly
+# Off the hour, so it is not parsing the journal at the same minute the callout
+# poll and the standings sampler are working. Nothing breaks if it is — they
+# share no file — but a single-core box under launch traffic has better uses
+# for that minute.
+RandomizedDelaySec=300
+AccuracySec=1m
+Persistent=true
+Unit=callpool-visitor-rollup.service
+
+[Install]
+WantedBy=timers.target

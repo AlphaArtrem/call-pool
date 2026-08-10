@@ -55,6 +55,11 @@ epochs/callout-key.json
 # store and its snapshots. None of it is evidence of anything and a fake epoch
 # in the audit trail is worse than no audit trail.
 epochs/devnet/
+# Daily visitor counts rolled up from box A's Caddy log. Aggregates only — no
+# IP, no User-Agent, nothing that names anyone — but it is a fact about one
+# machine's traffic, not about the mechanic, and it belongs to the box that
+# produced it rather than to the repository.
+epochs/visitors.jsonl
 
 # ─────────────────────────────────────────────────────────────
 # Build output and dependencies
