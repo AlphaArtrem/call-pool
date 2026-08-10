@@ -31,8 +31,16 @@ import {
   MINT_DECIMALS,
 } from './config.mjs';
 
-/** L14. The mainnet challenge window, in seconds. */
-export const CHALLENGE_SECONDS = 86_400;
+/**
+ * L19 (supersedes L14). The mainnet challenge window, in seconds.
+ *
+ * Five minutes, so holders are paid within minutes of 00:00 UTC the same
+ * night; the public snapshots are the audit trail after the fact. This
+ * constant sat at L14's 86_400 until the actual launch (2026-08-10), which
+ * made the preflight refuse the ruled value at the moment it mattered —
+ * DECISIONS-LOCKED L19 is the ruling, and this file mirrors it.
+ */
+export const CHALLENGE_SECONDS = 300;
 
 /** Mirrors `min_raw_floor` in lib.rs — the on-chain guard, restated. */
 export const minRawFloor = (decimals) => 10n ** BigInt(decimals);
@@ -135,8 +143,8 @@ export function checkParameters({ minHold, epochSeconds, challengeSeconds, genes
       problem(
         true,
         'challenge_seconds',
-        `challenge_seconds is ${challengeSeconds}, not ${expectedChallenge} (L14). The window is ` +
-          'the only thing standing between a wrong root and a paid one.',
+        `challenge_seconds is ${challengeSeconds}, not ${expectedChallenge} (L19). A rehearsal ` +
+          'window reaching mainnet is permanent, and L14’s 86400 pays everyone two days late.',
       ),
     );
   }
