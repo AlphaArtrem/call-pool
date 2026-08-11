@@ -16,8 +16,10 @@ import { multipleAccounts } from './chain.js';
 import { epochIndices, totalClaimed } from './history.js';
 import { openDay0Details, openEpochDetails } from './epoch-details.js';
 import { pageOf } from './paging.js';
+import { largestShare } from './payouts.js';
+import { snapshotUrl } from './config.js';
 import { exactTitle, formatSol, formatSolShort } from './standing.js';
-import { addressNode, field, SOURCES } from './ui.js';
+import { field, SOURCES } from './ui.js';
 
 /**
  * Read every epoch since genesis, newest first.
@@ -74,7 +76,7 @@ export function renderEpochs(tbody, epochs, config, { pager = null, emptyNote = 
     }
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 5;
     td.className = 'pending';
     // Before the first settled day this is the only thing in the section, so
     // it has to answer "is this broken, am I early, or did something go
@@ -125,16 +127,22 @@ function day0Row(day0, config) {
     return td;
   };
 
-  cell('Genesis', 'mono');
-  cell(`${formatSol(day0.potLamports)} SOL`, 'mono num');
+  cell('Genesis', 'mono day-cell');
+  cell(`${formatSol(day0.allocateLamports)} SOL`, 'mono num paid-cell')
+    .title = exactTitle(day0.allocateLamports);
   cell(String(day0.paidCount), 'mono num');
-  cell(`${formatSol(day0.allocateLamports)} SOL`, 'mono num');
-  cell(`${formatSol(day0.potLamports - day0.allocateLamports)} SOL`, 'mono num');
 
-  const fp = document.createElement('span');
-  fp.className = 'pending';
-  fp.textContent = 'paid from the creator-fee share';
-  cell(fp);
+  // Day 0's shares come from day0.json's own standings, which app.js has
+  // already read — no tree.json exists for a day that was never an epoch.
+  const largest = document.createElement('span');
+  if (day0.largestLamports == null) {
+    largest.className = 'pending';
+    largest.textContent = '—';
+  } else {
+    largest.textContent = `${formatSolShort(day0.largestLamports)} SOL`;
+    largest.title = exactTitle(day0.largestLamports);
+  }
+  cell(largest, 'mono num');
 
   const details = document.createElement('button');
   details.type = 'button';
@@ -202,11 +210,11 @@ function epochRow(epoch, config) {
     return td;
   };
 
-  cell(String(epoch.index), 'mono');
+  cell(`Day ${epoch.index}`, 'mono day-cell');
 
   if (!epoch.posted) {
     const td = document.createElement('td');
-    td.colSpan = 6;
+    td.colSpan = 4;
     td.className = 'pending';
     td.textContent = 'not posted';
     tr.append(td);
@@ -214,28 +222,19 @@ function epochRow(epoch, config) {
     return tr;
   }
 
-  cell(`${formatSol(epoch.poolLamports)} SOL`, 'mono num');
+  cell(`${formatSol(epoch.claimedLamports)} SOL`, 'mono num paid-cell')
+    .title = exactTitle(epoch.claimedLamports);
   cell(String(epoch.leafCount), 'mono num');
-  cell(`${formatSol(epoch.claimedLamports)} SOL`, 'mono num');
-  cell(`${formatSol(epoch.poolLamports - epoch.claimedLamports)} SOL`, 'mono num');
+  cell(largestCell(epoch, config), 'mono num');
 
-  // The root, and the two things about it a reader should be able to see at a
-  // glance: whether it is the empty-epoch zero root, and whether the bitmap
-  // the signer sized can actually hold every leaf (D2).
-  const rootCell = document.createElement('span');
-  if (isZeroRoot(epoch)) {
-    rootCell.className = 'pending';
-    rootCell.textContent = 'nobody called out that day';
-  } else {
-    rootCell.append(addressNode(rootHex(epoch), { truncate: true }));
-    if (!bitmapIsSized(epoch)) {
-      const warn = document.createElement('strong');
-      warn.className = 'warn';
-      warn.textContent = ' ⚠️ bitmap too small for leaf_count — some leaves cannot be claimed';
-      rootCell.append(warn);
-    }
+  // D2's check has no column of its own now, but an undersized bitmap means
+  // somebody cannot be paid — too loud to leave to a dialog nobody opens.
+  if (!isZeroRoot(epoch) && !bitmapIsSized(epoch)) {
+    const warn = document.createElement('strong');
+    warn.className = 'warn';
+    warn.textContent = '⚠️ bitmap too small for leaf_count — some leaves cannot be claimed';
+    tr.firstElementChild.append(' ', warn);
   }
-  cell(rootCell);
 
   // One button, not a row of links. The links, the posting time and the payee
   // list all live behind it — a cell that carried them inline made the widest
@@ -255,6 +254,68 @@ function epochRow(epoch, config) {
   cell(details);
 
   return tr;
+}
+
+// ── largest share ───────────────────────────────────────────────────────
+//
+// The one column that is not on chain: the biggest single allocation that day,
+// which only the published `tree.json` knows. It is filled in after the row is
+// drawn rather than blocking the table on a fetch per row — the rest of the
+// row is chain data and must not wait on a file of ours to appear.
+
+/**
+ * Epoch index → the largest leaf, or null when there is no published tree.
+ *
+ * Cached for the life of the page and never invalidated, because a settled
+ * epoch's tree is immutable: the root for it is posted on chain, so a tree
+ * that changed would no longer hash to the day it belongs to.
+ */
+const largestCache = new Map();
+
+function largestCell(epoch, config) {
+  const span = document.createElement('span');
+
+  if (largestCache.has(epoch.index)) {
+    renderLargest(span, largestCache.get(epoch.index));
+    return span;
+  }
+
+  span.className = 'pending';
+  span.textContent = '…';
+  readLargest(epoch.index, config).then((largest) => {
+    largestCache.set(epoch.index, largest);
+    // The minute refresh may have replaced this cell while the fetch was in
+    // flight. That render reads the cache, which is now warm, so dropping the
+    // result here loses nothing.
+    if (span.isConnected) renderLargest(span, largest);
+  });
+  return span;
+}
+
+function renderLargest(span, largest) {
+  if (largest == null) {
+    span.className = 'pending';
+    // Not "0 SOL": a day we have not read the working for is a different fact
+    // from a day that allocated nothing to anybody.
+    span.textContent = '—';
+    span.title = 'No published working for this day yet, so the shares in it are not known here.';
+    return;
+  }
+  span.className = '';
+  span.textContent = `${formatSolShort(largest)} SOL`;
+  span.title = exactTitle(largest);
+}
+
+async function readLargest(index, config) {
+  const url = snapshotUrl(config, index, 'tree.json');
+  if (!url) return null;
+  try {
+    const answer = await fetch(url, { cache: 'no-store' });
+    return answer.ok ? largestShare(await answer.json()) : null;
+  } catch {
+    // A day whose working cannot be read is reported as unread, not as empty.
+    return null;
+  }
 }
 
 /**

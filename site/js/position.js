@@ -33,6 +33,7 @@ import {
   payoutHistory,
   projectedShare,
   sampledShare,
+  withGenesis,
 } from './payouts.js';
 import {
   exactTitle,
@@ -64,7 +65,7 @@ export function looksLikeAddress(value) {
  */
 export async function loadPosition({
   connection, config, address, window: epochWindow, now,
-  settledEpochs = [], poolLamports = 0n, minHoldRaw = null, provisional = null,
+  settledEpochs = [], poolLamports = 0n, minHoldRaw = null, provisional = null, day0 = null,
 }) {
   const tokenProgram = await tokenProgramForMint(connection, config.mint);
   const ata = associatedTokenAddress(address, config.mint, tokenProgram);
@@ -102,7 +103,9 @@ export async function loadPosition({
   });
 
   const walletKey = address.toBase58 ? address.toBase58() : String(address);
-  const payouts = payoutHistory(trail, walletKey);
+  // The genesis payout has no tree to be read from, so it is folded in here
+  // rather than fetched — app.js already read day0.json for the record table.
+  const payouts = withGenesis(payoutHistory(trail, walletKey), day0?.paidTo?.get(walletKey) ?? null);
   // The basis for today is the newest settled tree the wallet appears in.
   const newest = [...trail].sort((a, b) => b.epoch - a.epoch)[0] ?? null;
 
@@ -379,7 +382,7 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
     table.append(row('locked out', lockCell, 'Buying back does not shorten it.'));
   }
 
-  renderTiles(nodes.tiles, loaded);
+  renderTiles(nodes.tiles, loaded, standing);
   renderDays(nodes.days, nodes.dayRows, loaded.payouts);
 
   return standing;
@@ -396,8 +399,12 @@ export function renderPosition(nodes, loaded, { config, minHoldRaw, window: epoc
  * `owed > 0`, which painted the ordinary "settled today, the airdrop runs
  * after the challenge window" state as a fault — the single most common state
  * there is. Now only `needsAttention` (a recorded airdrop *failure*) is amber.
+ *
+ * The one thing that is never simply absent is today's estimate. A missing
+ * figure there was read as a broken panel rather than as "there is nothing to
+ * compute one from", so every path below ends in a tile that says which.
  */
-function renderTiles(container, loaded) {
+function renderTiles(container, loaded, standing = null) {
   if (!container) return;
   container.replaceChildren();
 
@@ -405,12 +412,27 @@ function renderTiles(container, loaded) {
   const settled = payouts && payouts.rows.length > 0;
   const tiles = [];
 
+  // Always present, and the largest thing in the panel: "how much has this
+  // wallet actually been paid" is the question people come here to ask, and a
+  // tile that disappears when the answer is "none yet" reads as a panel that
+  // failed to load rather than as an answer.
+  tiles.push({
+    label: 'Paid so far',
+    lead: true,
+    lamports: settled ? payouts.paid : null,
+    // Never `0 SOL` — a measured zero and "no settled day has paid this wallet
+    // anything yet" are different claims, and only one of them is true here.
+    text: settled ? null : 'nothing yet',
+    note: !settled
+      ? 'No day has paid this wallet yet. Days appear here as they settle.'
+      // The genesis payout is in this figure when there was one, so the note
+      // has to account for it — it is not a settled day and never will be.
+      : payouts.rows.some((r) => r.label)
+        ? 'Delivered on settled days, and at genesis.'
+        : 'Delivered on settled days.',
+  });
+
   if (settled) {
-    tiles.push({
-      label: 'Paid so far',
-      lamports: payouts.paid,
-      note: 'Delivered on settled days.',
-    });
     tiles.push({
       label: 'Owed',
       lamports: payouts.owed,
@@ -425,7 +447,10 @@ function renderTiles(container, loaded) {
           // than a queue. Say so: `needsAttention` only fires on a *recorded*
           // airdrop failure, so the case where the job never ran at all has no
           // other signal on the page.
-          ? 'Allocated and not yet sent. The airdrop runs as soon as the checking window closes — minutes after the day settles, not the next day. If this has not cleared within the hour, something has stalled and it is worth reporting.'
+          // L19 — minutes, not a day. An "owed" that outlives the hour is a
+          // stopped crank, and saying so is the only signal for the case where
+          // the job never ran at all.
+          ? 'Allocated and not yet sent. The airdrop runs minutes after a day settles — still here in an hour means something has stalled.'
           : 'Every settled day has paid out or correctly withheld.',
     });
   }
@@ -438,6 +463,7 @@ function renderTiles(container, loaded) {
   if (sampled?.eligible && sampled.indicative != null) {
     tiles.push({
       label: 'Estimated today',
+      accent: true,
       lamports: sampled.indicative,
       approximate: true,
       note: describeEstimate(sampled, loaded.now),
@@ -445,17 +471,41 @@ function renderTiles(container, loaded) {
   } else if (loaded.projected) {
     tiles.push({
       label: 'Estimated today',
+      accent: true,
       lamports: loaded.projected.indicative,
       approximate: true,
+      // Said plainly, because this basis is the weaker of the two: a holder
+      // who bought partway through the basis day is understated by it, through
+      // no fault of their own.
       note:
-        `Not owed and not promised — today has not settled. Your share of day ` +
-        `${loaded.projected.basisEpoch}, applied to the pool as it stands now. ` +
-        // Said plainly, because this basis is the weaker of the two and a
-        // holder who bought partway through that day is being understated by
-        // it — through no fault of their own and with nothing on screen to
-        // explain the low number.
-        `Today’s own figures have not been sampled yet, so this leans on that day: ` +
-        `if you were only holding for part of it, this reads low.`,
+        `Not owed and not promised — your share of day ${loaded.projected.basisEpoch}, ` +
+        `applied to the pool now. Today has not been sampled yet, so this reads low ` +
+        `if you held for only part of that day.`,
+    });
+  } else if (sampled && !sampled.eligible) {
+    // The sample HAS been read and this wallet is not in today's eligible set.
+    // Silence here reads as a broken panel to the one person who most needs a
+    // straight answer, so the tile stays and says which of the two reasons.
+    tiles.push({
+      label: 'Estimated today',
+      text: 'nothing yet',
+      note: sampled.locked
+        ? 'Locked out, so today pays this wallet nothing. See the lockout row below.'
+        : !sampled.meetsFloor
+          ? 'Under the minimum today, so no share of today’s split.'
+          : 'No weight in today’s split yet — no callout on record, or nothing held.',
+    });
+  } else if (standing?.eligible !== false) {
+    // Eligible, or too early to say, and there is nothing to compute an
+    // estimate FROM: no hourly sample published and no settled day to lean on.
+    // That is a fact about our publishing, not about this wallet, and the
+    // panel says so rather than leaving a gap where a figure belongs.
+    tiles.push({
+      label: 'Estimated today',
+      text: 'not yet',
+      note:
+        'Nothing to work one out from yet — today has not been sampled and no day has settled. ' +
+        'Whether this wallet is earning is the standing above.',
     });
   }
 
@@ -464,16 +514,27 @@ function renderTiles(container, loaded) {
 
   for (const tile of tiles) {
     const item = document.createElement('div');
-    item.className = tile.warn ? 'tile tile-warn' : 'tile';
+    // `lead` is the paid figure: the same green the wall gives the pool, and a
+    // size above everything else in the panel.
+    item.className = ['tile', tile.lead ? 'tile-lead' : '', tile.accent ? 'tile-accent' : '',
+      tile.warn ? 'tile-warn' : '']
+      .filter(Boolean)
+      .join(' ');
 
     const dt = document.createElement('dt');
     dt.textContent = tile.label;
 
     const dd = document.createElement('dd');
-    dd.className = 'tile-value';
-    dd.textContent = `${tile.approximate ? '≈ ' : ''}${solText(tile.lamports)}`;
-    // Short for reading, exact for checking. Never one without the other.
-    dd.title = exactTitle(tile.lamports);
+    dd.className = tile.text ? 'tile-value is-empty' : 'tile-value';
+    if (tile.text) {
+      // A word, not a zero. `0 SOL` here would assert that today's split
+      // considered this wallet and gave it nothing.
+      dd.textContent = tile.text;
+    } else {
+      dd.textContent = `${tile.approximate ? '≈ ' : ''}${solText(tile.lamports)}`;
+      // Short for reading, exact for checking. Never one without the other.
+      dd.title = exactTitle(tile.lamports);
+    }
 
     const note = document.createElement('p');
     note.className = 'tile-note';
@@ -506,7 +567,8 @@ function renderDays(section, tbody, payouts) {
     if (entry.state === DELIVERY.failed) dayCell.className = 'warn';
     dayCell.textContent = describeDelivery(entry, solText);
     dayCell.title = exactTitle(entry.amount);
-    tbody.append(row(`day ${entry.epoch}`, dayCell));
+    // `label` is the genesis payout, which has no epoch number to print.
+    tbody.append(row(entry.label ?? `day ${entry.epoch}`, dayCell));
   }
 }
 

@@ -50,9 +50,37 @@ export function escapeHtml(value) {
  *
  * `value == null` is not zero and not blank: it renders the pending or
  * unavailable state, which is the §7.4 rule made mechanical.
+ *
+ * `placeholder` is the one exception, and only before launch. It renders a
+ * formatted zero in the slot — so the page shows the shape a real reading will
+ * take rather than a sentence where a number goes — but dimmed, and with the
+ * reason in the badge slot. That is deliberate: the badge slot is already where
+ * this page answers "where did this number come from", and "not launched yet"
+ * is an answer to that question. What it must never do is look like a reading,
+ * which is why it is never styled as one. Do not reach for this for a failed
+ * RPC: a zero that means "we could not look" is the exact lie §7.3 forbids.
  */
-export function field(node, { value, source, pending = 'reading…', unavailable = null }) {
+export function field(
+  node,
+  { value, source, pending = 'reading…', unavailable = null, placeholder = null, title = null },
+) {
   node.replaceChildren();
+
+  if (value == null && placeholder != null) {
+    const zero = document.createElement('span');
+    zero.className = 'value is-placeholder';
+    zero.textContent = placeholder;
+    node.append(zero);
+
+    if (unavailable) {
+      const badge = document.createElement('span');
+      badge.className = 'source source-placeholder';
+      badge.textContent = unavailable;
+      badge.title = 'Not a reading. The coin has not launched, so this is what the slot will look like once there is something in it.';
+      node.append(' ', badge);
+    }
+    return;
+  }
 
   if (value == null) {
     const span = document.createElement('span');
@@ -65,6 +93,10 @@ export function field(node, { value, source, pending = 'reading…', unavailable
   const valueNode = document.createElement('span');
   valueNode.className = 'value';
   valueNode.textContent = value;
+  // The exact figure behind a rounded one. `formatSolShort` is only ever
+  // allowed on screen when the full-precision value is one hover away — see
+  // the note on it in standing.js.
+  if (title) valueNode.title = title;
   node.append(valueNode);
 
   if (source) {
@@ -120,8 +152,20 @@ export function failure(node, { what, error, consequence }) {
   }
 }
 
-/** A copyable address, monospace, with the copy affordance built in. */
-export function addressNode(address, { href = null, truncate = false } = {}) {
+/** The middle-elided form: enough of both ends to check against a pinned post. */
+function shortForm(address) {
+  return `${address.slice(0, 6)}…${address.slice(-6)}`;
+}
+
+/** A copyable address, monospace, with the copy affordance built in.
+ *
+ * `responsive` renders *both* forms and lets CSS pick one by viewport width —
+ * a phone has no room for 44 base58 characters next to a label and a button.
+ * Both spans are decoration as far as assistive tech is concerned: the element
+ * carries the full address as its accessible name, so the reading is the same
+ * at every width and does not depend on which span is currently displayed.
+ */
+export function addressNode(address, { href = null, truncate = false, responsive = false } = {}) {
   const wrap = document.createElement('span');
   wrap.className = 'address';
 
@@ -132,7 +176,18 @@ export function addressNode(address, { href = null, truncate = false } = {}) {
     text.target = '_blank';
   }
   text.className = 'mono';
-  text.textContent = truncate ? `${address.slice(0, 6)}…${address.slice(-6)}` : address;
+  if (responsive) {
+    const full = document.createElement('span');
+    full.className = 'addr-full';
+    full.textContent = address;
+    const short = document.createElement('span');
+    short.className = 'addr-short';
+    short.textContent = shortForm(address);
+    text.append(full, short);
+    text.setAttribute('aria-label', address);
+  } else {
+    text.textContent = truncate ? shortForm(address) : address;
+  }
   text.title = address;
 
   const copy = document.createElement('button');
@@ -188,13 +243,15 @@ function svg(name, attrs = {}) {
  * beside it is a shape the reader has to trust; this page does not ask for
  * that anywhere else and will not start here.
  */
-export function bars(node, { series, empty, unavailable = false }) {
-  const rows = barSeries(series);
+export function bars(node, { series, empty, unavailable = false, placeholder = false }) {
+  const rows = placeholder
+    ? series.map((s) => ({ label: s.label, ratio: 0, display: s.display, secondary: s.secondary === true }))
+    : barSeries(series);
   if (rows == null) return chartState(node, empty, { unavailable });
 
   node.replaceChildren();
   const stack = document.createElement('div');
-  stack.className = 'bar-stack';
+  stack.className = placeholder ? 'bar-stack is-placeholder' : 'bar-stack';
 
   for (const bar of rows) {
     const row = document.createElement('div');
@@ -229,13 +286,17 @@ export function bars(node, { series, empty, unavailable = false }) {
  * `label` becomes the accessible name, because an <svg role="img"> with no
  * name is invisible to a screen reader and the shape is the whole point.
  */
-export function sparkline(node, { values, label, empty, unavailable = false }) {
-  const path = sparkPath(values);
+export function sparkline(node, { values, label, empty, unavailable = false, placeholder = false }) {
+  // A flat line along the floor of the box: the shape a series of zeros really
+  // has, drawn dim so it cannot be mistaken for a run of settled days.
+  const path = placeholder
+    ? { line: 'M 0 53 L 220 53', area: 'M 0 53 L 220 53 L 220 56 L 0 56 Z', last: { x: 220, y: 53 } }
+    : sparkPath(values);
   if (path == null) return chartState(node, empty, { unavailable });
 
   node.replaceChildren();
   const chart = svg('svg', {
-    class: 'sparkline',
+    class: placeholder ? 'sparkline is-placeholder' : 'sparkline',
     viewBox: '0 0 220 56',
     preserveAspectRatio: 'none',
     role: 'img',
@@ -256,17 +317,26 @@ export function sparkline(node, { values, label, empty, unavailable = false }) {
  * Drawn from the on-chain window rather than the visitor's calendar, so a
  * rehearsal deployment running short epochs draws short epochs.
  */
-export function progressRail(node, { window: w, now, challengeSeconds, empty, unavailable = false }) {
-  const progress = epochProgress({ window: w, now, challengeSeconds });
+export function progressRail(
+  node,
+  { window: w, now, challengeSeconds, empty, unavailable = false, placeholder = false },
+) {
+  // Before launch there is no round to be part-way through, so the rail sits at
+  // zero rather than refusing to draw — same geometry, dimmed.
+  const progress = placeholder
+    ? { elapsed: 0, challengeShare: 0 }
+    : epochProgress({ window: w, now, challengeSeconds });
   if (progress == null) return chartState(node, empty, { unavailable });
 
   node.replaceChildren();
   const rail = document.createElement('div');
-  rail.className = 'rail';
+  rail.className = placeholder ? 'rail is-placeholder' : 'rail';
   rail.setAttribute('role', 'img');
   rail.setAttribute(
     'aria-label',
-    `Today’s round is ${Math.round(progress.elapsed * 100)}% through.`,
+    placeholder
+      ? 'No round is running yet. The rail is empty until the coin launches.'
+      : `Today’s round is ${Math.round(progress.elapsed * 100)}% through.`,
   );
 
   const elapsed = document.createElement('span');
@@ -289,11 +359,15 @@ export function progressRail(node, { window: w, now, challengeSeconds, empty, un
   }
 
   const legend = document.createElement('div');
-  legend.className = 'rail-legend';
+  legend.className = placeholder ? 'rail-legend is-placeholder' : 'rail-legend';
   const left = document.createElement('span');
   left.textContent = `${Math.round(progress.elapsed * 100)}% elapsed`;
   const right = document.createElement('span');
-  right.textContent = progress.challengeShare > 0 ? 'then the checking window' : 'today';
+  right.textContent = placeholder
+    ? 'not started'
+    : progress.challengeShare > 0
+      ? 'then the checking window'
+      : 'today';
   legend.append(left, right);
 
   node.append(rail, legend);

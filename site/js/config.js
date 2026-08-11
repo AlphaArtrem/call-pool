@@ -110,6 +110,7 @@ export function siteConfig(root = globalThis.CALLPOOL_SITE_CONFIG, search) {
     // yet" chip in the top bar rather than a link nobody has checked.
     links: {
       x: orNull(root?.links?.x),
+      telegram: orNull(root?.links?.telegram),
       github: orNull(root?.links?.github),
     },
     rpc: absoluteRpc(orNull(forCluster.rpc)),

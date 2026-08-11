@@ -457,25 +457,14 @@
             </div>
           </div>
 
-          <div class="clocks">
-            <!--
-              The two headings are hidden rather than deleted: each clock's note
-              already names which one it is, and the pair read as a duplicated
-              label above a duplicated label. They stay in the markup for the
-              screen reader, which gets no help from the visual pairing.
-            -->
-            <div class="clock-cell clock-daily">
-              <h3 class="visually-hidden">The payout — this is the real one</h3>
-              <p id="daily-clock" class="clock-label"></p>
-              <p class="note">The real payout. Every transfer replayed, nothing estimated.</p>
-            </div>
-            <div class="clock-cell clock-hourly">
-              <h3 class="visually-hidden">The hourly estimate</h3>
-              <p id="hourly-clock" class="clock-label"></p>
-              <p class="badge badge-provisional">estimate</p>
-              <p class="note">Today so far, worked out the same way. Not a payout.</p>
-            </div>
-          </div>
+          <!--
+            The two clock cells that used to sit here are gone. Both counted
+            things "The pool right now" already counts — the day's close, on
+            its own strip, and the hourly sample, in the hero ledger — and a
+            second copy of a countdown is a second chance for the two to
+            disagree on screen. The steps above say when each thing happens;
+            the live figures belong to the section that reads them.
+          -->
 
           <details class="tile">
             <summary>Why the estimate and the payout can differ</summary>
@@ -1027,16 +1016,16 @@ divisible(d)    =  the pool's balance, less rent, less what
             <table class="receipts epochs">
               <thead>
                 <tr>
+                  <!-- Five columns, matching the redesign comp. The pool, the
+                       unclaimed remainder and the merkle root left the table
+                       for the Details dialog, which restates all three: they
+                       are what a reader checks ONE day against, not what they
+                       scan a table of days for. Nothing was dropped — see
+                       js/epoch-details.js. -->
                   <th scope="col">Day</th>
-                  <th scope="col">Pool</th>
-                  <th scope="col">Callers</th>
                   <th scope="col">Paid out</th>
-                  <th scope="col">Unclaimed</th>
-                  <th scope="col" title="The merkle root posted on chain for that day. Two people who rebuild the day from scratch get the same one, or somebody is wrong.">Fingerprint</th>
-                  <!-- One button per row. Everything this cell used to carry
-                       inline — the published directory, the account, the time
-                       it was posted — is behind it, along with the list of who
-                       was paid, which never fitted in a table cell at all. -->
+                  <th scope="col">Wallets</th>
+                  <th scope="col" title="The biggest single allocation that day, from the published tree.">Largest share</th>
                   <th scope="col">Details</th>
                 </tr>
               </thead>

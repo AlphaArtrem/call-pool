@@ -21,11 +21,9 @@ import {
 import { lamportsOf } from './chain.js';
 import { configPda, connect, poolPda } from './addresses.js';
 import {
-  dailyState,
   epochAt,
   firstRecordNote,
   freshnessNote,
-  hourlyState,
   PROVISIONAL_EXPLANATION,
   windowFor,
 } from './clocks.js';
@@ -154,22 +152,9 @@ function resetLiveFields(reason = null) {
     field(el(id), { value: null, unavailable: reason?.short ?? null });
   }
 
-  // The clocks, the cards and the history are regions rather than single
-  // values, so they get the same treatment in their own shape.
-  el('daily-clock').textContent = reason?.clock ?? 'reading…';
-
-  // The hourly estimate is NOT downstream of the chain: it reports whether
-  // provisional standings have been published, and the honest answer to that
-  // is the same whether or not an RPC answered. Saying "could not reach
-  // Solana" here would blame the wrong thing.
-  el('hourly-clock').textContent = hourlyState({
-    now: Math.floor(Date.now() / 1000),
-    // Whatever the last successful fetch found, which is the honest answer
-    // even here: the sample is a static file and may well still be readable
-    // when the RPC is not.
-    lastSampleAt: live.provisional?.sampledAt ?? null,
-  }).label;
-
+  // The cards and the history are regions rather than single values, so they
+  // get the same treatment in their own shape. The day's clock is one of them
+  // — the "Closes in" strip is the only countdown on the page now.
   for (const [valueId, chartId] of CARDS) {
     field(el(valueId), { value: null, unavailable: reason?.short ?? null });
     chartState(el(chartId), reason?.clock ?? 'reading…', { unavailable: reason != null });
@@ -225,9 +210,6 @@ function renderPreLaunchZeros() {
   for (const [id, value] of Object.entries(zeros)) {
     field(el(id), { value: null, placeholder: value, unavailable: why });
   }
-
-  el('daily-clock').replaceChildren(placeholderNode(zeroClock));
-  el('hourly-clock').replaceChildren(placeholderNode(zeroClock));
 
   field(el('card-pool-value'), { value: null, placeholder: zeroSol, unavailable: why });
   bars(el('card-pool-chart'), {
@@ -861,24 +843,13 @@ function renderClockCard(chainConfig, now) {
   });
 }
 
+/**
+ * The day's clock, which is now the "Closes in" strip and nothing else.
+ *
+ * The timing section used to carry two more counters — the daily one again and
+ * the hourly sample's — and they are gone: one countdown per thing counted.
+ */
 function renderClocks(chainConfig, now) {
-  const daily = dailyState({
-    now,
-    window: state.window,
-    settledAt: null,
-    challengeSeconds: chainConfig.challengeSeconds,
-  });
-  el('daily-clock').textContent = daily.label;
-
-  // `lastSampleAt` comes from the published provisional standings, written
-  // hourly by `sample-standings.mjs`. Null is still an ordinary answer — no
-  // sampler yet, or a stalled one — and the counter says so rather than
-  // implying a refresh that is not happening.
-  const hourly = hourlyState({ now, lastSampleAt: live.provisional?.sampledAt ?? null });
-  const hourlyNode = el('hourly-clock');
-  hourlyNode.textContent = hourly.label;
-  hourlyNode.classList.toggle('warn', hourly.stale);
-
   renderClockCard(chainConfig, now);
 }
 
@@ -1013,6 +984,13 @@ async function loadDay0(config) {
       potLamports: BigInt(body.potLamports ?? body.allocateLamports),
       paidCount: standings.filter((s) => s.lamports).length,
       callerCount: standings.length,
+      // Wallet → what the genesis payout sent it. The wallet panel reads its
+      // history from the epoch trees, and day 0 has none — it was never an
+      // on-chain epoch — so without this a wallet that WAS paid at genesis is
+      // told it has never been paid anything.
+      paidTo: new Map(
+        standings.filter((s) => s.lamports).map((s) => [s.wallet, BigInt(s.lamports)]),
+      ),
       // The record table's "Largest share" column. Null when nobody was paid,
       // which is not the same as a largest share of zero.
       largestLamports: standings.reduce(
@@ -1158,6 +1136,11 @@ function wireCalculator(config) {
     nodes.facts.replaceChildren();
 
     try {
+      // The record section loads this, but a visitor can check a wallet before
+      // scrolling that far — and a genesis payment missing from the panel is
+      // indistinguishable from never having been paid.
+      if (live.day0 === undefined) live.day0 = await loadDay0(config);
+
       const loaded = await loadPosition({
         connection: state.connection,
         config,
@@ -1189,6 +1172,9 @@ function wireCalculator(config) {
         // the first sample of a deployment, and whenever the sampler has
         // stopped — and the panel falls back to yesterday's ratio and says so.
         provisional: live.provisional,
+        // The genesis payout, which predates every epoch and is published as
+        // receipts rather than as a tree.
+        day0: live.day0 ?? null,
       });
       nodes.result.classList.remove('failed');
       renderPosition(nodes, loaded, {

@@ -132,6 +132,22 @@ export function epochPayouts(tree, airdrop) {
 }
 
 /**
+ * The biggest single allocation in a day's tree, or null.
+ *
+ * The record table's "Largest share" column. Null rather than zero when the
+ * tree is missing or empty: zero would claim the day allocated nothing, which
+ * is a different fact from "we have not read that day's working".
+ */
+export function largestShare(tree) {
+  let largest = null;
+  for (const leaf of tree?.leaves ?? []) {
+    const amount = BigInt(leaf.amount);
+    if (largest == null || amount > largest) largest = amount;
+  }
+  return largest;
+}
+
+/**
  * One day's list summed into the four figures worth stating above it.
  *
  * Deliberately four rather than one. "Allocated" and "paid" are different
@@ -185,6 +201,31 @@ export function payoutHistory(epochs, wallet) {
     refused,
     // The only condition that should make a holder act, as opposed to read.
     needsAttention: rows.some((r) => r.state === DELIVERY.failed),
+  };
+}
+
+/**
+ * Fold the genesis payout into a wallet's history.
+ *
+ * Day 0 — coin creation to genesis — was never an on-chain epoch, so it has no
+ * tree and `payoutHistory` cannot see it. It was still money that arrived in
+ * somebody's wallet, and a panel that leaves it out tells thirteen wallets
+ * they have never been paid anything.
+ *
+ * It is always `paid`: the transfers are published as receipts, so there is no
+ * allocated-but-undelivered state to represent. It carries `label` rather than
+ * an epoch number because on this site "day 0" means on-chain epoch 0, which
+ * is a different, later day — see the note on `day0Row` in epochs.js.
+ *
+ * @param {{rows: object[], paid: bigint}} history  as `payoutHistory` returns it
+ * @param {bigint|null} genesisLamports  what the genesis payout sent this wallet
+ */
+export function withGenesis(history, genesisLamports) {
+  if (genesisLamports == null || genesisLamports <= 0n) return history;
+  return {
+    ...history,
+    rows: [...history.rows, { epoch: null, label: 'Genesis', state: DELIVERY.paid, amount: genesisLamports }],
+    paid: history.paid + genesisLamports,
   };
 }
 
@@ -293,30 +334,26 @@ export function describeEstimate(sampled, nowSeconds) {
   const ageMinutes =
     sampled?.sampledAt == null ? null : Math.max(0, Math.floor((nowSeconds - sampled.sampledAt) / 60));
 
+  // Two sentences, and only two. This is a tile caption: everything the panel
+  // has to say about proration, carry and settlement is said elsewhere, and a
+  // paragraph here is a paragraph nobody reads.
   const parts = [
-    'Not owed and not promised — today has not settled.',
-    `Worked out from today’s own figures, covering the ${covered}% of the day that had passed when it was measured.`,
+    `Not owed and not promised — from the ${covered}% of the day measured so far.`,
+    'The real one is worked out at 00:00 UTC.',
   ];
 
   // An hourly sample is at most an hour old in normal operation. Past that the
   // sampler has stalled, and the page must not present a stale figure as a
   // current one — the whole point of the tile is that it tracks the day.
   if (ageMinutes != null && ageMinutes >= 90) {
-    parts.push(
-      `⚠️ Last measured ${Math.floor(ageMinutes / 60)}h ago — the hourly update has stopped, so this is out of date.`,
-    );
+    parts.push(`⚠️ Measured ${Math.floor(ageMinutes / 60)}h ago, so this is out of date.`);
   }
 
   if (sampled?.truncated) {
     // A full feed means callers may be missing from the denominator, which can
     // only push this wallet's share up.
-    parts.push('The callout feed was full when this was measured, so some callers may be missing from it — which makes this read high.');
+    parts.push('The callout feed was full, so this may read high.');
   }
-
-  parts.push(
-    'It moves as others call out, buy and sell, and as more fees arrive. ' +
-      'The real figure is worked out at 00:00 UTC from a full replay of the whole day, and that one is what pays.',
-  );
 
   return parts.join(' ');
 }

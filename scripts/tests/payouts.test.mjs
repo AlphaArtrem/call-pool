@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  DELIVERY, deliveryFor, epochPayouts, payoutHistory, payoutTotals, describeDelivery, projectedShare,
+  DELIVERY, deliveryFor, epochPayouts, largestShare, payoutHistory, payoutTotals, withGenesis, describeDelivery, projectedShare,
   settledEpochIndices,
 } from '../../site/js/payouts.js';
 
@@ -223,6 +223,42 @@ test('a leaf that was allocated and not paid is listed, and says which', () => {
     epochPayouts(tree, airdrop).map((r) => [r.owner, r.state]),
     [['A', DELIVERY.paid], ['B', DELIVERY.refused], ['C', DELIVERY.failed]],
   );
+});
+
+test('the genesis payout counts as paid, and is labelled rather than numbered', () => {
+  // Day 0 has no tree, so payoutHistory cannot see it. Leaving it out told the
+  // thirteen wallets it paid that they had never been paid anything.
+  const history = payoutHistory([{ epoch: 1, tree: tree(W, '100'), airdrop: { sent: [{ signature: 'a', leaves: [0] }], failed: [] } }], W);
+  const withIt = withGenesis(history, 500n);
+
+  assert.equal(withIt.paid, 600n, 'the genesis payment is part of what this wallet was paid');
+  const genesis = withIt.rows.at(-1);
+  assert.equal(genesis.state, DELIVERY.paid);
+  assert.equal(genesis.amount, 500n);
+  // "Day 0" on this site means on-chain epoch 0, a different and later day.
+  assert.equal(genesis.label, 'Genesis');
+  assert.equal(genesis.epoch, null);
+});
+
+test('a wallet the genesis payout never paid is unchanged by it', () => {
+  const history = payoutHistory([], W);
+  assert.equal(withGenesis(history, null), history);
+  assert.equal(withGenesis(history, 0n), history);
+});
+
+test('the largest share is the biggest leaf, and absent when there is no tree', () => {
+  const tree = {
+    leaves: [
+      { index: 0, owner: 'A', amount: '100' },
+      { index: 1, owner: 'B', amount: '900' },
+      { index: 2, owner: 'C', amount: '500' },
+    ],
+  };
+  assert.equal(largestShare(tree), 900n);
+  // Null, never 0n: the record table prints "—" for a day whose working has
+  // not been read, and "0 SOL" would claim it allocated nothing to anybody.
+  assert.equal(largestShare({ leaves: [] }), null);
+  assert.equal(largestShare(null), null);
 });
 
 test('the day\'s totals keep allocated and delivered apart', () => {

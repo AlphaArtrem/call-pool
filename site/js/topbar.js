@@ -88,17 +88,18 @@ function wireCluster(config) {
 }
 
 /**
- * The X and GitHub links.
+ * The X, Telegram and GitHub links.
  *
- * Both come from config, and an unset one stays on the page as a disabled chip
- * that says why. §7.4's rule is about numbers, but the reasoning carries: a
- * link nobody configured is a link nobody checked, and shipping a plausible
+ * All three come from config, and an unset one stays on the page as a disabled
+ * chip that says why. §7.4's rule is about numbers, but the reasoning carries:
+ * a link nobody configured is a link nobody checked, and shipping a plausible
  * URL to a repository that may not exist is the same failure as shipping a
  * plausible balance.
  */
 function wireLinks(config) {
   const targets = [
     ['link-x', config.links.x, 'The announcement post is not published yet.'],
+    ['link-telegram', config.links.telegram, 'The Telegram group is not published yet.'],
     ['link-github', config.links.github, 'The source repository is not published yet.'],
   ];
 

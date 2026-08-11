@@ -1,207 +1,172 @@
-/* CALLPOOL — receipts first, wearing pump.fun's skin.
+/* ═══════════════════════════════════════════════════════════════════════
+ * CALLPOOL — the whole stylesheet.
  *
- * Phase 07 §7.6 says: resist the instinct to make it look like a launchpad,
- * because a page that looks like every other memecoin site invites the
- * assumption that it is one. The owner asked for pump.fun's palette, a top
- * bar, a theme toggle and card charts.
+ * One file, at one path, deliberately. scripts/lib/visitors.mjs counts a
+ * rendered pageview by a hit on /site/app.css from the page's own path, so
+ * splitting or renaming this file silently breaks the visitor rollup. It also
+ * has to be a real stylesheet rather than a <style> block: the edge sends
+ * `style-src 'self'`, which refuses inline styles and inline style attributes
+ * outright. Anything that needs to be positioned from JavaScript sets
+ * `element.style.width` through the CSSOM, which that directive does not
+ * cover.
  *
- * Those reconcile as: BORROW THE SKIN, KEEP THE SUBSTANCE. The colours, the
- * bar, the nav, the toggle and the cards come from the launchpad. Its habits
- * do not — there is no hero number without a source badge, no chart of
- * anything we cannot point at, and no marketing block standing where a
- * receipts table used to. If a change would make the page prettier by making a
- * number less checkable, that is the one trade that is not available.
- *
- * ── Where the colours come from ───────────────────────────────────────────
- *
- * Every dark-theme value below is a literal pump.fun design token, read out of
- * the stylesheets they serve (`/_next/static/chunks/*.css`) on 2026-08-05, not
- * remembered and not eyeballed from a screenshot:
- *
- *   --bg            #111113   --color-bg-primary
- *   --band          #18191b   --color-bg-secondary
- *   --raised        #212225   --color-bg-muted
- *   --raised-high   #272a2d   --color-bg-muted-secondary
- *   --line          #272a2d   --color-border-tertiary
- *   --fg            #fafafa   --color-text-primary
- *   --muted         #a1a1aa   --color-text-tertiary
- *   --faint         #8a8a8f   --advanced-icon-default
- *   --accent        #86efac   --color-text-accent  (green-300)
- *   --accent-strong #22c55e   --color-border-accent (green-500)
- *   --on-accent     #052e16   --color-text-on-accent (green-950)
- *   --ok            #5ddf6c   --color-text-success (sprout-500)
- *   --warn          #eab308   --color-text-warning
- *   --warn-bg       #422006   --color-bg-warning-inverse
- *   --danger        #f87171   --color-text-error
- *   --danger-bg     #450a0a   --color-bg-error-inverse
- *   --info          #60a5fa   --color-bg-info
- *   --pumpfun       #fb923c   --color-bg-decorative-orange
- *
- * pump.fun ships no light theme, so the light values are taken from the same
- * ramps rather than invented: their neutral scale (#fafafa / #e4e4e7 /
- * #b7b7ba / #4b4c52 / #363a3f), the dark end of their green scale (green-700
- * #15803d, green-800 #166534) so the accent survives on paper, and the
- * `-muted` and `-inverse` variants they already publish for warn, error and
- * info.
- *
- * Where a token would have failed WCAG AA on the background it sits on, the
- * next value on the same pump.fun ramp is used instead and the swap is noted
- * inline. Contrast is not a place to be faithful to somebody else's palette.
- *
- * Dark is the default, because pump.fun is dark-first and most visitors arrive
- * from it. Light is opt-in through the toggle or the OS preference.
- */
+ * The palette is the 2026-08-10 redesign comp's, not pump.fun's: a deeper
+ * ground, neutrals with a faint green bias, and the same accent the brand
+ * already had. Both themes are declared twice on purpose — once for the OS
+ * preference and once for the [data-theme] attribute the toggle writes — so
+ * that a visitor's explicit choice wins in *both* directions. The two copies
+ * must stay in sync.
+ * ═══════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── pump.fun, dark ─────────────────────────────────────────────────── */
-  --bg: #111113;
-  --band: #18191b;
-  --raised: #212225;
-  --raised-high: #272a2d;
-  --line: #272a2d;
-  --line-strong: #43484e;
-  --fg: #fafafa;
-  --muted: #a1a1aa;
-  /* pump.fun's --advanced-icon-default, not their --advanced-text-disabled
-   * (#74757a). The disabled grey lands at 4.1:1 on this background and every
-   * use of --faint here is small text — badge labels, table headings, the
-   * pending states. 4.1 fails; this is 5.5. */
-  --faint: #8a8a8f;
-
+  --bg: #0a0b0d;
+  --raised: #15181b;
+  --sunk: #050607;
+  --line: #24282c;
+  --line-loud: #3a4046;
+  --fg: #f4f7f4;
+  --muted: #8d968f;
+  --faint: #666e69;
   --accent: #86efac;
-  --accent-strong: #22c55e;
-  --on-accent: #052e16;
-  --ok: #5ddf6c;
+  --accent-deep: #16a34a;
+  --accent-ink: #05140b;
+  --warn: #e0b252;
+  --bad: #de6b52;
 
-  --warn: #eab308;
-  --warn-bg: #422006;
-  --danger: #f87171;
-  --danger-bg: #450a0a;
-  --info: #60a5fa;
-  --pumpfun: #fb923c;
-  /* Text ON the pump.fun orange, for the trade buttons. orange-950 from the
-   * same Tailwind ramp pump.fun's decorative orange comes from — the ramp's
-   * darkest stop, 8.9:1 on #fb923c. */
-  --on-pumpfun: #431407;
+  /* Tinted grounds for the two states that must be legible at a glance. */
+  --warn-bg: color-mix(in srgb, var(--warn) 12%, var(--bg));
+  --bad-bg: color-mix(in srgb, var(--bad) 14%, var(--bg));
 
+  /* The hover lift. Deep and soft, so a card reads as picked up rather than
+   * outlined — on this ground a hard shadow just looks like a second border. */
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+
+  /* Decorative only: the page-wide glow. Separate from the badge palette on
+   * purpose — a provenance colour changing must never retint the wallpaper.
+   * Four hues rather than two, so a long scroll does not read as one repeated
+   * smudge; the accent still leads and the rest only tint. */
+  --glow: #86efac;
+  --glow-alt: #7dd3fc;
+  --glow-cool: #a78bfa;
+  --glow-warm: #fbbf24;
+
+  /*
+   * The provenance badges. Four colours because there are four answers to
+   * "where did this number come from", and the whole point of §7.3 is that a
+   * reader can tell them apart without reading the label.
+   */
   --source-chain: #86efac;
-  --source-snapshot: #60a5fa;
+  --source-snapshot: #7dd3fc;
   --source-pumpfun: #fb923c;
-  --source-derived: #a1a1aa;
+  --source-derived: #c4b5fd;
 
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
-
-  /* The hero's right-hand column is ONE block: the headline, the sentence under
-   * it and the button stack are all this wide, so the text ends where the
-   * buttons end instead of running past them into the empty half of the column.
-   *
-   * 28rem is the button pair's natural `fit-content` width (345px at a laptop)
-   * plus 30% — the pair is widened to meet the text rather than the text being
-   * squeezed to meet the pair, because at 345px the headline breaks to three
-   * lines. Both sides read it, so changing it moves them together; setting a
-   * width on only one is what makes the hero look misaligned. */
-  --hero-block: 28rem;
-
-  /* Inter is pump.fun's typeface. It is NAMED, never fetched: a webfont link
-   * is a third-party request on every page load, and this page's whole claim
-   * is that nothing it renders passed through anyone else's server. Visitors
-   * with Inter installed get it; everyone else gets their system sans. */
-  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --measure: 1200px;
+  --gut: clamp(1rem, 4vw, 2.5rem);
+  --radius: 2px;
 }
 
-/* The two light blocks below are identical on purpose and must stay in sync.
- * The media query is the OS preference and loses to an explicit choice; the
- * attribute rule is the toggle. Both are needed, in both directions: a page
- * themed only through `prefers-color-scheme` has a toggle that appears to do
- * nothing for half its visitors. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #fafafa;
-    --band: #f0fdf4;
+    --bg: #f7f8f7;
     --raised: #ffffff;
-    --raised-high: #ffffff;
-    --line: #e4e4e7;
-    --line-strong: #b7b7ba;
-    --fg: #111113;
-    --muted: #363a3f;
-    --faint: #4b4c52;
+    --sunk: #eceeec;
+    --line: #dde1dd;
+    --line-loud: #b6beb8;
+    --fg: #0d1210;
+    --muted: #5c655e;
+    --faint: #7d857f;
+    --accent: #12803f;
+    --accent-deep: #12803f;
+    --accent-ink: #ffffff;
+    --warn: #9a6a12;
+    --bad: #b03e26;
 
-    --accent: #15803d;
-    --accent-strong: #166534;
-    --on-accent: #f0fdf4;
-    --ok: #16a34a;
+    --warn-bg: color-mix(in srgb, var(--warn) 10%, #ffffff);
+    --bad-bg: color-mix(in srgb, var(--bad) 10%, #ffffff);
 
-    --warn: #713f12;
-    --warn-bg: color-mix(in srgb, #facc15 16%, #ffffff);
-    --danger: #7f1d1d;
-    --danger-bg: color-mix(in srgb, #f87171 14%, #ffffff);
-    --info: #1e3a8a;
-    --pumpfun: #7c2d12;
-    /* orange-50, the light end of the same ramp — the light theme's --pumpfun
-     * is dark enough to carry light text. */
-    --on-pumpfun: #fff7ed;
+    --shadow: 0 18px 48px rgba(13, 18, 16, 0.12);
 
-    --source-chain: #15803d;
-    --source-snapshot: #1e3a8a;
-    --source-pumpfun: #7c2d12;
-    --source-derived: #4b4c52;
+    --glow: #12803f;
+    --glow-alt: #1e5f9e;
+    --glow-cool: #5b46a8;
+    --glow-warm: #9a6a12;
 
-    --shadow: 0 18px 48px rgba(17, 17, 19, 0.08);
+    --source-chain: #12803f;
+    --source-snapshot: #1e5f9e;
+    --source-pumpfun: #9a4a12;
+    --source-derived: #5b46a8;
   }
 }
 
 :root[data-theme="light"] {
-  --bg: #fafafa;
-  --band: #f0fdf4;
+  --bg: #f7f8f7;
   --raised: #ffffff;
-  --raised-high: #ffffff;
-  --line: #e4e4e7;
-  --line-strong: #b7b7ba;
-  --fg: #111113;
-  --muted: #363a3f;
-  --faint: #4b4c52;
+  --sunk: #eceeec;
+  --line: #dde1dd;
+  --line-loud: #b6beb8;
+  --fg: #0d1210;
+  --muted: #5c655e;
+  --faint: #7d857f;
+  --accent: #12803f;
+  --accent-deep: #12803f;
+  --accent-ink: #ffffff;
+  --warn: #9a6a12;
+  --bad: #b03e26;
 
-  --accent: #15803d;
-  --accent-strong: #166534;
-  --on-accent: #f0fdf4;
-  --ok: #16a34a;
+  --warn-bg: color-mix(in srgb, var(--warn) 10%, #ffffff);
+  --bad-bg: color-mix(in srgb, var(--bad) 10%, #ffffff);
 
-  --warn: #713f12;
-  --warn-bg: color-mix(in srgb, #facc15 16%, #ffffff);
-  --danger: #7f1d1d;
-  --danger-bg: color-mix(in srgb, #f87171 14%, #ffffff);
-  --info: #1e3a8a;
-  --pumpfun: #7c2d12;
-  --on-pumpfun: #fff7ed;
+  --shadow: 0 18px 48px rgba(13, 18, 16, 0.12);
 
-  --source-chain: #15803d;
-  --source-snapshot: #1e3a8a;
-  --source-pumpfun: #7c2d12;
-  --source-derived: #4b4c52;
+  --glow: #12803f;
+  --glow-alt: #1e5f9e;
+  --glow-cool: #5b46a8;
+  --glow-warm: #9a6a12;
 
-  --shadow: 0 18px 48px rgba(17, 17, 19, 0.08);
+  --source-chain: #12803f;
+  --source-snapshot: #1e5f9e;
+  --source-pumpfun: #9a4a12;
+  --source-derived: #5b46a8;
 }
+
+:root[data-theme="dark"] {
+  --bg: #0a0b0d;
+  --raised: #15181b;
+  --sunk: #050607;
+  --line: #24282c;
+  --line-loud: #3a4046;
+  --fg: #f4f7f4;
+  --muted: #8d968f;
+  --faint: #666e69;
+  --accent: #86efac;
+  --accent-deep: #16a34a;
+  --accent-ink: #05140b;
+  --warn: #e0b252;
+  --bad: #de6b52;
+
+  --warn-bg: color-mix(in srgb, var(--warn) 12%, var(--bg));
+  --bad-bg: color-mix(in srgb, var(--bad) 14%, var(--bg));
+
+  --shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+
+  --glow: #86efac;
+  --glow-alt: #7dd3fc;
+  --glow-cool: #a78bfa;
+  --glow-warm: #fbbf24;
+
+  --source-chain: #86efac;
+  --source-snapshot: #7dd3fc;
+  --source-pumpfun: #fb923c;
+  --source-derived: #c4b5fd;
+}
+
+/* ── base ─────────────────────────────────────────────────────────────── */
 
 * {
   box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-  /* The sticky bar would otherwise cover the heading of whatever a nav link
-   * jumps to. */
-  scroll-padding-top: 4.5rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-  * {
-    transition: none !important;
-    animation: none !important;
-  }
 }
 
 body {
@@ -209,35 +174,188 @@ body {
   background: var(--bg);
   color: var(--fg);
   font: 16px/1.6 var(--sans);
-  -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
-  /* The hero's glow blobs deliberately overhang the layout. `clip`, not
-   * `hidden` — clip cannot create a scroll container, so nothing about
-   * scrolling or stickiness changes. */
+  /* `clip` rather than `hidden`: `hidden` on the body makes every sticky
+     descendant stop sticking. The ticker's off-screen track is what needs
+     containing, and it is contained here rather than by a wrapper. */
   overflow-x: clip;
 }
 
-/* The gutter is HALF what a plain `max-width: 64rem` gave, at every width above
- * 64rem, and that is what the calc says rather than approximates.
+/* ── the glow ─────────────────────────────────────────────────────────────
  *
- *   old gutter = (100vw - 64rem) / 2  =  50vw - 32rem
- *   new gutter = (100vw - content) / 2 where content = 32rem + 50vw
- *              = (50vw - 32rem) / 2   =  half the old one, exactly
+ * The hero's two circles, scattered over the whole page: twenty-eight of them,
+ * in four hues, worked down both edges with two fainter runs through the
+ * middle.
  *
- * Below 64rem the calc evaluates to more than the viewport, so `max-width`
- * stops binding and this is a no-op — phones and tablets render exactly as they
- * did, which is the point: they were not the complaint.
+ * They are `background-image` on the body rather than a positioned layer.
+ * There is no element to sit in front of content, nothing to keep out of the
+ * hit test, and no stacking context to reason about — the body's own
+ * background paints behind every descendant by definition.
  *
- * The 96rem ceiling only bites past ~2000px, where halving the gutter again
- * would push the measure past anything readable. It is not reached on a laptop.
+ * The layer scrolls with the page rather than being pinned to the viewport,
+ * so the positions below spread down the whole document and a reader meets a
+ * different one every screen or so. Each gradient is given an explicit rem
+ * size, so only the *positions* are relative to the page height — the circles
+ * stay circles however long the document gets.
  *
- * Widening the shell does NOT widen the prose. Anything that is a paragraph
- * rather than a grid carries its own cap — see `.lede` and `.highlight`. Take
- * those off and the page grows 200-character lines on a big monitor. */
+ * Colour comes from tokens, so it re-tints with the theme, and every stop is
+ * far enough below full opacity to leave text contrast untouched.
+ */
+body {
+  background-repeat: no-repeat;
+  background-image:
+    /* down the left */
+    radial-gradient(24rem 24rem at 6% 8%, color-mix(in srgb, var(--glow-alt) 13%, transparent), transparent 70%),
+    radial-gradient(20rem 20rem at 2% 22%, color-mix(in srgb, var(--glow) 10%, transparent), transparent 70%),
+    radial-gradient(26rem 26rem at 12% 37%, color-mix(in srgb, var(--glow) 9%, transparent), transparent 70%),
+    radial-gradient(18rem 18rem at 4% 52%, color-mix(in srgb, var(--glow-warm) 8%, transparent), transparent 70%),
+    radial-gradient(24rem 24rem at 10% 66%, color-mix(in srgb, var(--glow-alt) 10%, transparent), transparent 70%),
+    radial-gradient(20rem 20rem at 3% 81%, color-mix(in srgb, var(--glow) 9%, transparent), transparent 70%),
+    radial-gradient(22rem 22rem at 14% 94%, color-mix(in srgb, var(--glow-cool) 9%, transparent), transparent 70%),
+    /* down the right */
+    radial-gradient(30rem 30rem at 92% -3%, color-mix(in srgb, var(--glow) 15%, transparent), transparent 70%),
+    radial-gradient(20rem 20rem at 84% 13%, color-mix(in srgb, var(--glow-cool) 9%, transparent), transparent 70%),
+    radial-gradient(24rem 24rem at 96% 28%, color-mix(in srgb, var(--glow-alt) 11%, transparent), transparent 70%),
+    radial-gradient(18rem 18rem at 86% 43%, color-mix(in srgb, var(--glow) 9%, transparent), transparent 70%),
+    radial-gradient(26rem 26rem at 97% 58%, color-mix(in srgb, var(--glow-warm) 8%, transparent), transparent 70%),
+    radial-gradient(20rem 20rem at 88% 74%, color-mix(in srgb, var(--glow-alt) 10%, transparent), transparent 70%),
+    radial-gradient(24rem 24rem at 95% 89%, color-mix(in srgb, var(--glow) 10%, transparent), transparent 70%),
+    radial-gradient(22rem 22rem at 82% 101%, color-mix(in srgb, var(--glow-cool) 9%, transparent), transparent 70%),
+    /* through the middle, smaller and fainter so they never sit behind a
+       paragraph loudly enough to be read as a highlight */
+    radial-gradient(16rem 16rem at 44% 6%, color-mix(in srgb, var(--glow-alt) 7%, transparent), transparent 70%),
+    radial-gradient(14rem 14rem at 32% 19%, color-mix(in srgb, var(--glow) 6%, transparent), transparent 70%),
+    radial-gradient(18rem 18rem at 58% 31%, color-mix(in srgb, var(--glow-cool) 7%, transparent), transparent 70%),
+    radial-gradient(15rem 15rem at 38% 46%, color-mix(in srgb, var(--glow) 6%, transparent), transparent 70%),
+    radial-gradient(17rem 17rem at 62% 61%, color-mix(in srgb, var(--glow-warm) 6%, transparent), transparent 70%),
+    radial-gradient(14rem 14rem at 30% 72%, color-mix(in srgb, var(--glow-alt) 7%, transparent), transparent 70%),
+    radial-gradient(18rem 18rem at 55% 84%, color-mix(in srgb, var(--glow) 7%, transparent), transparent 70%),
+    radial-gradient(16rem 16rem at 42% 97%, color-mix(in srgb, var(--glow-cool) 6%, transparent), transparent 70%),
+    /* a second, offset pass through the middle band, so no screen-height slice
+       of the page is left with a flat ground */
+    radial-gradient(13rem 13rem at 68% 12%, color-mix(in srgb, var(--glow-warm) 6%, transparent), transparent 70%),
+    radial-gradient(15rem 15rem at 24% 27%, color-mix(in srgb, var(--glow-cool) 6%, transparent), transparent 70%),
+    radial-gradient(14rem 14rem at 72% 47%, color-mix(in srgb, var(--glow-alt) 6%, transparent), transparent 70%),
+    radial-gradient(16rem 16rem at 26% 62%, color-mix(in srgb, var(--glow) 6%, transparent), transparent 70%),
+    radial-gradient(13rem 13rem at 70% 78%, color-mix(in srgb, var(--glow-cool) 6%, transparent), transparent 70%);
+}
+
+a {
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0 0 1rem;
+}
+
+img,
+svg {
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/*
+ * Content stays inside the measure; the rules between sections run edge to
+ * edge. That is the whole layout idea, and it is why `.band` carries the
+ * border while `.wrap` carries the width.
+ */
 .wrap {
-  max-width: min(calc(32rem + 50vw), 96rem);
-  margin: 0 auto;
-  padding: 0 1rem;
+  max-width: var(--measure);
+  margin-inline: auto;
+  padding-inline: var(--gut);
+}
+
+.band {
+  border-top: 1px solid var(--line);
+}
+
+.band-pad {
+  padding-block: clamp(3.5rem, 8vw, 7rem);
+}
+
+/* Off-screen but still read aloud, and still a real label for its input. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── the two type roles ───────────────────────────────────────────────────
+ *
+ * Condensed heavy caps for display, tabular mono for anything numeric.
+ * `font-stretch` picks up a condensed cut on families that ship one and is
+ * ignored by those that do not, which leaves the system heavy weight — the
+ * intended fallback. No webfont is fetched: `style-src 'self'` and
+ * `connect-src 'self'` both refuse one, and a display face is not worth
+ * loosening either.
+ */
+.display {
+  font-family: "Helvetica Neue", var(--sans);
+  font-stretch: condensed;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: -0.028em;
+  line-height: 0.86;
+  text-wrap: balance;
+  margin: 0;
+}
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 0.95em;
+}
+
+.eyebrow {
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 1rem;
+}
+
+.note {
+  font-size: 0.8125rem;
+  color: var(--faint);
+  line-height: 1.5;
+  max-width: 68ch;
+}
+
+/* A note that belongs to the full-width thing above it rather than to a
+ * column of prose — the 68ch measure makes those read as a stray aside. The
+ * extra top margin separates it from the table or pager it follows, which
+ * otherwise ends one line-height above it. */
+.note-wide {
+  max-width: none;
+  margin-top: 1.75rem;
+}
+
+.note-center {
+  text-align: center;
 }
 
 /* ── the top bar ──────────────────────────────────────────────────────── */
@@ -251,1288 +369,830 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.brandline {
+.barrow {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  min-height: 3.5rem;
-  flex-wrap: wrap;
+  gap: 1.5rem;
+  height: 66px;
 }
 
-/* `gap: 0`, and the mark carries its own margin instead. This is not a style
- * preference — a flex container wraps every run of bare text in an anonymous
- * flex item, so `CALL<b>POOL</b>` is TWO items and any `gap` here lands between
- * the two halves of the wordmark. There is no space in the markup; the gap was
- * the space. Put `gap` back and "CALLPOOL" splits again. */
 .logo {
   display: inline-flex;
   align-items: center;
-  gap: 0;
-  font-family: var(--mono);
-  font-size: 1rem;
-  letter-spacing: 0.16em;
-  font-weight: 600;
-  color: var(--fg);
+  gap: 0.5rem;
+  font-family: "Helvetica Neue", var(--sans);
+  font-stretch: condensed;
+  font-weight: 900;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
   text-decoration: none;
   white-space: nowrap;
-}
-
-/* The favicon's mark, inline beside the wordmark.
- *
- * `margin-right` replaces the flex `gap` the wordmark cannot have — see `.logo`.
- *
- * The nudge is an OPTICAL correction, not a fix for broken centring:
- * `align-items: center` centres the mark on the line box, and the line box
- * reserves descender room that an all-caps mono wordmark never uses (measured
- * descent: 0.23px). Centred that way the mark sat 0.62px — 0.039em — below the
- * middle of the letters themselves. `transform` and not a margin, so this moves
- * the pixels without moving the layout around them. */
-.logo-mark {
-  width: 1.05rem;
-  height: 1.05rem;
-  display: block;
-  color: var(--accent);
-  margin-right: 0.45rem;
-  transform: translateY(-0.04em);
 }
 
 .logo b {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 900;
+}
+
+.logo-mark {
+  width: 1.35rem;
+  height: 1.35rem;
+  color: var(--accent);
+  flex: none;
 }
 
 .nav {
   display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.nav::-webkit-scrollbar {
-  display: none;
+  gap: 1.4rem;
+  margin-left: auto;
+  font: 500 13px/1 var(--sans);
+  white-space: nowrap;
 }
 
 .nav a {
-  font-size: 0.8125rem;
   color: var(--muted);
   text-decoration: none;
-  white-space: nowrap;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid transparent;
 }
 
-.nav a:hover,
-.nav a:focus-visible {
+.nav a:hover {
   color: var(--fg);
-  border-bottom-color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .nav {
+    display: none;
+  }
 }
 
 .bar-tools {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   margin-left: auto;
 }
 
-/* Below a laptop the seven nav links and the controls will not share a line.
- * The controls stay on the brand row and the nav drops beneath them, scrolling
- * sideways, rather than the controls wrapping into a half-empty second row. */
-@media (max-width: 60rem) {
-  .brandline {
-    /* padding-block only — the inline padding belongs to .wrap, and a
-     * shorthand here silently takes it away and puts the logo on the edge. */
-    padding-block: 0.5rem;
-    row-gap: 0.5rem;
-  }
-
-  .nav {
-    order: 3;
-    flex-basis: 100%;
+@media (min-width: 901px) {
+  .bar-tools {
+    margin-left: 1.5rem;
   }
 }
 
 .social-links {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.35rem;
 }
 
 .icon-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 2rem;
   height: 2rem;
-  display: inline-grid;
-  place-items: center;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--raised);
+  border-radius: var(--radius);
+  background: none;
   color: var(--muted);
   cursor: pointer;
-  font: inherit;
+  text-decoration: none;
 }
 
 .icon-link:hover,
 .icon-link:focus-visible {
   color: var(--fg);
-  border-color: var(--line-strong);
+  border-color: var(--line-loud);
 }
 
 .icon-link svg {
-  width: 1rem;
-  height: 1rem;
+  width: 16px;
+  height: 16px;
   display: block;
 }
 
-/* An unset link is a state, not a blank. §7.4 applies to a link the same way
- * it applies to a number: better to say "not published yet" than to ship a URL
- * that 404s or, worse, one nobody checked. */
+/* A link with no href yet is a real state, not a broken control: it says the
+ * account is not published rather than pretending to go somewhere. */
 .icon-link[aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 
-/*
- * The cluster chip: a label, not a switch.
- *
- * The <select> that lived here was removed on 2026-08-05 — the public page is
- * mainnet and offering a devnet view to a visitor is a way to reach real chain
- * reads of activity we generated ourselves. This renders only when the page is
- * NOT on mainnet, which is an internal state, and it is styled as a warning
- * rather than as a control for that reason.
- */
 .cluster-chip {
-  background: var(--warn-bg);
-  border: 1px solid var(--warn);
-  color: var(--warn);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  padding: 0.375rem 0.625rem;
-  border-radius: 6px;
+  font: 700 10px/1 var(--mono);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
   white-space: nowrap;
 }
 
-/* ── the contract strip ───────────────────────────────────────────────── */
+.cluster-chip[hidden] {
+  display: none;
+}
 
-/* The coin's address, first thing under the bar, next to the one place it can
- * be traded. The page already warns that address confusion is how people lose
- * money during a launch; this is that warning acted on. Not sticky: three
- * stacked sticky rows would eat a phone screen. */
-.ca-strip {
-  background: var(--band);
+/* ── the ticker ───────────────────────────────────────────────────────────
+ *
+ * The track holds the six claims twice over, so the -50% translate lands
+ * exactly where it started and the loop has no seam. The whole strip is
+ * aria-hidden in the markup: every claim on it is stated in full prose
+ * further down, and a screen reader should not have to hear each one twice.
+ */
+.ticker {
+  background: var(--accent);
+  color: var(--accent-ink);
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
 }
 
-/* ONE line, at every width — `nowrap`, not the usual `wrap`.
+/* The band's height comes from the track, and the items are centred in it by
+ * the flexbox rather than by symmetric padding around a line-height of 1 —
+ * that older approach centred the *line box*, which is not the same as
+ * centring the glyphs, and left the caps sitting a pixel or two high. */
+.ticker-track {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+  width: max-content;
+  animation: slide 34s linear infinite;
+}
+
+.ticker-track span {
+  font: 700 12px/1.2 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ticker-track i {
+  padding-inline: 1.5rem;
+  font-style: normal;
+  line-height: 1.2;
+  opacity: 0.45;
+}
+
+@keyframes slide {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ── the contract strip ───────────────────────────────────────────────────
  *
- * A row that wraps puts the copy button on a line of its own on a phone, which
- * reads as a second, unrelated control. Nothing here is allowed to wrap, so
- * the address is the only flexible part and it is the part that gives way:
- * `min-width: 0` on the chain below lets it shrink past its content and
- * ellipsise, which is why the label and the button always survive.
- *
- * Longhands for the padding — .wrap owns the inline padding. */
+ * One line, always. The address is the thing people mis-copy during a launch,
+ * and a wrapped address is one you cannot check against a pinned post at a
+ * glance — so this row scrolls sideways rather than reflowing.
+ */
+.ca-strip {
+  border-bottom: 1px solid var(--line);
+  background: var(--sunk);
+}
+
 .ca-row {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.75rem;
-  flex-wrap: nowrap;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  font-size: 0.8125rem;
+  padding-block: 0.6rem;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .ca-label {
-  font-family: var(--mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.14em;
+  font: 600 10px/1 var(--mono);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--faint);
   flex: none;
 }
 
-/* The address takes the rest of the row and is the only thing that shrinks. */
 .ca-address {
-  flex: 1 1 auto;
-  min-width: 0;
+  font-family: var(--mono);
   font-size: 0.8125rem;
+  min-width: 0;
 }
 
-/* `.address` is a wrapping inline-flex everywhere else on the page — inside
- * this strip it spans the row and holds its line instead. */
 .ca-address .address {
-  display: flex;
-  align-items: center;
   flex-wrap: nowrap;
-  width: 100%;
-  min-width: 0;
 }
 
-/* As much of the address as the width allows, and an ellipsis for the rest —
- * so a desktop shows all 44 characters and a phone shows the leading run
- * people check against the pinned post. `break-all` is what the rest of the
- * page wants from a .mono address and is exactly wrong here: it wraps.
- * The full address is on the button's aria-label, in the element's title, and
- * in the Addresses fold, and copy always copies the whole thing. */
+/* `overflow-wrap: anywhere` is what every other .mono address on the page
+ * wants and is exactly wrong here: it wraps. */
 .ca-address .mono {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: normal;
   word-break: normal;
-  min-width: 0;
 }
 
-/* The strip's one control, pinned to the right end of the row — where the
- * trade button used to be, and the reason it no longer has to compete for the
- * width. `margin-left: auto` only bites when the address is short enough to
- * leave slack; on a phone it is already hard against the edge. */
-.ca-row .copy {
-  flex: none;
-  margin-left: auto;
-  font-size: 0.6875rem;
-  padding: 0.25rem 0.55rem;
-  border-radius: 6px;
-  background: var(--raised);
+/* The two forms `addressNode({ responsive: true })` renders. Exactly one is
+ * displayed at any width; the accessible name on the link carries the full
+ * address either way, so nothing is lost by hiding a span. */
+.ca-address .addr-short {
+  display: none;
 }
 
-/* ── type ─────────────────────────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .ca-address .addr-full {
+    display: none;
+  }
 
-h1 {
-  /* Ceiling trimmed from 3rem when the hero went to two half-width columns —
-   * the headline lives in half the page now, not the whole of it. */
-  font-size: clamp(1.875rem, 5vw, 2.75rem);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  margin: 0.75rem 0 1rem;
+  .ca-address .addr-short {
+    display: inline;
+  }
+
+  /* Once the address is short the row fits, so it can centre honestly instead
+   * of being a scroller that starts mid-address. */
+  .ca-row {
+    overflow-x: visible;
+  }
 }
 
-h2 {
-  font-size: clamp(1.375rem, 3vw, 1.875rem);
-  line-height: 1.2;
-  letter-spacing: -0.015em;
-  margin: 0;
-}
+/* ── the hero ─────────────────────────────────────────────────────────── */
 
-h3 {
-  font-size: 1rem;
-  margin: 1.5rem 0 0.5rem;
-}
-
-p {
-  margin: 0 0 0.75rem;
-}
-
-a {
-  color: var(--accent);
-}
-
-code,
-.mono {
-  font-family: var(--mono);
-  font-size: 0.875em;
-  word-break: break-all;
-}
-
-pre {
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.75rem;
-  overflow-x: auto;
-  margin: 0 0 0.75rem;
-}
-
-pre code {
-  word-break: normal;
-  white-space: pre;
-}
-
-.eyebrow {
-  font-family: var(--mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--faint);
-  margin: 0;
-}
-
-/* The only reading-measure cap left on the page; everything else — callouts,
- * section ledes, notes — was deliberately set to run the full width instead.
+/* Mascot and ledger stacked in the left column, words in the right.
  *
- * It earns its place in one narrow band. Above 46rem `.hero-copy` caps this at
- * `--hero-block` (448px) and 40em never binds; below about 43rem the column is
- * narrower than 40em and it never binds either. Between them — a single-column
- * hero in a ~700px window — this is what stops the sentence running the whole
- * width while the buttons under it do not.
- *
- * `em` and not `rem` so the cap tracks this block's own 1.0625rem type and
- * lands at ~80 characters rather than at a fixed pixel width. */
-.lede {
-  font-size: 1.0625rem;
-  max-width: 40em;
-  color: var(--muted);
-}
-
-.lede strong {
-  color: var(--fg);
-}
-
-/* The one lede that introduces a full-width block rather than sitting in a
- * column, and so is exempt from the cap above.
- *
- * Same reasoning as `.note` below: a sentence that introduces the scenarios
- * table reads as belonging to it only if it is the same width as it. At 40em it
- * ended 440px narrower than the table directly beneath it, which looks like a
- * wrapping bug rather than a measure.
- *
- * The cost is the one the comment on `.wrap` warns about, and is accepted here:
- * past ~1500px this runs longer than a comfortable measure. It is tolerable for
- * two sentences of framing above a table — do not take it as licence to drop
- * the cap on body copy, and note the hero lede is NOT this case: its grid
- * column already holds it to ~450px, so it keeps the cap. */
-.lede-wide {
-  max-width: none;
-}
-
-/* Deliberately NOT capped to `--measure`, unlike the other prose on the page.
- *
- * A note is a footnote to the block above it — the history table, the footer —
- * and it reads as belonging to that block only if it is the same width as it. At
- * `--measure` the two long ones ended half the width of the thing they annotate,
- * which looks like a wrapping bug rather than a caption.
- *
- * The cost is real and was accepted: those two run to ~170 characters a line on
- * a 1920 monitor, well past a comfortable measure. It is tolerable HERE because
- * both are two sentences of small print that nobody reads end to end — do not
- * take this as licence to drop the cap on body copy.
- *
- * The other eleven `.note`s are already narrow: they sit inside stat blocks and
- * cards whose columns constrain them, so this rule changes nothing for them. */
-.note {
-  color: var(--muted);
-  font-size: 0.875rem;
-  margin: 0.25rem 0 0.75rem;
-}
-
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* ── sections ─────────────────────────────────────────────────────────── */
-
-/* A class, not `main > section`. Every section also carries `.wrap`, whose
- * `padding: 0 1rem` shorthand beats an element selector on specificity no
- * matter what order they appear in — which is how the sections ended up with
- * their headings sitting on top of the divider line above them. Longhands
- * here, so `.wrap` keeps the inline padding and this keeps the block padding.
- */
-.section {
-  padding-top: 4rem;
-  padding-bottom: 4rem;
-  border-top: 1px solid var(--line);
-}
-
-.section-head {
+ * Source order is art, ledger, words — the phone's reading order — and the
+ * named areas put them back in the laptop's arrangement without duplicating
+ * the markup or reaching for `order`, which would leave the tab sequence
+ * disagreeing with what is on screen. */
+.hero {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.5rem;
-  margin-bottom: 2rem;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  grid-template-areas:
+    "art  copy"
+    "card copy";
+  grid-template-rows: 1fr auto;
+  column-gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: end;
+  padding-block: clamp(2rem, 4vw, 3.25rem) clamp(2.5rem, 5vw, 4rem);
 }
 
-/* The icon and the heading share a line at every width. */
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.hero-art {
+  grid-area: art;
   min-width: 0;
 }
 
-/*
- * Two rows, two columns:
+.hero .ledger {
+  grid-area: card;
+}
+
+.hero-copy {
+  grid-area: copy;
+  min-width: 0;
+}
+
+/* The mascot. Decorative — `alt=""` and aria-hidden, because the headline
+ * beside it already says everything it says. */
+.hero-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The overlap: the card rides up over the bottom 30% of the image.
  *
- *   [icon]        Where the fees go
- *   THE SPLIT     Every trade on pump.fun pays a creator fee…
+ * A negative margin rather than absolute positioning, so the card still
+ * occupies its grid row and the header grows to contain it — an absolutely
+ * positioned card escapes the header at narrow widths and lands on the section
+ * below.
  *
- * The label and the sentence share a row, which is what closes the dead space
- * the old layout left: the heading stack used to be taller than the sentence
- * beside it, so every section ended with a column of nothing.
- *
- * `display: contents` dissolves `.section-title` so its two children become
- * items of THIS grid — that is what puts the icon in the label column and the
- * heading on the same left edge as the sentence under it. The wrapper is a
- * plain div carrying no role, label or semantics, so dissolving it removes
- * nothing from the accessibility tree; it exists only to hold the icon and the
- * heading on one line at narrow widths, where this grid is a single column.
- *
- * The label column is a fixed 10rem rather than `max-content` so the headings
- * and sentences start at the same x in every section — with `max-content` each
- * section's rail is its own longest word and the page loses its left edge.
- * The longest label today ("your wallet") measures ~8.7rem.
- */
-@media (min-width: 46rem) {
-  .section-head {
-    grid-template-columns: 10rem minmax(0, 1fr);
-    column-gap: 1.25rem;
-    row-gap: 0.75rem;
+ * A percentage margin resolves against the container's *width*, not its
+ * height, which is normally the trap here and is exactly why this works: the
+ * mascot is 890×900, so its rendered height is within 1% of the column width
+ * and -25% covers just about a quarter of it, leaving three quarters showing.
+ * Swap in an image of a different shape and this number stops meaning what it
+ * says. */
+.hero .ledger {
+  position: relative;
+  z-index: 1;
+  margin-top: -25%;
+}
+
+@media (max-width: 880px) {
+  /* On a phone there is no room for two columns side by side, so the two
+   * share one cell instead: the mascot takes the left half of it and the
+   * words sit under his raised arm, right-aligned so their ragged edge faces
+   * away from him. The lower half of the picture is his dark hoodie, so the
+   * copy crossing it costs nothing; the head, the arm and the megaphone are the
+   * only parts that must stay clear.
+   *
+   * Both children are assigned the same grid area rather than being absolutely
+   * positioned, so the cell is still sized by whichever of them is taller and
+   * nothing escapes the header. */
+  .hero {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "stack"
+      "card";
+    grid-template-rows: auto;
     align-items: start;
   }
 
-  .section-title {
-    display: contents;
+  .hero-art,
+  .hero-copy {
+    grid-area: stack;
+  }
+
+  /* Sized just past the column and pulled left, so only his shoulder is cropped
+   * by the viewport — the body's `overflow-x: clip` is what makes that safe.
+   * The pull is a fixed length rather than a percentage so the amount cropped
+   * stays the same at every width in this range; a percentage keeps widening
+   * the crop after `max-width` has stopped the picture from growing, and by
+   * 880px it was eating his arm.
+   *
+   * The `max-width` is the half of this that matters most. A bare percentage
+   * keeps growing with the viewport, so at the top of this range — the widths
+   * between a large phone and a tablet — he rendered over 1000px wide and
+   * dwarfed the headline he is supposed to sit beside. The cap holds him at a
+   * portrait size while the percentage still does the work on narrow phones.
+   *
+   * `align-self: start` hangs him from the top of the shared cell rather than
+   * standing him on the bottom of it. That is what lets the copy below know
+   * where his arm ends: anchored to the bottom, his height and the copy's
+   * height fight, and the megaphone lands in the middle of the headline at
+   * every width. */
+  .hero-art {
+    width: 104%;
+    max-width: 460px;
+    margin-left: -2.5rem;
+    justify-self: start;
+    align-self: start;
+  }
+
+  .hero-art img {
+    max-width: none;
+  }
+
+  /* The artwork ends at the mascot's waist in a straight horizontal cut. That
+   * edge used to sit on the button row, where it read as the bottom of the
+   * hero; now that he hangs from the top it lands in open space and reads as a
+   * ruled line across the page, so the last fifth of him is faded out. */
+  .hero-art {
+    -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 78%, transparent 100%);
+  }
+
+  /* Dropped below the fist.
+   *
+   * The offset tracks the picture rather than the type: the mascot is 890×900,
+   * so his rendered height is within 1% of his rendered width, and the fist
+   * holding the megaphone sits about 62% of the way down him. 104% × 62% ≈ 64%
+   * of the column — and the `min()` freezes it once `max-width` has stopped him
+   * growing, otherwise the gap keeps opening under a mascot that is no longer
+   * getting any taller. Reshape the image and this number stops meaning what it
+   * says. */
+  .hero-copy {
+    position: relative;
+    z-index: 1;
+    text-align: right;
+    padding-top: min(64%, 300px);
+  }
+
+  /* Clear of the arm, so the measure can run nearly the full column instead of
+   * being squeezed into the strip of background beside the megaphone.
+   *
+   * Every selector here is `.hero`-prefixed so it out-ranks the base rules —
+   * `.hero-sub` alone loses to `.hero-sub { max-width: 34ch }` further down
+   * the file on source order. */
+  .hero .eyebrow,
+  .hero h1,
+  .hero .hero-sub {
+    max-width: 92%;
+    margin-left: auto;
+  }
+
+  .cta-row {
+    justify-content: flex-end;
+  }
+
+  .hero .ledger {
+    margin-top: 1.5rem;
+    margin-bottom: 2rem;
   }
 }
 
-/* Both the label and the sentence. The label keeps its own mono, uppercase and
- * letter-spacing from `.eyebrow`; only the size and colour come from here, and
- * that is deliberate — a section label is a heading-scale thing, not the 11px
- * the hero's eyebrow is. */
-/* No measure cap: the section lede runs the full width of its column, so it
- * lines up with the cards and tables underneath rather than stopping short of
- * them. The 10rem label rail already holds its left edge. */
-.section-head p {
-  color: var(--muted);
-  margin: 0;
+/* Sized so the three lines stay three lines and the buttons stay above the
+ * fold at 900px. A four-line hero is always a font-size error. */
+.hero h1 {
+  font-size: clamp(2.5rem, 6.2vw, 5.25rem);
+  line-height: 0.9;
+}
+
+.hero h1 span {
+  white-space: nowrap;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.hero-sub {
+  margin: 1.75rem 0 0;
+  max-width: 38ch;
   font-size: 1.0625rem;
+  color: var(--muted);
 }
 
-/* The icon chip beside each section heading. Decorative — every one is
- * aria-hidden in the markup and the heading carries the meaning.
- *
- * `flex: none` matters: as a flex item next to a heading that wraps, it would
- * otherwise be squeezed out of square on a narrow screen. */
-.section-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  flex: none;
-  border-radius: 10px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+.hero-sub strong {
+  color: var(--fg);
+  font-weight: 600;
 }
 
-.section-icon svg {
-  width: 1.25rem;
-  height: 1.25rem;
-  display: block;
-}
-
-/* ── cards, and the numbered steps built on them ──────────────────────── */
-
-.cards {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-  margin: 0 0 1.5rem;
-  padding: 0;
-  list-style: none;
-}
-
-@media (min-width: 46rem) {
-  .cards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-.card {
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 1.25rem;
-  min-width: 0;
-}
-
-/* A gentle lift on pointer devices. The global reduced-motion block disables
- * the transition, and on touch there is no hover to trigger it. */
-.card,
-.graph-card,
-.split,
-.verification-card,
-.clock {
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-@media (hover: hover) {
-  .card:hover,
-  .graph-card:hover,
-  .split:hover,
-  .verification-card:hover {
-    transform: translateY(-2px);
-    border-color: var(--line-strong);
-    box-shadow: var(--shadow);
-  }
-}
-
-/* The smaller icon chip inside a card. `is-warn` is for the cards describing
- * the rule people lose money to. */
-.card-icon {
-  display: inline-grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 8px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  margin-bottom: 0.875rem;
-}
-
-.card-icon svg {
-  width: 1.2rem;
-  height: 1.2rem;
-  display: block;
-}
-
-.card-icon.is-warn {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 12%, transparent);
-  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
-}
-
-/* Icon left, number right, one row. */
-.step-top {
+.cta-row {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+/* On a phone the two calls to action match, rather than one being as wide as
+ * its label happens to be. `flex: 1 1 0` with a zero basis is what makes them
+ * equal — `flex: 1` alone distributes only the *spare* space and leaves the
+ * longer label on the wider button. The nowrap on .btn is lifted here so the
+ * shared width can go below the longest label without overflowing. */
+@media (max-width: 620px) {
+  .cta-row > .btn {
+    flex: 1 1 0;
+    justify-content: center;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+/* ── buttons ──────────────────────────────────────────────────────────── */
+
+.btn,
+.button {
+  display: inline-flex;
   align-items: center;
+  gap: 0.6rem;
+  padding: 0.95rem 1.5rem;
+  border-radius: var(--radius);
+  font: 700 13px/1 var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border: 1px solid var(--line-loud);
+  background: none;
+  color: var(--fg);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn:hover,
+.button:hover {
+  border-color: var(--fg);
+}
+
+.btn:active,
+.button:active {
+  transform: translateY(1px);
+}
+
+.btn.primary,
+.button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.btn.primary:hover,
+.button.primary:hover {
+  background: var(--fg);
+  border-color: var(--fg);
+}
+
+.pill-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: none;
+}
+
+/* Nothing to trade until the coin exists. Dimmed, unclickable, and it carries
+ * a title that says which of the reasons it is. */
+.trade-hero[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ── the hero ledger ──────────────────────────────────────────────────────
+ *
+ * A second display of figures the pool section owns. Plain text, no badges:
+ * a provenance badge needs room to explain itself, and the canonical slots
+ * downstairs are where it gets that room.
+ */
+.ledger {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+
+.ledger-row {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 1rem;
+  padding: 1.15rem 1.35rem;
+  border-bottom: 1px solid var(--line);
 }
 
-.step-top .card-icon {
-  margin-bottom: 0;
+.ledger-row:last-child {
+  border-bottom: 0;
 }
 
-.card h3 {
-  margin: 0 0 0.5rem;
+.ledger-k {
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--faint);
+  flex: none;
+}
+
+.ledger-v {
+  font-size: 1.5rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ledger-v.big {
+  font-size: 2.25rem;
+  color: var(--accent);
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.live.is-live {
+  color: var(--accent);
+}
+
+.live.is-stale {
+  color: var(--warn);
+}
+
+.live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.live.is-live::before {
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ── section heads ────────────────────────────────────────────────────── */
+
+.head {
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.head h2 {
+  font-size: clamp(2.25rem, 5.5vw, 4rem);
+}
+
+/* The eyebrow belongs TO the heading, so it sits closer to it than the lede
+ * does. Equal gaps above and below the heading made the chip read as a third
+ * separate line rather than as a label on the one under it. */
+.head .eyebrow {
+  margin-bottom: 0.5rem;
+}
+
+.head p {
+  margin: 1.15rem 0 0;
+  max-width: 58ch;
+  color: var(--muted);
   font-size: 1.0625rem;
 }
 
-.card p {
-  color: var(--muted);
-  font-size: 0.9375rem;
-  margin: 0;
-}
-
-.card strong {
+.head p strong {
   color: var(--fg);
+  font-weight: 600;
 }
 
-.step-no {
-  display: inline-grid;
-  place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-family: var(--mono);
-  font-size: 0.8125rem;
-  font-weight: 700;
-}
+/* ── the number wall ──────────────────────────────────────────────────── */
 
-.step h3 {
-  margin-top: 0.75rem;
-}
-
-/* A heading inside a section, under its own group of cards. */
-.subhead {
-  font-size: 1.125rem;
-  margin: 2rem 0 1rem;
-}
-
-/* One sentence that has to survive skim-reading. Used where the page would
- * otherwise bury a rule with money attached in a paragraph. */
-/* Full width of its section, and the text inside runs the full width with it —
- * no reading-measure cap on either. A callout is a bar across the section it
- * interrupts; sized to a text measure it stops looking like a bar and starts
- * looking like a card that failed to stretch.
- *
- * These run long on a wide monitor as a result. That is accepted for callouts
- * specifically: each is two or three sentences read once, not body copy. */
-.highlight {
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--accent);
-  border-radius: 10px;
-  background: var(--raised);
-  padding: 1rem 1.125rem;
-  margin: 1.5rem 0;
-  font-size: 1rem;
-}
-
-.highlight strong {
-  color: var(--fg);
-}
-
-/* ── the fee split ────────────────────────────────────────────────────── */
-
-.split-pair {
+/* Four cells, so the only counts that divide them without leaving a hole are
+ * 4, 2 and 1. `auto-fit` picked 3 at tablet widths and left a quarter of the
+ * wall empty — a gap in a grid of hairlines reads as a missing figure. Every
+ * step here is an exact divisor.
+ */
+.wall {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  margin: 0;
+  padding: 0;
 }
 
-@media (min-width: 46rem) {
-  .split-pair {
+@media (max-width: 1000px) {
+  .wall {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-.split {
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 1.25rem;
-}
-
-.split-share {
-  font-family: var(--mono);
-  font-size: 2.5rem;
-  line-height: 1;
-  font-weight: 600;
-  color: var(--accent);
-  margin: 0 0 0.75rem;
-}
-
-.split-what {
-  color: var(--muted);
-  font-size: 0.9375rem;
-  margin: 0;
-}
-
-.split-what strong {
-  color: var(--fg);
-}
-
-
-/* ── buttons ──────────────────────────────────────────────────────────── */
-
-.button,
-button[type="submit"] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  padding: 0.6rem 1.15rem;
-  border-radius: 8px;
-  border: 1px solid var(--line-strong);
-  background: var(--raised);
-  color: var(--fg);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.button:hover,
-.button:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.button.primary,
-button[type="submit"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-
-.button.primary:hover,
-.button.primary:focus-visible,
-button[type="submit"]:hover {
-  color: var(--on-accent);
-  filter: brightness(1.06);
-}
-
-/* The trade button wears pump.fun's orange — the same decorative token the
- * source badge for their data uses, so the colour already means "pump.fun"
- * everywhere it appears on this page. */
-.button.trade {
-  background: var(--pumpfun);
-  border-color: var(--pumpfun);
-  color: var(--on-pumpfun);
-}
-
-.button.trade:hover,
-.button.trade:focus-visible {
-  color: var(--on-pumpfun);
-  filter: brightness(1.06);
-}
-
-/* Unset is a state, not a blank — same rule as the top-bar social links. The
- * chip stays visible so "trading exists, just not yet" is said where the
- * button will be, rather than the button appearing from nowhere at launch. */
-.button.trade[aria-disabled="true"] {
-  background: var(--raised);
-  border-color: var(--line);
-  color: var(--faint);
-  cursor: not-allowed;
-  filter: none;
-}
-
-.pill-icon {
-  width: 1rem;
-  height: 1rem;
-  flex: none;
-}
-
-input[type="text"]:focus-visible,
-button:focus-visible,
-select:focus-visible,
-a:focus-visible,
-summary:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: 2px;
-}
-
-/* ── hero ─────────────────────────────────────────────────────────────── */
-
-/*
- * Three children — copy, art, actions.
- *
- * On a phone the mark leads and the words and buttons follow it as one block:
- * `order: -1` lifts the art to the top without moving it in the markup, which
- * matters because the markup order is the one a screen reader follows and the
- * words should still come first there. (The art is `aria-hidden`, so it is not
- * in the accessibility tree at all and reordering it visually costs nothing.)
- *
- * Nothing overlaps anything, at any width.
- */
-.hero {
-  padding: 2rem 1rem 2.25rem;
-  position: relative;
-  isolation: isolate;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-  align-items: center;
-}
-
-/* Half and half. The mark spans both rows on the LEFT; the copy and the
- * buttons stack down the right.
- *
- * `end` then `start` on the two right-hand items is what keeps them together:
- * the rows are stretched by whichever column is taller, and without it the
- * spare height opens as a gap between the headline and the buttons. */
-/* 46rem, the same width at which `.hero-actions` stops spanning the column.
- * One breakpoint for the whole hero on purpose: split them and there is a band
- * where the mark is centred and the buttons are not, so they overlap down one
- * edge only and the overlap reads as a collision rather than as a layer. */
-@media (min-width: 46rem) {
-  .hero {
-    grid-template-columns: 1fr 1fr;
-    column-gap: 2.5rem;
-    row-gap: 1.25rem;
-    padding-top: 2.5rem;
-    padding-bottom: 2.75rem;
-  }
-
-  /* Only from 46rem up. Below it the copy spans the column, because there the
-   * buttons already do too and capping it would just indent the headline. */
-  .hero-copy {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: end;
-    max-width: var(--hero-block);
-  }
-
-  .hero-actions {
-    grid-column: 2;
-    grid-row: 2;
-    align-self: start;
-  }
-
-  .hero-art {
-    grid-column: 1;
-    grid-row: 1 / 3;
-    /* The phone's `order` and spacing are cancelled at this width further
-     * down, next to where they are set — same specificity as the base rule, so
-     * it has to come after it in source order to win. Cancelling it here would
-     * not work. */
+@media (max-width: 520px) {
+  .wall {
+    grid-template-columns: 1fr;
   }
 }
 
-/* The glow. Colour is the accent at low opacity, so it re-tints with the
- * theme; z-index -1 with `isolation` keeps it behind the text but inside this
- * stacking context, and the body's `overflow-x: clip` eats the overhang. */
-.hero::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  top: -10rem;
-  right: -8rem;
-  width: 32rem;
-  height: 32rem;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 15%, transparent), transparent 72%);
-  pointer-events: none;
-}
-
-.hero::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  bottom: -10rem;
-  left: -14rem;
-  width: 30rem;
-  height: 30rem;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--info) 9%, transparent), transparent 72%);
-  pointer-events: none;
-}
-
-/* ── the hero illustration ────────────────────────────────────────────── */
-
-/* On a phone the mark leads, and the words and the buttons follow it as one
- * block. `order` moves it visually without moving it in the markup — see the
- * note on `.hero`. The extra margin below is what separates the mark from the
- * pair, so the pair reads as belonging together. */
-.hero-art {
-  display: flex;
-  justify-content: center;
+.wall-cell {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 1.75rem 1.5rem 1.5rem;
   min-width: 0;
-  order: -1;
-  margin-bottom: 0.75rem;
+  /* Makes `cqi` below resolve against this cell rather than the viewport, so
+   * the figure is sized by the room it actually has. */
+  container-type: inline-size;
 }
 
-/* No `overflow` override, and there must not be one. The orbits are held by the
- * viewBox itself (see the note on the <svg> in index.html), which is what keeps
- * this correct at EVERY width rather than only where the columns happen to be
- * wide. Letting the art paint outside its viewport instead is what put the
- * orbit off the left edge of the page and under the headline on tablets: the
- * columns are halves, so the narrower the window the less of the overhang the
- * 2.5rem gap can absorb, and the further past the page edge the other side
- * goes.
- *
- * The two max-widths below are 600/460 × what they used to be — the viewBox got
- * wider by exactly that factor, so this keeps the rendered scale unchanged.
- * Change one without the other and the artwork silently resizes. */
-.hero-art svg {
-  width: 100%;
-  max-width: 19.5rem;
-  height: auto;
+.wall .k {
   display: block;
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 1.1rem;
 }
 
-/* Must stay AFTER the `.hero-art` rule above: the overlap margin is a base
- * declaration of the same specificity, so only source order cancels it. */
-@media (min-width: 46rem) {
-  .hero-art {
-    /* Its own column, so neither the reorder nor the phone's spacing apply. */
-    order: 0;
-    margin-bottom: 0;
-  }
-
-  .hero-art svg {
-    max-width: 27.4rem;
-  }
-}
-
-.art-orbit {
-  fill: none;
-  stroke: var(--line-strong);
-  stroke-width: 1.5;
-  stroke-dasharray: 5 7;
-}
-
-.art-orbit-2 {
-  stroke: var(--line);
-}
-
-/* stroke ≈ 0.36 × radius. That is NOT the favicon's 0.55 — the big mark has
- * always been drawn with thinner walls than the tab icon, and this rule used to
- * claim otherwise. Enlarging the ring kept the ratio the page already had rather
- * than quietly restyling it: r went 95 → 130, so the stroke went 34 → 46.5.
- * Change one of those two numbers and the other has to move with it. */
-.art-ring {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 46.5;
-  stroke-linecap: round;
-}
-
-.art-drop {
-  fill: var(--accent);
-}
-
-/* The coins are the one warm thing in the artwork, and they are `--pumpfun` and
- * not a literal orange so they track the theme: the light blocks swap that token
- * for #7c2d12, which is the same ramp dark enough to hold its own on #fafafa. A
- * hardcoded #fb923c looks right here and washes out there.
+/* An amount and its unit are one token, so they never break apart, and the
+ * figure is sized by its cell rather than by the viewport: `cqi` is 1% of the
+ * container's inline size, so a narrow cell gets smaller digits instead of a
+ * second line.
  *
- * `fill` stays an opaque token rather than `none`. The orbits pass behind the
- * coins, and a transparent centre lets the marching dashes run straight through
- * them — which flattens the artwork into one plane and makes the dashes look
- * like a rendering fault rather than a path. */
-.art-coin circle {
-  fill: var(--raised);
-  stroke: var(--pumpfun);
-  stroke-width: 3;
-}
-
-.art-spark {
-  fill: var(--accent);
-}
-
-.art-dot {
-  fill: var(--faint);
-  opacity: 0.7;
-}
-
-/* The motion. The reduced-motion block near the top of this file switches all
- * of it off.
- *
- * The orbits travel their own dashes rather than rotating. A rotation would
- * read well and then clip: the outer ellipse is 294 units of radius about a
- * centre 210 units down a 400-unit box, so a quarter turn stands it on end and
- * puts it outside the viewport — the box was widened for its WIDTH, not its
- * height, and an SVG clips to its viewport. Marching the dash pattern around
- * the path gives the same sense of orbit and never leaves the box. The offset
- * is a whole number of dash periods (5 + 7 = 12) so the loop has no visible
- * seam; that holds at any radius, because it depends on the period and not on
- * the length of the path. */
-@keyframes art-orbit-travel {
-  to {
-    stroke-dashoffset: -48;
-  }
-}
-
-.art-orbit {
-  animation: art-orbit-travel 1.6s linear infinite;
-}
-
-.art-orbit-2 {
-  animation-duration: 1.1s;
-  animation-direction: reverse;
-}
-
-/* The coins bob. */
-@keyframes art-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-13px); }
-}
-
-.art-coin {
-  animation: art-float 2.2s ease-in-out infinite;
-}
-
-.art-coin:nth-of-type(2) {
-  animation-delay: -0.75s;
-}
-
-.art-coin:nth-of-type(3) {
-  animation-delay: -1.5s;
-}
-
-/*
- * The sparks twinkle, and they animate OPACITY ONLY — never transform.
- *
- * Each spark is placed with a `transform` attribute in the markup, and a CSS
- * transform on an SVG element replaces that attribute rather than composing
- * with it. Animating `transform` here collapsed all three onto the origin,
- * where they rendered as one stray green mark in the corner of the artwork.
- * If a spark ever needs to move, wrap it in a `<g>` that carries the placement
- * and animate the inner path.
- */
-@keyframes art-twinkle {
-  0%, 100% { opacity: 0.25; }
-  50% { opacity: 1; }
-}
-
-.art-spark {
-  animation: art-twinkle 1.5s ease-in-out infinite;
-}
-
-.art-spark:nth-of-type(2) {
-  animation-delay: -0.5s;
-}
-
-.art-spark:nth-of-type(3) {
-  animation-delay: -1s;
-}
-
-/* The countdown sits ABOVE the two buttons at every width, and the block is
- * exactly as wide as the buttons are — one tidy stack rather than a row that
- * rearranges itself at 46rem.
- *
- * The width is the button pair's, and only the button pair's. `fit-content`
- * sizes the grid to its widest child, and the countdown must not be allowed to
- * be that child: its widest state — "Right now / working out today's payouts…",
- * which shows for a few minutes after every boundary — dragged the buttons 136px
- * wider once a day. So the strip is given `width: 0`, which is what it
- * contributes to the grid's intrinsic size, and `min-width: 100%`, which then
- * stretches it back to whatever the buttons settled on. Long text wraps inside
- * it rather than pushing it.
- *
- * `max-width: 100%` is what makes it degrade to full width on a phone, where the
- * buttons already span the screen. */
-.hero-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: stretch;
-  gap: 0.75rem;
-  /* No top margin: the hero's own row gap owns the spacing now, and a margin
-   * here would cancel the negative one that produces the overlap on a phone. */
+ * 12.5cqi is set from the longest string this slot actually holds — about 13
+ * monospace characters, `1000.1234 SOL` — at roughly 0.6em per character. The
+ * clamp stops it collapsing on a phone or ballooning on a wide screen. If a
+ * longer unit ever lands here, this number is what has to come down. */
+.wall .v {
+  display: block;
   margin: 0;
-  width: fit-content;
-  max-width: 100%;
-  /* The floor that widens the pair to match `.hero-copy`. `fit-content` is kept
-   * rather than replaced by a flat width so the block can still GROW past this
-   * if a label ever needs it — the countdown still cannot drag it, for the
-   * reason above.
-   *
-   * `min()` and not a bare `--hero-block`: on a phone the media query below
-   * turns `width: auto` back on, and a 28rem floor against a 343px column would
-   * push the buttons off the screen. `100%` caps it at the column. */
-  min-width: min(var(--hero-block), 100%);
+  font-size: clamp(1.5rem, 15cqi, 3.5rem);
+  line-height: 1;
 }
 
-/* 50/50 is the PHONE layout, and stays: two equal halves are both reachable
- * with one thumb, and equal widths mean neither label's length decides where
- * the split falls. The trade button spans both columns above them — it is the
- * loudest ask on the page, and a full-width row is how it stays the loudest
- * without unbalancing the pair. */
-.hero-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-/* On a pointer-sized screen the thumb argument does not apply, so the primary
- * gets twice the secondary. "Check your wallet" is the action this page is
- * asking for; "How it works" is a way back into the copy someone has already
- * scrolled past.
+/* The comp sets these figures in the display face, not in mono: at this size
+ * the condensed weight is what makes the wall read as a wall rather than as
+ * four paragraphs. Tabular figures are kept, because these numbers change
+ * every minute and digits that shift width make a live figure look unstable.
  *
- * 2fr/1fr, not a fixed pair of widths, so the ratio survives `--hero-block`
- * changing — the row is still exactly as wide as the block above it. */
-@media (min-width: 46rem) {
-  .hero-buttons {
-    grid-template-columns: 2fr 1fr;
-  }
+ * The badge beside it is deliberately excluded — it is a label, and label type
+ * belongs to the badge's own rules. */
+.wall .v .value,
+.wall .v .is-placeholder,
+.clock .t .value,
+.clock .t .is-placeholder {
+  font-family: "Helvetica Neue", var(--sans);
+  font-stretch: condensed;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
-.hero-buttons .trade-hero {
-  grid-column: 1 / -1;
-}
-
-/* Both labels stay on one line at every width. "Check your wallet" wrapping to
- * two lines makes the pair different heights and reads as a broken layout, so
- * the type shrinks with the viewport instead — the clamp floor is 12px, which
- * still clears the two halves of a 320px screen. */
-.hero-buttons .button {
+/* The amount and its unit are one token and never break apart. The nowrap sits
+ * on `.value` rather than on the slot, because the provenance badge beside it
+ * IS allowed onto a second line — it is a label, not part of the figure, and
+ * pinning it to the same line would shrink every number to fit it. */
+.wall .v .value,
+.wall .v .is-placeholder {
   white-space: nowrap;
-  font-size: clamp(0.75rem, 3.9vw, 0.9375rem);
 }
 
-@media (max-width: 46rem) {
-  /* On a phone the block spans the column instead of sizing to the buttons.
-   * The buttons are already close to full width there, so `fit-content` leaves
-   * a ragged 30px of dead space on the right that reads as a bug rather than as
-   * a margin. */
-  .hero-actions {
-    width: auto;
-  }
-
-  .hero-buttons .button {
-    padding-inline: 0.75rem;
-  }
+.wall .v.accent .value {
+  color: var(--accent);
 }
 
-/* The live countdown. It ticks once a second, so it is set in the monospace
- * face — a proportional font reflows on every tick and the whole strip
- * shivers. */
-.countdown-strip {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  padding: 0.75rem 1.125rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--raised);
-  /* See .hero-actions: `width: 0` is the strip's contribution to the grid's
-   * intrinsic width — none — and `min-width: 100%` stretches it to the track the
-   * buttons sized. Without the pair, a long countdown state widens the buttons. */
-  width: 0;
-  min-width: 100%;
-  /* Label left, figure right, at every width — the strip is as wide as the
-   * buttons under it, so letting the two sit together on the left would leave a
-   * gap that reads as a rendering fault. */
-  justify-content: space-between;
-}
-
-.countdown-label {
+.wall .note {
+  display: block;
+  margin: 0.7rem 0 0;
   font-size: 0.8125rem;
   color: var(--muted);
 }
 
-.countdown-value {
-  font-family: var(--mono);
-  font-size: 1.375rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-}
+/* ── the countdown strip ──────────────────────────────────────────────── */
 
-.countdown-value .pending {
-  font-size: 1rem;
-  color: var(--faint);
-}
-
-/* ── metrics ──────────────────────────────────────────────────────────── */
-
-.metrics {
+.clock {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 1px;
-  margin: 1rem 0;
-  padding: 0;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.25rem 2.5rem;
+  padding: 1.5rem;
+  border: 1px solid var(--line-loud);
+  border-radius: var(--radius);
+  background: var(--sunk);
+  margin-top: 1.5rem;
 }
 
-@media (min-width: 40rem) {
-  .metrics {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 780px) {
+  .clock {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (min-width: 64rem) {
-  .metrics {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-
-.metric {
-  background: var(--raised);
-  padding: 1rem 1rem 1.125rem;
-  min-width: 0;
-}
-
-.metric dt {
-  font-size: 0.6875rem;
+.clock .lbl {
+  display: block;
+  font: 600 11px/1.4 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
   color: var(--faint);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-family: var(--mono);
+  margin-bottom: 0.4rem;
 }
 
-.metric dd {
-  margin: 0.5rem 0 0;
+.clock .t {
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  line-height: 1;
 }
 
-.big {
-  font-family: var(--mono);
-  font-size: 1.25rem;
-  line-height: 1.3;
-}
-
-.big .value {
-  font-weight: 600;
-}
-
-/* ── the source badge: the most important two millimetres on the page ── */
-
-.source {
-  display: inline-block;
-  font-family: var(--sans);
-  font-size: 0.625rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.1rem 0.4rem;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  vertical-align: middle;
-  cursor: help;
+.clock .t .value,
+.clock .t .is-placeholder {
   white-space: nowrap;
 }
 
-.source-chain { color: var(--source-chain); }
-.source-snapshot { color: var(--source-snapshot); }
-.source-pumpfun { color: var(--source-pumpfun); }
-.source-derived { color: var(--source-derived); }
+/* Full width, under both: the rail is a chart of the time to its left, and
+ * side by side the two never line up — one is a single line of figures, the
+ * other is a bar with a legend, or a whole sentence when it refuses to draw. */
+.clock-rail {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
 
-.pending,
-.unavailable {
-  color: var(--faint);
-  font-style: italic;
+.clock p {
+  margin: 0;
+  color: var(--muted);
   font-size: 0.9375rem;
-  font-family: var(--sans);
+  max-width: 62ch;
 }
 
-.unavailable {
-  color: var(--warn);
-}
-
-/*
- * "These figures are from 14:03 UTC and are not updating."
+/* ── the card charts ──────────────────────────────────────────────────────
  *
- * The page re-reads every minute and leaves the last good numbers on screen
- * when a re-read fails, so this line is what stops that from being a silent
- * lie. Same warning colour as `.unavailable`, because it is the same class of
- * statement — the number beside it is not what the chain says right now.
+ * Each card is a chart OF a number already on the page, and carries the same
+ * badge that number carries. A card with nothing to draw prints a sentence
+ * instead: an empty axis is a claim that we looked and found nothing.
  */
-.live-status {
-  color: var(--warn);
-  font-size: 0.875rem;
-  font-style: italic;
-  margin: 0.5rem 0 0;
-}
-
-/* ── card charts ──────────────────────────────────────────────────────── */
-
 .graph-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-}
-
-@media (min-width: 46rem) {
-  .graph-grid {
-    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  }
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-top: 0;
+  margin-top: -1px;
 }
 
 .graph-card {
   display: flex;
   flex-direction: column;
   gap: 0.875rem;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 1rem 1.125rem 1.125rem;
+  background: var(--bg);
+  padding: 1.5rem;
   min-width: 0;
 }
 
 .graph-title {
-  font-size: 0.6875rem;
-  font-family: var(--mono);
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
   color: var(--faint);
 }
 
 .graph-value {
+  display: block;
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 1.125rem;
   line-height: 1.35;
   margin-top: 0.375rem;
-  display: block;
+}
+
+.graph-value .value,
+.graph-value .is-placeholder {
+  white-space: nowrap;
 }
 
 .graph-value .value {
@@ -1546,15 +1206,14 @@ summary:focus-visible {
   margin: auto 0 0;
 }
 
-/* A chart that has nothing to draw says so. It never renders an empty axis or
- * a zeroed bar, because a zeroed bar reads as "the number is zero". */
 .chart-state {
   font-size: 0.875rem;
   font-style: italic;
   color: var(--faint);
-  border: 1px dashed var(--line-strong);
-  border-radius: 8px;
+  border: 1px dashed var(--line-loud);
+  border-radius: var(--radius);
   padding: 0.625rem 0.75rem;
+  margin: 0;
 }
 
 .chart-state.is-unavailable {
@@ -1583,9 +1242,8 @@ summary:focus-visible {
 }
 
 .bar-track {
-  height: 0.625rem;
-  border-radius: 999px;
-  background: var(--band);
+  height: 1.125rem;
+  background: var(--sunk);
   border: 1px solid var(--line);
   overflow: hidden;
 }
@@ -1593,7 +1251,6 @@ summary:focus-visible {
 .bar-fill {
   display: block;
   height: 100%;
-  border-radius: inherit;
   background: var(--accent);
 }
 
@@ -1604,6 +1261,7 @@ summary:focus-visible {
 .bar-value {
   grid-column: 2;
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
   color: var(--muted);
   margin-top: -0.25rem;
@@ -1636,9 +1294,8 @@ summary:focus-visible {
 
 .rail {
   height: 0.625rem;
-  border-radius: 999px;
-  background: var(--band);
-  border: 1px solid var(--line);
+  background: var(--bg);
+  border: 1px solid var(--line-loud);
   overflow: hidden;
   display: flex;
 }
@@ -1672,333 +1329,67 @@ summary:focus-visible {
   margin-top: 0.5rem;
 }
 
-/* ── expandable tiles ─────────────────────────────────────────────────── */
+/* ── the wallet check ─────────────────────────────────────────────────── */
 
-details.tech {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--raised);
-  margin: 1rem 0;
-}
-
-details.tech > summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 0.875rem 2.5rem 0.875rem 1rem;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  position: relative;
-}
-
-details.tech > summary::-webkit-details-marker {
-  display: none;
-}
-
-details.tech > summary::after {
-  content: "+";
-  position: absolute;
-  right: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  font-family: var(--mono);
-  color: var(--accent);
-  font-size: 1.125rem;
-  line-height: 1;
-}
-
-details.tech[open] > summary::after {
-  content: "–";
-}
-
-details.tech > summary:hover {
-  color: var(--accent);
-}
-
-.detail-body {
-  border-top: 1px solid var(--line);
-  padding: 1rem;
-}
-
-.detail-body > *:last-child {
-  margin-bottom: 0;
-}
-
-.detail-body p {
-  font-size: 0.9375rem;
-  color: var(--muted);
-}
-
-.detail-body strong {
-  color: var(--fg);
-}
-
-/* ── verification cards ───────────────────────────────────────────────── */
-
-.verify-grid {
+.check {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  max-width: 720px;
 }
 
-@media (min-width: 52rem) {
-  .verify-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 620px) {
+  .check {
+    grid-template-columns: 1fr;
   }
 }
 
-.verification-card {
+.check input {
+  width: 100%;
+  padding: 1.05rem 1.1rem;
   background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 1.125rem;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.verification-card h3 {
-  margin: 0 0 0.75rem;
-  font-size: 0.9375rem;
-}
-
-.verification-card pre {
-  background: var(--band);
-  font-size: 0.8125rem;
-}
-
-.verification-card .note {
-  margin-bottom: 0;
-}
-
-/* ── tables ───────────────────────────────────────────────────────────── */
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0.5rem 0 0.75rem;
-}
-
-.facts th,
-.facts td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.625rem 0.5rem 0.625rem 0;
-  border-bottom: 1px solid var(--line);
-  font-weight: 400;
-}
-
-.facts th {
-  color: var(--muted);
-  font-size: 0.875rem;
-  width: 40%;
-}
-
-.epochs,
-.attacks {
-  font-size: 0.9375rem;
-}
-
-/* ── the scenario tables ──────────────────────────────────────────────────
- *
- * Three columns of prose on a phone is unreadable, and a table that widens the
- * page is worse — a body that scrolls sideways makes every other section feel
- * broken. So the table keeps its own scroll and the page never gains one.
- */
-.table-scroll {
-  overflow-x: auto;
-  margin: 0.5rem 0 0.75rem;
-  /* A hint that there is more to the right, rather than a hidden edge. */
-  border-radius: 8px;
-}
-
-.scenarios {
-  width: 100%;
-  min-width: 34rem;
-  border-collapse: collapse;
-  font-size: 0.9375rem;
-}
-
-.scenarios thead th {
-  font-size: 0.6875rem;
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  text-align: left;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--line-strong);
-  white-space: nowrap;
-}
-
-.scenarios th[scope='row'] {
-  font-weight: 400;
+  border: 1px solid var(--line-loud);
+  border-radius: var(--radius);
   color: var(--fg);
+  font: 500 15px/1 var(--mono);
 }
 
-.scenarios th,
-.scenarios td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.625rem 0.75rem;
-  border-bottom: 1px solid var(--line);
-}
-
-/* The colour carries the same three-way split the wallet panel uses: kept,
- * costs you today only, costs you today AND the next seven days. A row's
- * meaning is legible before any of it is read. */
-.scenarios tbody tr {
-  border-left: 3px solid transparent;
-}
-
-.scenarios tr.is-ok th[scope='row'] {
-  box-shadow: inset 3px 0 0 var(--ok);
-}
-
-.scenarios tr.is-warn th[scope='row'] {
-  box-shadow: inset 3px 0 0 var(--warn);
-}
-
-.scenarios tr.is-bad th[scope='row'] {
-  box-shadow: inset 3px 0 0 var(--danger);
-}
-
-.scenarios tr.is-bad td strong {
-  color: var(--danger);
-}
-
-.scenarios tr.is-warn td strong {
-  color: var(--warn);
-}
-
-.epochs th,
-.epochs td,
-.attacks th,
-.attacks td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.625rem 0.75rem 0.625rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.epochs thead th,
-.attacks thead th {
-  font-size: 0.6875rem;
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--faint);
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-/* Left, like every other cell and like the headers above them. These four
- * columns used to be right-aligned — the usual reason to do that with figures
- * is so the digits line up down the column — but the headers were never right
- * aligned to match, so each number sat at the opposite edge of its own label.
- *
- * `white-space: nowrap` stays and is doing separate work: it stops "0.0231 SOL"
- * breaking between the figure and its unit when the table is narrow. */
-.epochs .num {
-  white-space: nowrap;
-}
-
-.epochs tr.unposted {
-  opacity: 0.7;
-}
-
-.scroll-x {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.links {
-  font-size: 0.875rem;
-  white-space: nowrap;
-}
-
-/* ── addresses ────────────────────────────────────────────────────────── */
-
-.address {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-
-.copy {
-  font: inherit;
-  font-size: 0.625rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--faint);
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.05rem 0.35rem;
-  cursor: pointer;
-}
-
-.copy:hover,
-.copy:focus-visible {
-  color: var(--fg);
-  border-color: var(--line-strong);
-}
-
-/* ── the calculator ───────────────────────────────────────────────────── */
-
-form label {
-  display: block;
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
-.input-row {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-/* On a phone the button drops below the field and matches its width. A narrow
- * "Check" tucked beside a full-width paste target is the smallest tap target
- * on the page, in the one place everybody has to tap. */
-@media (max-width: 34rem) {
-  .input-row input[type="text"],
-  .input-row button[type="submit"] {
-    flex: 1 1 100%;
-  }
-}
-
-input[type="text"] {
-  flex: 1 1 18rem;
-  min-width: 0;
-  font-family: var(--mono);
-  font-size: 1rem;
-  padding: 0.6rem 0.7rem;
-  background: var(--band);
-  color: var(--fg);
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-}
-
-input[type="text"]::placeholder {
+.check input::placeholder {
   color: var(--faint);
 }
+
+.check input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
+}
+
+.check .btn {
+  justify-content: center;
+}
+
+.check-note {
+  margin: 1rem 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  max-width: 58ch;
+}
+
+/* ── the wallet answer ────────────────────────────────────────────────── */
 
 .standing {
-  margin: 1rem 0;
-  padding: 1rem 1.125rem;
+  margin: 2rem 0 0;
+  padding: 1.25rem 1.35rem;
   border: 1px solid var(--line);
   border-left-width: 4px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--raised);
 }
 
-.standing-ok { border-left-color: var(--ok); }
+.standing-ok { border-left-color: var(--accent); }
 .standing-action { border-left-color: var(--warn); }
-.standing-blocked { border-left-color: var(--danger); }
-.standing-pending { border-left-color: var(--line-strong); }
+.standing-blocked { border-left-color: var(--bad); }
+.standing-pending { border-left-color: var(--line-loud); }
 
 .standing-headline {
   font-size: 1.0625rem;
@@ -2017,62 +1408,91 @@ input[type="text"]::placeholder {
   margin-bottom: 0.25rem;
 }
 
-.warn {
-  color: var(--warn);
-  font-weight: 600;
-}
-
-/* ── the wallet panel's headline figures ──────────────────────────────────
- *
- * Three tiles above the detail table. They exist because in the flat list the
- * two numbers a holder came for carried the same visual weight as "the account
- * being read", and money does not.
- *
- * `auto-fit` with a floor rather than a fixed count: three across on a desktop,
- * one per row on a phone, and no media query to keep in step with the content.
+/*
+ * The three figures a holder came for. `auto-fit` with a floor rather than a
+ * fixed count: three across on a desktop, one per row on a phone, and no
+ * media query to keep in step with the content.
  */
 .standing-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   gap: 0.75rem;
   margin: 0.25rem 0 1rem;
+  /* Stretch, so tiles in a row share a height regardless of how long each
+   * note runs — one short caption beside a four-line one made the panel look
+   * like two unrelated blocks. */
+  align-items: stretch;
 }
 
-.tile {
-  padding: 0.75rem 0.875rem;
+.standing-tiles .tile {
+  padding: 1.1rem 1.15rem 1.15rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--band);
+  border-radius: var(--radius);
+  background: var(--sunk);
 }
 
-.tile dt {
-  font-family: var(--mono);
-  font-size: 0.6875rem;
+/* Same label type as the record table's column headers and the number wall's
+ * captions — this panel is the same data for one wallet, and it was reading as
+ * a different page. */
+.standing-tiles dt {
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
+  color: var(--faint);
 }
 
-/* Tabular figures so the decimal points line up down a column — the whole
- * reason these are worth reading at a glance. */
+/* The figure, in the display face the wall and the countdown use. Tabular so
+ * the decimal points line up down a column — the whole reason these are worth
+ * reading at a glance. */
 .tile-value {
-  margin: 0.25rem 0 0;
-  font-size: 1.375rem;
-  font-weight: 600;
+  margin: 0.6rem 0 0;
+  font-family: "Helvetica Neue", var(--sans);
+  font-stretch: condensed;
+  font-weight: 800;
+  font-size: clamp(1.5rem, 4vw, 2rem);
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  letter-spacing: -0.02em;
+  line-height: 1;
   overflow-wrap: anywhere;
 }
 
+/* The two figures that are money: the same green the number wall gives the
+ * pool, because on this page green means SOL that is real or nearly so. "Owed"
+ * is deliberately not green — it is money that has NOT arrived, and it has its
+ * own amber for when that is a fault. */
+.tile-lead .tile-value,
+.tile-accent .tile-value {
+  color: var(--accent);
+}
+
+/* "Paid so far" leads the panel — it is the question people came to ask, so it
+ * is a size above the tiles beside it. */
+.tile-lead .tile-value {
+  font-size: clamp(2rem, 5.5vw, 2.75rem);
+}
+
+/* "not yet" / "nothing yet" — a word where a figure would be. Never styled as
+ * a reading, for the same reason `field()` refuses to print a zero it did not
+ * measure, and never in the money colour. */
+.tile-value.is-empty,
+.tile-lead .tile-value.is-empty,
+.tile-accent .tile-value.is-empty {
+  color: var(--faint);
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-stretch: normal;
+}
+
 .tile-note {
-  margin: 0.375rem 0 0;
+  margin: 0.5rem 0 0;
   font-size: 0.8125rem;
+  line-height: 1.45;
   color: var(--faint);
 }
 
 /* Amber is for money that is actually stuck — never for a day that has simply
  * not been paid out yet, which is the ordinary state most of the time. */
-.tile-warn {
+.standing-tiles .tile-warn {
   border-color: var(--warn);
   background: var(--warn-bg);
 }
@@ -2081,19 +1501,478 @@ input[type="text"]::placeholder {
   color: var(--warn);
 }
 
-/* ── the per-day list ──────────────────────────────────────────────────── */
-
 .standing-days {
-  margin-top: 0.5rem;
+  margin-top: 1.75rem;
 }
 
 .standing-days-heading {
-  font-size: 0.8125rem;
-  font-family: var(--mono);
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.13em;
   text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 0.25rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line-loud);
+}
+
+/* The panel's two tables, given the record table's manners: mono labels, room
+ * to breathe, one hairline between rows. */
+.standing .facts th {
+  font: 600 11px/1.4 var(--mono);
   letter-spacing: 0.1em;
-  color: var(--muted);
+  text-transform: uppercase;
+  color: var(--faint);
+  width: 34%;
+  padding-right: 1rem;
+}
+
+.standing .facts td {
+  font-size: 0.9375rem;
+}
+
+.standing-days .facts td {
+  font-family: var(--mono);
+  font-size: 0.875rem;
+}
+
+/* ── the payout steps ─────────────────────────────────────────────────── */
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Three across everywhere but a phone. A tablet has room for three 230px
+ * cells — the number wall proves it at the same width — and stacking there
+ * turned a set of three into a scroll. */
+@media (max-width: 620px) {
+  .steps {
+    grid-template-columns: 1fr;
+  }
+}
+
+.steps > div {
+  background: var(--bg);
+  padding: 1.75rem 1.5rem;
+}
+
+.steps .when {
+  display: block;
+  font: 700 13px/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.9rem;
+}
+
+.steps h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.steps p {
   margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+/* The two clock cells that lived here are gone, and `.badge` went with them —
+ * nothing else on the page used either. See the note in index.html.
+ * Provenance badges are `.source`, a different thing entirely (js/ui.js). */
+
+/* A heading for a block inside a section, below the section's own h2. */
+.subhead {
+  margin: clamp(2.5rem, 5vw, 3.5rem) 0 1.25rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+/* ── the three rules ──────────────────────────────────────────────────── */
+
+/* Three fixed columns rather than `auto-fit`: the rules are a set of three and
+ * always read as one row. `auto-fit` wrapped the third card onto its own line
+ * at middling widths and left the empty half of that line behind it. */
+.rules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 620px) {
+  .rules {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rules > li {
+  background: var(--bg);
+  padding: 1.75rem 1.5rem;
+}
+
+/* Icon left, numeral right, on one line. The numeral is the loud element and
+ * the icon reads as its label — putting them on separate rows made the card
+ * three stacked blocks for two pieces of the same signpost. */
+.rule-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.rules .n {
+  display: block;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 2.75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: -0.03em;
+}
+
+.card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  border: 1px solid var(--line-loud);
+  border-radius: var(--radius);
+  color: var(--accent);
+  background: var(--sunk);
+}
+
+.card-icon svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+/* The three ways people lose the lockout by accident. Same card as a rule,
+ * warn-coloured and unnumbered — it is a set, not a sequence. */
+.card-icon.is-warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+
+.rules-warn > li > .card-icon {
+  margin-bottom: 1rem;
+}
+
+.rules h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.0625rem;
+}
+
+.rules p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+/* The one sentence that decides whether somebody loses a week. */
+/* Full bleed to the measure. These banners carry the two facts most likely to
+ * cost someone money, and a 78ch column left them looking like an aside beside
+ * the full-width card grid directly above. */
+.highlight {
+  margin: 1.5rem 0 0;
+  border-left: 3px solid var(--accent);
+  padding: 1.15rem 1.35rem;
+  background: var(--raised);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.highlight strong {
+  color: var(--fg);
+}
+
+/* Plain cards, used inside the "what counts as selling" tile. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.card {
+  background: var(--raised);
+  padding: 1.25rem;
+}
+
+.card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+/* ── the fee split ────────────────────────────────────────────────────── */
+
+.split {
+  display: grid;
+  grid-template-columns: 9fr 5fr;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+@media (max-width: 780px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.split > div {
+  background: var(--bg);
+  padding: 2rem 1.75rem;
+}
+
+/* The 10% cell is a third the height of its neighbour's numeral, so top
+ * alignment left it stranded against the 90%. Centred, the two read as one
+ * statement rather than as a heading and a footnote. */
+.split .b {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.split .pct {
+  display: block;
+  font-family: "Helvetica Neue", var(--sans);
+  font-stretch: condensed;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 0.85;
+}
+
+.split .a .pct {
+  font-size: clamp(4rem, 12vw, 8rem);
+  color: var(--accent);
+}
+
+.split .b .pct {
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  color: var(--muted);
+}
+
+.split h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 1.0625rem;
+}
+
+.split p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  max-width: 46ch;
+}
+
+/* ── expandable tiles ─────────────────────────────────────────────────── */
+
+details.tile {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+  margin-top: 0.75rem;
+}
+
+details.tile > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 1rem 2.75rem 1rem 1.15rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  position: relative;
+}
+
+details.tile > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.tile > summary::after {
+  content: "+";
+  position: absolute;
+  right: 1.15rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  color: var(--accent);
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+details.tile[open] > summary::after {
+  content: "\2013";
+}
+
+details.tile > summary:hover {
+  color: var(--accent);
+}
+
+.tile-body {
+  border-top: 1px solid var(--line);
+  padding: 1.15rem;
+}
+
+.tile-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.tile-body p {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.tile-body strong {
+  color: var(--fg);
+}
+
+/* ── the risk lead ────────────────────────────────────────────────────── */
+
+.risk-lead {
+  border-left: 3px solid var(--accent);
+  padding: 1.15rem 1.35rem;
+  background: var(--raised);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+}
+
+.risk-lead p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+.risk-lead strong {
+  color: var(--fg);
+}
+
+/* ── the source badge: the most important two millimetres on the page ── */
+
+.source {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  vertical-align: middle;
+  cursor: help;
+  white-space: nowrap;
+  /* Independent of whatever display size the value beside it is set at. */
+  line-height: 1.4;
+}
+
+.source-chain { color: var(--source-chain); }
+.source-snapshot { color: var(--source-snapshot); }
+.source-pumpfun { color: var(--source-pumpfun); }
+.source-derived { color: var(--source-derived); }
+
+/* Not a provenance colour: the badge on a pre-launch zero. It sits in the same
+ * slot and answers the same question, so it is shaped like the others, but it
+ * is deliberately the quietest of them. */
+.source-placeholder {
+  color: var(--faint);
+  border-style: dashed;
+}
+
+/* ── the pre-launch zero ──────────────────────────────────────────────────
+ *
+ * The shape of a real value, in the colour of an absent one. Everything here
+ * exists so a visitor can see the layout a launched page has without any of it
+ * being mistakable for something that was read. If you find yourself reaching
+ * for this class to soften a *failure*, stop: a dim zero and "we could not
+ * reach Solana" are different claims, and only one of them is true.
+ */
+.is-placeholder {
+  color: var(--faint);
+}
+
+.value.is-placeholder {
+  /* Keeps the tabular figures and the display size of a live reading, so the
+   * slot does not change width the moment a real number arrives. */
+  opacity: 0.55;
+}
+
+.bar-stack.is-placeholder,
+.rail.is-placeholder,
+.rail-legend.is-placeholder {
+  opacity: 0.55;
+}
+
+.sparkline.is-placeholder {
+  opacity: 0.45;
+}
+
+/* The dot must not pulse before there is anything to be live about. */
+.live.is-placeholder {
+  color: var(--faint);
+}
+
+.live.is-placeholder::before {
+  animation: none;
+  opacity: 0.5;
+}
+
+.pending,
+.unavailable {
+  color: var(--faint);
+  font-style: italic;
+  font-size: 0.9375rem;
+  font-family: var(--sans);
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.unavailable {
+  color: var(--warn);
+}
+
+.warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/*
+ * "These figures are from 14:03 UTC and are not updating."
+ *
+ * The page re-reads every minute and leaves the last good numbers on screen
+ * when a re-read fails, so this line is what stops that from being a silent
+ * lie. Same warning colour as `.unavailable`, because it is the same class of
+ * statement — the number beside it is not what the chain says right now.
+ */
+.live-status {
+  color: var(--warn);
+  font-size: 0.875rem;
+  font-style: italic;
+  margin: 0 0 1rem;
+}
+
+.live-status[hidden] {
+  display: none;
 }
 
 /* ── banners and failures ─────────────────────────────────────────────── */
@@ -2101,8 +1980,12 @@ input[type="text"]::placeholder {
 .banner {
   padding: 1rem 1.125rem;
   border: 1px solid;
-  border-radius: 10px;
-  margin: 1rem 0;
+  border-radius: var(--radius);
+  margin: 1.5rem 0 0;
+}
+
+.banner[hidden] {
+  display: none;
 }
 
 .banner-warn {
@@ -2110,23 +1993,23 @@ input[type="text"]::placeholder {
   border-color: var(--warn);
 }
 
+/* The browser half of devnet proof 20. When this is not hidden it is the most
+ * important thing on the page, and it is styled to win. */
 .banner-danger {
-  background: var(--danger-bg);
-  border-color: var(--danger);
-  color: var(--danger);
+  background: var(--bad-bg);
+  border-color: var(--bad);
+  border-left-width: 4px;
+  color: var(--bad);
   font-weight: 600;
 }
 
-.banner h3 {
-  margin-top: 0;
-}
-
 .failed {
-  border-left: 4px solid var(--warn);
+  border: 1px solid var(--warn);
+  border-left-width: 4px;
   background: var(--warn-bg);
-  padding: 1rem 1.125rem;
-  border-radius: 10px;
-  margin: 1rem 0;
+  padding: 1.15rem 1.35rem;
+  border-radius: var(--radius);
+  margin: 0 0 1rem;
 }
 
 .failure-headline {
@@ -2136,6 +2019,8 @@ input[type="text"]::placeholder {
 
 .failure-detail {
   font-size: 0.9375rem;
+  color: var(--muted);
+  margin-bottom: 0;
 }
 
 .failure-technical {
@@ -2159,7 +2044,7 @@ input[type="text"]::placeholder {
 }
 
 .failure-technical[open] > summary::before {
-  content: "– ";
+  content: "\2013 ";
 }
 
 .failure-error {
@@ -2168,106 +2053,555 @@ input[type="text"]::placeholder {
   background: none;
   border: none;
   padding: 0.5rem 0 0;
+  margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-/* ── the two clocks: visibly different, never interchangeable ─────────── */
+/* ── addresses ────────────────────────────────────────────────────────── */
 
-.clocks {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: 1fr;
-  margin: 1rem 0;
+.address {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
 }
 
-@media (min-width: 40rem) {
-  .clocks {
-    grid-template-columns: 1fr 1fr;
+.address .mono {
+  overflow-wrap: anywhere;
+}
+
+.copy {
+  font: 600 10px/1.4 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.1rem 0.35rem;
+  cursor: pointer;
+}
+
+.copy:hover,
+.copy:focus-visible {
+  color: var(--fg);
+  border-color: var(--line-loud);
+}
+
+/* ── tables ───────────────────────────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.facts th,
+.facts td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.7rem 0.5rem 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+  font-weight: 400;
+  font-size: 0.9375rem;
+}
+
+.facts th {
+  color: var(--muted);
+  font-size: 0.875rem;
+  width: 40%;
+}
+
+/* ── the receipts table (the daily record) ────────────────────────────── */
+
+.scroller,
+.scroll-x,
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll {
+  margin: 0.5rem 0 0.75rem;
+}
+
+table.receipts {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  /* Five columns rather than the seven this was sized for. Low enough that a
+   * tablet shows the whole row; a phone still scrolls it, which is the point
+   * of .scroller — the page itself never gains a sideways scroll. */
+  min-width: 540px;
+  margin: 0;
+}
+
+table.receipts th {
+  text-align: left;
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 0 1rem 0.9rem 0;
+  border-bottom: 1px solid var(--line-loud);
+  white-space: nowrap;
+}
+
+table.receipts td {
+  padding: 1.35rem 1rem 1.35rem 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: baseline;
+}
+
+/* Five columns of very different weight: the day names the row, the amount is
+ * what people came for, and the button must not drift into the middle of the
+ * table when the numbers are short. */
+.epochs td.day-cell,
+.epochs th:first-child {
+  width: 14%;
+  color: var(--muted);
+}
+
+.epochs td:last-child,
+.epochs th:last-child {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The one figure the section exists to report. Green, because on this page
+ * green is money that has actually moved — the same accent the wall uses. */
+.epochs td.paid-cell {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+table.receipts td.num,
+table.receipts td .num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+table.receipts a {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-loud);
+}
+
+table.receipts a:hover {
+  color: var(--fg);
+}
+
+/* A day that was never settled stays visible, and stays legibly different. */
+.epochs tr.unposted {
+  opacity: 0.7;
+}
+
+.epochs .num {
+  white-space: nowrap;
+}
+
+.links {
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+/* The record table's only control: one button per row, opening that day. */
+.row-button {
+  padding: 0.45rem 0.9rem;
+  font-size: 11px;
+}
+
+/* ── one day, in full (the Details dialog) ────────────────────────────────
+ *
+ * A native <dialog>: Esc, the backdrop, and focus containment come from the
+ * browser rather than from us, and every one of those is a thing a hand-rolled
+ * overlay gets subtly wrong.
+ */
+.epoch-dialog {
+  width: min(64rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  padding: 1.75rem;
+  border: 1px solid var(--line-loud);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--fg);
+}
+
+.epoch-dialog::backdrop {
+  background: rgb(0 0 0 / 0.7);
+}
+
+.epoch-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.epoch-dialog-title {
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
+  line-height: 0.9;
+  margin: 0 0 0.5rem;
+}
+
+/* The figures inside the dialog carry the same weight as the wall's: this is
+ * the same data, opened, and it should not read as a different product. */
+.epoch-dialog .facts td .value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.0625rem;
+}
+
+.epoch-dialog .facts th {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.epoch-dialog-totals dd .value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.25rem;
+}
+
+.epoch-dialog-close {
+  font: 600 14px/1 var(--mono);
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+}
+
+.epoch-dialog-close:hover,
+.epoch-dialog-close:focus-visible {
+  color: var(--fg);
+  border-color: var(--line-loud);
+}
+
+.epoch-dialog-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.epoch-dialog-links .button {
+  padding: 0.7rem 1.1rem;
+  font-size: 11px;
+  /* Centred rather than left-aligned, because once these wrap into a column
+   * they are full width and two labels of very different length would sit at
+   * different distances from the middle of the same stack. */
+  justify-content: center;
+}
+
+/* Stacked, they are one control each and must look like it: a short label and
+ * a long one side by side in a column read as two different kinds of button. */
+@media (max-width: 560px) {
+  .epoch-dialog-links {
+    flex-direction: column;
+  }
+
+  .epoch-dialog-links .button {
+    width: 100%;
+    text-align: center;
   }
 }
 
-.clock {
-  padding: 1rem 1.125rem;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--raised);
+.epoch-dialog-payees h3 {
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line-loud);
 }
 
-.clock h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.6875rem;
-  font-family: var(--mono);
-  text-transform: uppercase;
+/* The day's totals. `allocated` and `delivered` are different numbers whenever
+ * something went wrong, so they get equal billing rather than one headline. */
+.epoch-dialog-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.epoch-dialog-totals dt {
+  font: 600 10px/1.4 var(--mono);
   letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--faint);
 }
 
-.clock-hourly {
-  border-style: dashed;
+.epoch-dialog-totals dd {
+  margin: 0.2rem 0 0;
 }
 
-.clock-daily {
-  border-left: 4px solid var(--accent);
+/* Long days scroll inside the dialog rather than making it taller than the
+ * viewport, which would put the close button off screen. */
+.payees-scroll {
+  max-height: 22rem;
+  overflow-y: auto;
 }
 
-.clock-label {
-  font-family: var(--mono);
-  font-size: 0.9375rem;
-  margin-bottom: 0.5rem;
+table.payees {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 0.875rem;
 }
 
-.badge {
-  display: inline-block;
-  font-size: 0.625rem;
-  font-weight: 700;
+table.payees th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  font: 600 10px/1.3 var(--mono);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.1rem 0.45rem;
-  border-radius: 4px;
-  margin: 0 0 0.5rem;
+  color: var(--faint);
+  background: var(--raised);
+  padding: 0.4rem 1rem 0.4rem 0;
+  border-bottom: 1px solid var(--line-loud);
 }
 
-.badge-provisional {
-  background: var(--warn-bg);
+table.payees td {
+  padding: 0.45rem 1rem 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: baseline;
+}
+
+table.payees td.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* The reason a share was not paid is a sentence, and a sentence on one line
+ * would push the wallet column off the side of the dialog. */
+table.payees td.note {
+  max-width: 24rem;
+  white-space: normal;
+}
+
+/* Allocated but not in that wallet's hands — dimmed, and the reason is spelled
+ * out in the cell beside it rather than left to the styling. */
+table.payees tr.is-unpaid {
+  opacity: 0.75;
+}
+
+/* Same pairing as the CA strip: exactly one of the two forms `addressNode`
+ * renders is shown, and the accessible name carries the full address either
+ * way. Full base58 does not fit beside an amount on a phone. */
+.epoch-dialog .addr-short {
+  display: none;
+}
+
+/* The elided form is already as short as it gets; breaking it across two lines
+ * makes it unreadable as an address. `.address .mono` wraps anywhere, which is
+ * right everywhere else on the page and wrong in a narrow table cell. */
+table.payees .address .mono {
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
+}
+
+/* On a phone the third column is a sentence in a 6rem-wide cell, which turns
+ * every unpaid row into a ten-line stripe. Stacked, each payee reads as a
+ * short paragraph: who, how much, and what happened to it. */
+@media (max-width: 560px) {
+  table.payees thead {
+    display: none;
+  }
+
+  table.payees tbody,
+  table.payees tr,
+  table.payees td {
+    display: block;
+  }
+
+  table.payees tr {
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  table.payees td {
+    padding: 0.1rem 0;
+    border-bottom: 0;
+  }
+
+  table.payees td.num,
+  table.payees td.note {
+    text-align: left;
+    max-width: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .epoch-dialog {
+    padding: 1.15rem;
+  }
+
+  .epoch-dialog .addr-full {
+    display: none;
+  }
+
+  .epoch-dialog .addr-short {
+    display: inline;
+  }
+}
+
+/* ── the scenario tables ──────────────────────────────────────────────────
+ *
+ * Three columns of prose on a phone is unreadable, and a table that widens the
+ * page is worse — a body that scrolls sideways makes every other section feel
+ * broken. So the table keeps its own scroll and the page never gains one.
+ */
+.scenarios {
+  width: 100%;
+  min-width: 34rem;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+  margin: 0;
+}
+
+.scenarios thead th {
+  font: 600 11px/1.3 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--faint);
+  text-align: left;
+  padding: 0 0.75rem 0.75rem;
+  border-bottom: 1px solid var(--line-loud);
+  white-space: nowrap;
+}
+
+.scenarios th[scope="row"] {
+  font-weight: 400;
+  color: var(--fg);
+}
+
+.scenarios th,
+.scenarios td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+/* The colour carries the same three-way split the wallet panel uses: kept,
+ * costs you today only, costs you today AND the next seven days. A row's
+ * meaning is legible before any of it is read. */
+.scenarios tr.is-ok th[scope="row"] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.scenarios tr.is-warn th[scope="row"] {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+.scenarios tr.is-bad th[scope="row"] {
+  box-shadow: inset 3px 0 0 var(--bad);
+}
+
+.scenarios tr.is-bad td strong {
+  color: var(--bad);
+}
+
+.scenarios tr.is-warn td strong {
   color: var(--warn);
-  border: 1px solid var(--warn);
 }
 
-.status-strip {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-}
-
-.status-pill {
-  font-family: var(--mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  padding: 0.1rem 0.5rem;
-}
-
-.explanation {
+.attacks {
   font-size: 0.9375rem;
-  color: var(--muted);
-  border-left: 2px solid var(--line-strong);
-  padding-left: 0.75rem;
+  min-width: 34rem;
+}
+
+.attacks th,
+.attacks td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.7rem 0.75rem 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.attacks thead th {
+  font: 600 11px/1.3 var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ── code, and the rule itself ────────────────────────────────────────── */
+
+pre {
+  overflow-x: auto;
+  background: var(--sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
 }
 
 .formula {
   font-size: 0.8125rem;
 }
 
-footer {
-  border-top: 1px solid var(--line);
-  margin-top: 2rem;
-  padding: 2rem 1rem 3rem;
+.formula code {
+  font-size: 1em;
+}
+
+/* ── verification cards ───────────────────────────────────────────────── */
+
+.verify-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 52rem) {
+  .verify-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.verification-card {
+  background: var(--sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.125rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.verification-card h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.9375rem;
+}
+
+.verification-card pre {
+  background: var(--bg);
+}
+
+.verification-card .note {
+  margin: 0.5rem 0 0;
 }
 
 /* ── the audit trail's pager ──────────────────────────────────────────────
@@ -2284,7 +2618,7 @@ footer {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-top: 0.9rem;
+  margin-top: 1rem;
 }
 
 .pager[hidden] {
@@ -2292,21 +2626,16 @@ footer {
 }
 
 .pager-button {
-  font-size: 0.875rem;
-  padding: 0.45rem 0.95rem;
+  font-size: 11px;
+  padding: 0.6rem 1rem;
 }
 
 /* Disabled is a real state here — page 1 has no previous — so it has to read
- * as "not available now" rather than as a broken control. Same treatment as
- * the disabled trade chip: dimmed, no pointer, and no hover promise. */
-.pager-button:disabled {
+ * as "not available now" rather than as a broken control. */
+.pager-button:disabled,
+.pager-button:disabled:hover {
   opacity: 0.45;
   cursor: default;
-  border-color: var(--line);
-  color: var(--muted);
-}
-
-.pager-button:disabled:hover {
   border-color: var(--line);
   color: var(--muted);
 }
@@ -2316,4 +2645,145 @@ footer {
   margin: 0;
   font-variant-numeric: tabular-nums;
   text-align: center;
+}
+
+/* ── the closer, and the footer ───────────────────────────────────────── */
+
+.closer {
+  text-align: center;
+  padding-block: clamp(4rem, 9vw, 8rem);
+}
+
+.closer h2 {
+  font-size: clamp(2.75rem, 9vw, 6.5rem);
+}
+
+.closer p {
+  margin: 1.5rem auto 0;
+  max-width: 46ch;
+  color: var(--muted);
+}
+
+.closer .cta-row {
+  justify-content: center;
+}
+
+footer {
+  border-top: 1px solid var(--line);
+  padding-block: 2.5rem 3.5rem;
+  color: var(--faint);
+  font-size: 0.8125rem;
+}
+
+footer .note {
+  margin: 0;
+  max-width: 70ch;
+}
+
+/* The modifier has to out-rank `footer .note` above, which is one element more
+ * specific than a bare class and would otherwise pin the width back to 70ch. */
+footer .note-wide {
+  max-width: none;
+}
+
+/* ── the hover lift ───────────────────────────────────────────────────────
+ *
+ * One gesture for every card family on the page, carried over from the
+ * pre-redesign site: the card rises, its border comes up a step, and a soft
+ * shadow puts it in front of its neighbours.
+ *
+ * The seam grids (.steps, .rules, .split) draw their hairlines from a 1px gap
+ * over a --line ground rather than from per-cell borders, so a lifted cell
+ * would otherwise tear a sliver of that ground open beneath it. Two things fix
+ * that: the cell takes --raised so it stops matching the page behind it, and
+ * z-index puts it over its neighbours so its own shadow covers the seam. Those
+ * three containers also had their `overflow: hidden` removed — at a 2px radius
+ * it clipped nothing worth keeping, and it clipped the lift.
+ *
+ * Only on pointer devices: on touch there is no hover, and :hover there sticks
+ * after a tap. The global reduced-motion block kills the transition.
+ */
+.graph-card,
+.verification-card,
+.clock,
+.ledger,
+details.tile,
+.risk-lead,
+.steps > div,
+.rules > li,
+.split > div,
+.wall-cell {
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease,
+    background-color 0.18s ease;
+}
+
+@media (hover: hover) {
+  .graph-card:hover,
+  .verification-card:hover,
+  .clock:hover,
+  .ledger:hover,
+  details.tile:hover,
+  .risk-lead:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-loud);
+    box-shadow: var(--shadow);
+  }
+
+  .steps > div:hover,
+  .rules > li:hover,
+  .split > div:hover,
+  .wall-cell:hover {
+    position: relative;
+    z-index: 1;
+    transform: translateY(-2px);
+    background: var(--raised);
+    box-shadow: var(--shadow);
+  }
+}
+
+/* ── scroll reveal ────────────────────────────────────────────────────────
+ *
+ * Sections arrive in reading order. The scroll-linked version is gated behind
+ * @supports on purpose: without the gate, a browser with no view() timeline
+ * would keep the `from` keyframe's opacity: 0 and hide the page outright. The
+ * ungated fallback is a plain one-shot on load, which every browser runs.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .band-pad > .wrap > * {
+    animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @supports (animation-timeline: view()) {
+    .band-pad > .wrap > * {
+      animation: rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 45%;
+    }
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Everything that moves, stopped. The ticker holds its first frame, the live
+ * dot stops pulsing, and the reveal never runs — `animation: none` with the
+ * `both` fill above leaves each element in its natural, visible state.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }
