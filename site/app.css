@@ -801,24 +801,35 @@ svg {
   font-weight: 600;
 }
 
+/* The two calls to action stay on one line at every width. Wrapped, the second
+ * dropped under the first and the pair came out different widths — two buttons
+ * of different sizes on different lines read as a primary action and an
+ * afterthought, which is not what they are. They shrink instead, and their
+ * labels wrap inside them. */
 .cta-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.75rem;
   margin-top: 2rem;
 }
 
-/* On a phone the two calls to action match, rather than one being as wide as
- * its label happens to be. `flex: 1 1 0` with a zero basis is what makes them
- * equal — `flex: 1` alone distributes only the *spare* space and leaves the
- * longer label on the wider button. The nowrap on .btn is lifted here so the
- * shared width can go below the longest label without overflowing. */
+.cta-row > .btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  justify-content: center;
+  text-align: center;
+  /* Lifted from `.btn`: the label wraps inside the button rather than forcing
+   * the row wider than the column it sits in. */
+  white-space: normal;
+}
+
+/* On a phone the two match exactly, rather than one being as wide as its label
+ * happens to be. `flex: 1 1 0` with a zero basis is what makes them equal —
+ * `flex: 1` alone distributes only the *spare* space and leaves the longer
+ * label on the wider button. */
 @media (max-width: 620px) {
   .cta-row > .btn {
     flex: 1 1 0;
-    justify-content: center;
-    white-space: normal;
-    text-align: center;
   }
 }
 
