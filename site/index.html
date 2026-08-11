@@ -19,23 +19,23 @@
     <link rel="stylesheet" href="/site/app.css" />
 
     <!--
-      Two icons, and the second one is not belt-and-braces. The SVG is the real
-      mark: scalable, and it carries a prefers-color-scheme switch so the tab
-      follows the theme the way the page does. But an SVG icon is still refused
-      or mis-rasterised by enough browsers that "no icon at all" is a live
-      outcome, and the failure is silent — a tab just shows the default page
-      glyph and nobody reports it.
+      The mascot is the tab icon as of 2026-08-10, replacing the line mark.
 
-      So favicon.ico is a raster mirror of the same mark at 16/32/48. Browsers
-      that take the SVG use it; the rest fall back, rather than falling through.
-      `sizes="any"` on the SVG is what stops a browser preferring a cached .ico
-      over it.
+      favicon.svg is deliberately NOT linked any more. It carried `sizes="any"`,
+      which is precisely the keyword that lets a vector outrank a raster — so
+      leaving it in would have shown the old mark in exactly the browsers most
+      likely to render an icon at all. A tab showing last week's logo is worse
+      than one showing none.
 
-      The edge also serves this file at the ROOT /favicon.ico, because a browser
-      that has not read this markup yet probes there by default — and a 404 can
-      stick in the icon cache long after the file exists.
+      favicon.ico stays as the fallback, unchanged: a browser that ignores the
+      PNG falls through to it rather than to the default page glyph, and that
+      failure is silent enough that nobody would report it. The edge also serves
+      the .ico at the ROOT /favicon.ico, because a browser that has not read
+      this markup yet probes there — and a 404 can stick in the icon cache long
+      after the file exists.
     -->
-    <link rel="icon" href="/site/favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="icon" href="/site/favicon.png" type="image/png" sizes="180x180" />
+    <link rel="apple-touch-icon" href="/site/favicon.png" />
     <link rel="icon" href="/site/favicon.ico" sizes="48x48 32x32 16x16" />
 
     <!--
@@ -67,7 +67,7 @@
   <body>
     <!-- ── the top bar ─────────────────────────────────────────────────── -->
     <div class="topbar">
-      <div class="wrap brandline">
+      <div class="wrap barrow">
         <a class="logo" href="#top">
           <!-- The favicon's mark, inline, so the wordmark and the tab carry the
                same shape. Colour comes from CSS (`currentColor`), so it follows
@@ -75,17 +75,16 @@
           <svg class="logo-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
             <path d="M21.74 7.81 A10 10 0 1 0 21.74 24.19" fill="none" stroke="currentColor" stroke-width="5.5" stroke-linecap="round"/>
             <circle cx="25.6" cy="16" r="3.4" fill="currentColor"/>
-          </svg>
-          CALL<b>POOL</b></a>
+          </svg><span>Call<b>pool</b></span></a>
 
         <!-- Same order as the page. A nav that lists sections in a different
              order than they appear is a nav that makes people scroll twice. -->
         <nav class="nav" aria-label="Page sections">
-          <a href="#how">How it works</a>
-          <a href="#fees">Fees</a>
+          <a href="#pool">The pool</a>
           <a href="#position">Check your wallet</a>
           <a href="#payouts">Payouts</a>
-          <a href="#pool">The pool</a>
+          <a href="#how">How it works</a>
+          <a href="#fees">Fees</a>
           <a href="#history">History</a>
           <a href="#limits">Risks</a>
         </nav>
@@ -101,6 +100,11 @@
             <a class="icon-link" id="link-x" aria-label="The CALLPOOL announcement on X">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="currentColor" d="M17.8 3h3.1l-6.8 7.8 8 10.2h-6.3l-4.9-6.3L5.2 21H2.1l7.3-8.4L1.8 3h6.5l4.4 5.7L17.8 3Zm-1.1 16.2h1.7L7.4 4.7H5.6l11.1 14.5Z"/>
+              </svg>
+            </a>
+            <a class="icon-link" id="link-telegram" aria-label="The CALLPOOL group on Telegram">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M21.9 4.3 18.7 19c-.2 1-.9 1.3-1.7.8l-4.7-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.8 8.7-7.9c.4-.3-.1-.5-.6-.2L6.7 12.9 2 11.4c-1-.3-1-1 .2-1.5l18.4-7.1c.9-.3 1.6.2 1.3 1.5Z"/>
               </svg>
             </a>
             <a class="icon-link" id="link-github" aria-label="CALLPOOL source on GitHub">
@@ -129,6 +133,29 @@
     </div>
 
     <!--
+      The ticker. Six claims the page then spends the rest of its length
+      proving, every one of them stated in full prose further down — so the
+      whole strip is aria-hidden and the duplicate track that makes the loop
+      seamless costs a screen reader nothing.
+    -->
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track">
+        <span>90% of creator fees</span><i>/</i>
+        <span>Paid every 00:00 UTC</span><i>/</i>
+        <span>Nothing to claim</span><i>/</i>
+        <span>No wallet to connect</span><i>/</i>
+        <span>Sell = 7 days off</span><i>/</i>
+        <span>Every split published</span><i>/</i>
+        <span>90% of creator fees</span><i>/</i>
+        <span>Paid every 00:00 UTC</span><i>/</i>
+        <span>Nothing to claim</span><i>/</i>
+        <span>No wallet to connect</span><i>/</i>
+        <span>Sell = 7 days off</span><i>/</i>
+        <span>Every split published</span><i>/</i>
+      </div>
+    </div>
+
+    <!--
       The contract address, where a buyer looks for it. The page itself warns
       that address confusion is how people lose money during a launch, so the
       address is not only in a fold — it is the first line under the bar, with
@@ -143,6 +170,12 @@
       own on-chain Config — never typed here. Before launch it says "not
       launched yet" and there is no copy button, because there is nothing to
       copy.
+
+      Both the full address and a middle-elided one are rendered, and app.css
+      shows whichever the width allows: 44 base58 characters do not fit beside
+      a label and a button on a phone, and the copy button is the point of the
+      row — it must not be pushed off the edge. What is copied is the full
+      address either way.
     -->
     <div class="ca-strip">
       <div class="wrap ca-row">
@@ -151,449 +184,664 @@
       </div>
     </div>
 
-    <header class="wrap hero" id="top">
-      <!--
-        Three siblings, not two, and the source order is the phone's order:
-        words, then the mark, then the buttons sitting over it. On a laptop the
-        grid puts the first and third in the left half and spans the mark down
-        the right, so the same markup reads correctly both ways round.
-      -->
-      <div class="hero-copy">
-        <p class="eyebrow">solana · pump.fun</p>
-        <h1>Hold it, call it out, get paid.</h1>
-        <p class="lede">
-          90% of this coin’s creator fees are shared out every day among the people who called it
-          out and held their position. <strong>Nothing to claim, and no wallet to connect.</strong>
-        </p>
-      </div>
-
-      <!--
-        Decorative, and only decorative. The favicon's mark blown up — the open
-        C as the pool, the drop as one call landing in it — with coins on
-        orbits around it. It is line art in the page's own CSS variables so it
-        follows the theme, it is aria-hidden because it says nothing the
-        headline does not, and it plots no data: rules 1 and 9 apply to charts,
-        and this is deliberately not one.
-      -->
-      <div class="hero-art" aria-hidden="true">
+    <header id="top">
+      <div class="wrap hero">
         <!--
-          The viewBox starts at -65, not 0. The outer orbit is 294 × 112 rotated
-          -12° about (235,210), which reaches from -59 to 529 — wider than the
-          460-unit box this used to have. Rather than let it paint outside the
-          viewport (which put it off the left edge of the page and underneath
-          the headline on tablets), the box was widened to hold it, with about
-          six units of margin at each end.
+          The mascot, and the ledger sitting over its feet.
 
-          Widening it is free: the CONTENT coordinates did not move, and the
-          heights did not change, so `.hero-art svg`'s max-width was scaled by
-          the same 600/460 to keep the rendered scale identical. Anything added
-          out past x=-59 or x=529 needs this box widened again, not an
-          `overflow` override.
+          Source order is image, then ledger, then words, because that is the
+          order they read in on a phone, where the grid collapses to one column.
+          On a laptop the grid puts the first two in the left column and the
+          words in the right.
+
+          The overlap is done with a negative margin on the ledger rather than
+          absolute positioning, so the card still takes part in layout and the
+          column grows with it — an absolutely positioned card would hang out of
+          the header at small widths and over the section below it.
         -->
-        <svg viewBox="-65 0 600 400" focusable="false">
-          <ellipse class="art-orbit" cx="235" cy="210" rx="294" ry="112" transform="rotate(-12 235 210)"/>
-          <ellipse class="art-orbit art-orbit-2" cx="235" cy="205" rx="221.2" ry="81.2" transform="rotate(-12 235 205)"/>
+        <div class="hero-art">
+          <img
+            src="/site/mascot.png"
+            width="890"
+            height="900"
+            alt=""
+            aria-hidden="true"
+            decoding="async"
+            fetchpriority="high"
+          />
+        </div>
 
-          <path class="art-ring" d="M324.6 93.5 A130 130 0 1 0 324.6 306.5"/>
-          <circle class="art-drop" cx="374.8" cy="200" r="44"/>
+        <!--
+          The ledger: the live numbers as the hero asset.
 
-          <g class="art-coin">
-            <circle cx="62" cy="146" r="18"/>
-            <circle cx="62" cy="146" r="11"/>
-          </g>
-          <g class="art-coin">
-            <circle cx="415" cy="118" r="13"/>
-            <circle cx="415" cy="118" r="7"/>
-          </g>
-          <g class="art-coin">
-            <circle cx="392" cy="304" r="15"/>
-            <circle cx="392" cy="304" r="8.5"/>
-          </g>
+          A second display of figures the pool section owns — the canonical
+          slots with their provenance badges stay in the number wall below, and
+          these carry plain text, because a badge is a claim that needs the room
+          to explain itself and this card has none.
 
-          <circle class="art-dot" cx="150" cy="330" r="4"/>
-          <circle class="art-dot" cx="30" cy="230" r="3"/>
-          <!-- Clear of the ring, not centred on anything. At the ring's old
-               radius this sat at (245,52); the enlarged ring reaches 153 units
-               from (250,200) and would have swallowed it whole. -->
-          <circle class="art-dot" cx="196" cy="42" r="3.5"/>
+          The countdown is the hourly callout window, not the daily one: the
+          day's close already has a countdown of its own in "The pool right
+          now", and two clocks counting different things is how a reader ends up
+          trusting neither. It is ticked once a second by app.js.
+        -->
+        <div class="ledger">
+          <div class="ledger-row">
+            <span class="ledger-k">In the pool now</span>
+            <span id="ledger-pool" class="ledger-v big num"></span>
+          </div>
+          <div class="ledger-row">
+            <span class="ledger-k">Paid out so far</span>
+            <span id="ledger-distributed" class="ledger-v num"></span>
+          </div>
+          <div class="ledger-row">
+            <span id="hero-countdown-label" class="ledger-k">Callout update in</span>
+            <span id="hero-countdown" class="ledger-v num"></span>
+          </div>
+        </div>
 
-          <path class="art-spark" transform="translate(120 62)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
-          <path class="art-spark" transform="translate(336 40) scale(0.7)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
-          <path class="art-spark" transform="translate(56 306) scale(0.85)" d="M0 -8 L2 -2 L8 0 L2 2 L0 8 L-2 2 L-8 0 L-2 -2 Z"/>
-        </svg>
+        <div class="hero-copy">
+          <p class="eyebrow">Solana / pump.fun</p>
+          <h1 class="display"><span>Hold it.</span><br /><span>Call it out.</span><br /><span><em>Get paid.</em></span></h1>
+          <p class="hero-sub">
+            90% of this coin’s creator fees, split every day among the people who called it out and
+            held. <strong>Nothing to claim, no wallet to connect.</strong>
+          </p>
+
+          <!--
+            The trade button's href is set by app.js from the same mint the rest
+            of the page uses, and is a disabled chip until the coin exists.
+          -->
+          <div class="cta-row">
+            <a class="btn primary trade-hero" id="trade-hero">
+              <svg class="pill-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3.5" y="8.75" width="17" height="7.5" rx="3.75" transform="rotate(-40 12 12.5)" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M9.1 10.4l5.8 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+              Trade on pump.fun</a>
+            <a class="btn" href="#position">Check your wallet</a>
+          </div>
+        </div>
       </div>
 
       <!--
-        The countdown leads, because "when does this pay" is the question the
-        buttons are answers to. It is driven once a second from the on-chain
-        window by app.js — never from the visitor's calendar, and never a
-        number typed into the markup. Its label changes with the state of the
-        day, so it cannot say "ends in" while the day is being settled.
-
-        The trade button's href is set by app.js from the same mint the rest
-        of the page uses, and is a disabled chip until the coin exists.
+        The state of the whole page, when there is one to report: not
+        configured, not launched, pointing at the wrong coin, or Solana
+        unreachable. It sits directly under the hero because on those paths it
+        is the most important thing on the page, and app.js hides it once the
+        on-chain config reads back clean.
       -->
-      <div class="hero-actions">
-        <div class="countdown-strip">
-          <span id="hero-countdown-label" class="countdown-label">Today’s round</span>
-          <span id="hero-countdown" class="countdown-value"></span>
-        </div>
-        <div class="hero-buttons">
-          <a class="button trade trade-hero" id="trade-hero">
-            <svg class="pill-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <rect x="3.5" y="8.75" width="17" height="7.5" rx="3.75" transform="rotate(-40 12 12.5)" fill="none" stroke="currentColor" stroke-width="1.8"/>
-              <path d="M9.1 10.4l5.8 4.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            </svg>
-            Trade on pump.fun</a>
-          <a class="button primary" href="#position">Check your wallet</a>
-          <a class="button" href="#how">How it works</a>
-        </div>
-      </div>
+      <div class="wrap"><div id="hero-status"></div></div>
     </header>
 
     <main>
-      <!-- ── 1. the basics ────────────────────────────────────────────── -->
-      <section id="how" class="wrap section" aria-labelledby="how-heading">
-        <div class="section-head">
-          <div class="section-title">
-            <!-- Section icons are decorative — every one is aria-hidden and the
-                 heading beside it carries the meaning. Stroke is currentColor,
-                 so they follow the theme like every other line on the page. -->
-            <span class="section-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="9"/>
-                <path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5Z"/>
-              </svg>
-            </span>
-            <h2 id="how-heading">How it works</h2>
-          </div>
-          <p class="eyebrow">the basics</p>
-          <p class="section-lede">
-            Three things. Do all three on a given day and you are in that day’s split; miss one
-            and you are not.
-          </p>
-        </div>
+      <!--
+        The browser half of devnet proof 20: the floor this page shows against
+        the floor the program enforces. Above everything, and the loudest thing
+        on the page when it is not hidden.
+      -->
+      <div class="wrap"><div id="floor-mismatch" class="banner banner-danger" hidden></div></div>
 
-        <ol class="cards steps">
-          <li class="card step">
-            <div class="step-top">
-              <span class="card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 10v4h4l6 4.5v-13L8 10H4Z"/>
-                  <path d="M17.5 9.5a4 4 0 0 1 0 5"/>
-                  <path d="M19.8 7.2a7.2 7.2 0 0 1 0 9.6"/>
-                </svg>
-              </span>
-              <span class="step-no">1</span>
+      <!-- ── 1. the pool right now ────────────────────────────────────── -->
+      <section id="pool" class="band band-pad" aria-labelledby="pool-heading">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">live</p>
+            <h2 id="pool-heading" class="display">The pool right now</h2>
+            <p>Read live from Solana <strong>by your browser, not by us</strong>.</p>
+          </div>
+
+          <!--
+            Staleness, said out loud. A refresh that fails leaves the last figures
+            that were actually read on the page rather than blanking them — but a
+            number that has stopped updating and does not say so is the one kind of
+            wrong this page cannot allow, so this line names the time it was read.
+          -->
+          <p id="live-status" class="live-status" hidden></p>
+
+          <dl class="wall">
+            <div class="wall-cell">
+              <dt class="k">Caller pool</dt>
+              <dd id="pool-balance" class="v num accent"></dd>
+              <p class="note">What today’s split divides between the callers.</p>
             </div>
-            <h3>Call it out</h3>
-            <p>
-              Post a callout for this coin on pump.fun, or update one you already posted — both
-              count. A call does not carry over to the next day, so it has to happen again
-              before 00:00&nbsp;UTC. Ten callouts in a day count exactly the same as one.
-            </p>
-          </li>
-          <li class="card step">
-            <div class="step-top">
-              <span class="card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 3 5 9l7 12 7-12-7-6Z"/>
-                  <path d="M5 9h14"/>
-                  <path d="M12 3 9.5 9 12 21l2.5-12L12 3Z"/>
-                </svg>
-              </span>
-              <span class="step-no">2</span>
+            <div class="wall-cell">
+              <dt class="k">Fees not yet swept in</dt>
+              <dd id="vault-balance" class="v num"></dd>
+              <p class="note">
+                In pump.fun’s creator vault. On its way, not in today’s split.
+              </p>
             </div>
-            <h3>Hold <span id="floor-tokens" class="mono"></span></h3>
-            <p>
-              At any moment you are credited with the <em>smallest</em> balance you still hold
-              for the rest of the day — so buying counts from when it lands, and selling costs
-              you the whole day. Trimming is fine if you stay at or above the minimum.
-            </p>
-          </li>
-          <li class="card step">
-            <div class="step-top">
-              <span class="card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <ellipse cx="12" cy="6.5" rx="7" ry="3"/>
-                  <path d="M5 6.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>
-                  <path d="M5 11.5v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5"/>
-                </svg>
-              </span>
-              <span class="step-no">3</span>
+            <div class="wall-cell">
+              <dt class="k">Day number</dt>
+              <dd id="current-epoch" class="v num"></dd>
+              <p class="note">Counted from launch. One day runs 00:00 to 00:00 UTC.</p>
             </div>
-            <h3>Get paid</h3>
-            <p>
-              Your share is worked out at 00:00&nbsp;UTC and sent to you. You never claim
-              anything and you never connect a wallet. Amounts too small to be worth their own
-              transaction roll into the next day and pay automatically once they clear it.
-            </p>
-          </li>
-        </ol>
+            <div class="wall-cell">
+              <dt class="k">Paid out so far</dt>
+              <dd id="total-distributed" class="v num"></dd>
+              <p class="note">Added up from every past day, in your browser.</p>
+            </div>
+          </dl>
 
-        <!--
-          The second bold sentence is the whole of L18's copy on this page. It used
-          to carry two more clauses — that a wallet earns nothing while its tokens
-          are in the pool, and that liquidity supplied anywhere else still locks
-          you out — which the owner removed on 2026-08-07. See the note under
-          "Where it lives" in docs/DECISIONS-LOCKED.md §L18 for what that means and
-          where the two facts are still stated.
-        -->
-        <p class="highlight">
-          <strong>Dropping below the minimum locks you out for 7 days.</strong> Trimming your
-          position is not a sale — as long as you stay at or above
-          <span class="floor-inline mono"></span> you keep earning, and the day is simply
-          counted at your lowest balance. Go under it, to 50,000 or to zero alike, and the next
-          7 days earn nothing. Buying back does not shorten it — though the day you went under
-          is still paid for the hours you held, at the balance you held.
-          <strong>Supplying liquidity to this coin’s own pump.fun pool is the one exception and
-          does not lock you out even though it takes your balance to zero.</strong>
-        </p>
-
-        <h3 class="subhead">What counts as selling</h3>
-        <div class="cards">
-          <div class="card">
-            <span class="card-icon is-warn" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 7l7.5 7.5 4-4L21 17"/>
-                <path d="M15 17h6v-6"/>
-              </svg>
-            </span>
-            <h3>Going under the minimum</h3>
-            <p>
-              Whether you sell or send tokens to another wallet you own, what matters is where
-              your balance lands. Stay at or above the minimum and you keep earning; drop below
-              it and the next 7 days earn nothing.
-            </p>
+          <!--
+            The clock strip. Sized from the on-chain window, so a rehearsal
+            deployment running 60-second epochs draws 60-second epochs.
+          -->
+          <div class="clock">
+            <div class="clock-face">
+              <span class="lbl">Closes in</span>
+              <div id="card-clock-value" class="t num"></div>
+            </div>
+            <p>Locked at 00:00&nbsp;UTC, sent the same night. Selling before then costs you the day.</p>
+            <div class="clock-rail" id="card-clock-chart"></div>
           </div>
-          <div class="card">
-            <span class="card-icon is-warn" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="6.5" width="18" height="12.5" rx="2.5"/>
-                <path d="M15.5 12.75h2.5"/>
-              </svg>
-            </span>
-            <h3>Only your main token account counts</h3>
-            <p>
-              Tokens parked in any other token account earn nothing. The daily settlement and the
-              on-chain payout both read the wallet’s associated token account and nothing else,
-              with no summing across accounts.
-            </p>
+
+          <!--
+            The card charts. Each one is a chart OF a number already on this page,
+            with the same badge that number carries, and each refuses to draw
+            rather than showing an empty axis — an empty axis is a claim that we
+            looked and found nothing. See js/graphs.js.
+          -->
+          <div class="graph-grid">
+            <article class="graph-card">
+              <div class="graph-head">
+                <div class="graph-title">Pool vs. fees waiting</div>
+                <span id="card-pool-value" class="graph-value"></span>
+              </div>
+              <div id="card-pool-chart"></div>
+              <p class="graph-copy">What can be split today, against what is still waiting to come in.</p>
+            </article>
+
+            <article class="graph-card">
+              <div class="graph-head">
+                <div class="graph-title">Paid out per day</div>
+                <span id="card-history-value" class="graph-value"></span>
+              </div>
+              <div id="card-history-chart"></div>
+              <p class="graph-copy">One point per day paid so far, oldest first.
+                <a href="/snapshots/day0/">Day 0 receipts →</a></p>
+            </article>
           </div>
-          <div class="card">
-            <span class="card-icon is-warn" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="8.5"/>
-                <path d="M6.4 6.4 17.6 17.6"/>
-              </svg>
-            </span>
-            <h3>Sell before the payout lands</h3>
-            <p>
-              The payout re-checks your balance when it lands, and it looks for the minimum — not
-              a token or two. Because it goes out daily rather than monthly that exposure is one
-              day, but it is real.
-            </p>
-          </div>
-        </div>
 
-        <!--
-          Every case, in one table. Added 2026-08-08 because the two penalties
-          are separate mechanisms and reading either one alone gives the wrong
-          answer: a sale collapses TODAY's share, and independently locks the
-          NEXT 7 days. Someone who reads only the first thinks selling costs a
-          day; someone who reads only the second thinks a same-day sale is free.
-
-          Deliberately static. It describes the rule rather than any wallet, so
-          it renders before launch and needs no chain read to be true.
-        -->
-        <h3 class="subhead">What happens in every case</h3>
-        <p class="lede lede-wide">
-          Two things are decided separately each day: <strong>what today is worth</strong>, and
-          <strong>whether the next 7 days are locked</strong>. Only dropping below the minimum
-          does both. Trimming your position while staying above it costs you today’s weight and
-          nothing else.
-        </p>
-
-        <div class="table-scroll">
-          <table class="scenarios">
-            <thead>
-              <tr>
-                <th scope="col">What you did today</th>
-                <th scope="col">Today’s share</th>
-                <th scope="col">Next 7 days</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="is-ok">
-                <th scope="row">Held your position, no changes</th>
-                <td>Counted in full</td>
-                <td>Keep earning</td>
-              </tr>
-              <tr class="is-ok">
-                <th scope="row">Bought this coin for the first time today</th>
-                <td>Scaled to the part of the day you held — you are in from today</td>
-                <td>Keep earning</td>
-              </tr>
-              <tr class="is-ok">
-                <th scope="row">Topped up an existing position</th>
-                <td>Larger, counted from the moment the top-up landed</td>
-                <td>Keep earning</td>
-              </tr>
-              <tr class="is-ok">
-                <th scope="row">Supplied liquidity to this coin’s own pump.fun pool</th>
-                <td>Counted — this is not a sale</td>
-                <td>Keep earning</td>
-              </tr>
-              <tr class="is-warn">
-                <th scope="row">Did not call out today</th>
-                <td><strong>Nothing</strong> — a call does not carry over</td>
-                <td>Keep earning, as soon as you call out again</td>
-              </tr>
-              <tr class="is-warn">
-                <th scope="row">Sold some, stayed at or above the minimum</th>
-                <td>The <strong>whole day</strong> counts at your lowest balance</td>
-                <td>Keep earning — this is not a sale</td>
-              </tr>
-              <tr class="is-warn">
-                <th scope="row">Sold some, then topped back up the same day</th>
-                <td>
-                  The hours before the sale still count at the lower balance; the top-up counts
-                  from the moment it lands
-                </td>
-                <td>Keep earning, if you never went under the minimum</td>
-              </tr>
-              <tr class="is-bad">
-                <th scope="row">Dipped below the minimum, then bought back</th>
-                <td>Counted, but the hours before the dip count at the low balance</td>
-                <td><strong>Locked out</strong></td>
-              </tr>
-              <tr class="is-bad">
-                <th scope="row">Sold everything</th>
-                <td><strong>Nothing</strong></td>
-                <td><strong>Locked out</strong></td>
-              </tr>
-              <tr class="is-bad">
-                <th scope="row">Moved enough to another wallet to fall under the minimum</th>
-                <td><strong>Nothing</strong> — judged on where this wallet lands</td>
-                <td><strong>Locked out</strong></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <p class="note">
-          “Locked out” means the next 7 days earn nothing at all, whatever you hold and however
-          often you call out. <strong>Buying back does not shorten it.</strong> It is triggered by
-          one thing only: your balance ending up <em>below the minimum</em>. The lockout starts
-          the day after that happens — on the day itself you are already losing the share, so the
-          two penalties do not overlap.
-        </p>
-
-        <details class="tech">
-          <summary>A worked example, with real numbers</summary>
-          <div class="detail-body">
-            <p>
-              Eight wallets, each still holding at midnight, each having called out. The share
-              column is what the day’s split is divided by — so a wallet with twice the number
-              gets twice the money.
-            </p>
-            <div class="table-scroll">
-              <table class="scenarios">
-                <thead>
-                  <tr>
-                    <th scope="col">The day</th>
-                    <th scope="col">Counted as</th>
-                  </tr>
-                </thead>
+          <details class="tile">
+            <summary>Addresses</summary>
+            <div class="tile-body">
+              <table class="facts">
+                <caption class="visually-hidden">Addresses</caption>
                 <tbody>
-                  <tr>
-                    <th scope="row">Held 1,000,000 all day</th>
-                    <td>1,000,000</td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Held 500,000, topped up to 1,000,000 at 06:00&nbsp;UTC</th>
-                    <td>875,000 — the extra counts for the 18 hours it was there</td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Held 500,000, sold down to 120,000 at 18:00&nbsp;UTC</th>
-                    <td>
-                      120,000 — the whole day at the lower balance. Still above the minimum, so
-                      <strong>not</strong> locked out
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">
-                      Held 500,000, sold to 120,000 at 18:00&nbsp;UTC, topped back up to 1,000,000
-                      at 20:00&nbsp;UTC
-                    </th>
-                    <td>
-                      266,667 — the first 20 hours count at 120,000, the last 4 at 1,000,000. Never
-                      went under the minimum, so still earning tomorrow
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Held 500,000, sold down to 50,000 at 18:00&nbsp;UTC</th>
-                    <td><strong>Nothing</strong> — under the minimum, so the next 7 days are locked</td>
-                  </tr>
-                  <!--
-                    The counter-intuitive row, and the reason it is spelled out: going
-                    under the minimum and buying back does NOT cost you the day. Today
-                    is still paid, at the low balance for the hours it was low. The
-                    lockout is a separate penalty and it still applies. Reading either
-                    half alone gives the wrong answer in opposite directions.
-                  -->
-                  <tr>
-                    <th scope="row">
-                      Held 500,000, sold to 50,000 at 18:00&nbsp;UTC, topped back up to 1,000,000
-                      at 20:00&nbsp;UTC
-                    </th>
-                    <td>
-                      208,333 — today is still paid: the first 20 hours count at 50,000, the last
-                      4 at 1,000,000. But it went under the minimum, so the next 7 days are
-                      <strong>locked</strong> anyway, and buying back does not shorten that
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Bought 500,000 at 20:00&nbsp;UTC</th>
-                    <td>83,333 — four hours of the day</td>
-                  </tr>
-                  <tr>
-                    <th scope="row">
-                      Held 500,000, topped up to 5,000,000 one minute before midnight&nbsp;UTC
-                    </th>
-                    <td>503,125 — a minute is worth a minute</td>
-                  </tr>
+                  <tr><th scope="row">Coin</th><td id="mint-address"></td></tr>
+                  <tr><th scope="row">Pool</th><td id="pool-address"></td></tr>
+                  <tr><th scope="row">Program</th><td id="program-address"></td></tr>
+                  <tr><th scope="row">Snapshot key</th><td id="snapshot-key"></td></tr>
                 </tbody>
               </table>
+              <p class="note">
+                Check the coin address against the pinned post before you buy anything. Address
+                confusion is how people lose money during a launch.
+              </p>
             </div>
-            <p>
-              The rule behind all of it is one sentence: <strong>at any moment you are credited
-              with the smallest balance you still hold for the rest of the day.</strong> That is
-              why adding counts from when it lands and never before, and why selling reaches
-              backwards across the whole day.
-            </p>
-          </div>
-        </details>
+          </details>
+        </div>
+      </section>
 
-        <details class="tech">
-          <summary>The exact rule, and what each part of it stops</summary>
-          <div class="detail-body">
+      <!-- ── 2. your wallet ───────────────────────────────────────────── -->
+      <section id="position" class="band band-pad" aria-labelledby="position-heading">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">your wallet</p>
+            <h2 id="position-heading" class="display">Am I earning?</h2>
+            <p>Paste any address — <strong>nothing is connected, signed, or stored</strong>.</p>
+          </div>
+
+          <form id="position-form" class="check" autocomplete="off">
+            <label class="visually-hidden" for="position-input">Solana wallet address</label>
+            <input
+              id="position-input"
+              name="address"
+              type="text"
+              inputmode="text"
+              spellcheck="false"
+              placeholder="Paste a Solana address"
+            />
+            <button class="btn primary" type="submit">Check</button>
+          </form>
+
+          <div id="position-result" class="standing" hidden>
+            <p id="position-headline" class="standing-headline"></p>
+            <ul id="position-detail" class="standing-detail"></ul>
+
+            <!-- The three figures a holder came for. Rendered above the detail
+                 because in the flat list they carried the same weight as "the
+                 account being read", and money does not. Hidden entirely when
+                 there is nothing settled to report — an empty tile row would
+                 imply a zero rather than an absence. -->
+            <dl id="position-tiles" class="standing-tiles" hidden></dl>
+
+            <table class="facts"><tbody id="position-facts"></tbody></table>
+
+            <!-- Per-day history, in its own block. It used to be appended to the
+                 table above, where "day 2" read as another property of the
+                 wallet rather than as a list of days. -->
+            <div id="position-days" class="standing-days" hidden>
+              <h3 class="standing-days-heading">Your days</h3>
+              <table class="facts"><tbody id="position-day-rows"></tbody></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 3. timing ────────────────────────────────────────────────── -->
+      <section id="payouts" class="band band-pad" aria-labelledby="payouts-heading">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">timing</p>
+            <h2 id="payouts-heading" class="display">When you get paid</h2>
+            <p>Paid once a day at 00:00&nbsp;UTC. The hourly figure is <strong>an estimate</strong>.</p>
+          </div>
+
+          <div class="steps">
+            <div>
+              <span class="when">00:00 UTC</span>
+              <h3>The day closes</h3>
+              <p>Your share is fixed. Nothing after this changes it.</p>
+            </div>
+            <div>
+              <span class="when">Within the hour</span>
+              <h3>The split is published</h3>
+              <p>Every wallet, every amount — re-derivable from chain.</p>
+            </div>
+            <div>
+              <span class="when">Same night</span>
+              <h3>SOL lands</h3>
+              <p>Straight to your wallet. No claim button, nothing to claim.</p>
+            </div>
+          </div>
+
+          <div class="clocks">
             <!--
-              Two different numbers, and the page was collapsing them into one
-              until 2026-08-09. `sustained` decides IF you are paid; `hold`
-              decides HOW MUCH. They are equal for a wallet that held all day,
-              which is why this read as correct for so long — but they differ
-              for anyone who bought partway through, and the block said the
-              floor was checked against `hold`. Under that rule the worked
-              example above ("bought 500,000 at 20:00 UTC → 83,333") would fail
-              a 100,000 floor and earn nothing; in scripts/lib/epoch-build.mjs
-              it is paid, because the floor sees the 500,000 it sustained. See
-              epoch-build.mjs:66-73 and timeline.mjs:213-258 — that comment says
-              in as many words that checking the floor against the prorated
-              number "would exclude exactly the holders this rule exists to
-              include". Do not re-merge them.
+              The two headings are hidden rather than deleted: each clock's note
+              already names which one it is, and the pair read as a duplicated
+              label above a duplicated label. They stay in the markup for the
+              screen reader, which gets no help from the visual pairing.
             -->
-            <pre class="formula"><code>eligible(w, d)  =  called_out(w, d)
+            <div class="clock-cell clock-daily">
+              <h3 class="visually-hidden">The payout — this is the real one</h3>
+              <p id="daily-clock" class="clock-label"></p>
+              <p class="note">The real payout. Every transfer replayed, nothing estimated.</p>
+            </div>
+            <div class="clock-cell clock-hourly">
+              <h3 class="visually-hidden">The hourly estimate</h3>
+              <p id="hourly-clock" class="clock-label"></p>
+              <p class="badge badge-provisional">estimate</p>
+              <p class="note">Today so far, worked out the same way. Not a payout.</p>
+            </div>
+          </div>
+
+          <details class="tile">
+            <summary>Why the estimate and the payout can differ</summary>
+            <div class="tile-body">
+              <p id="provisional-explanation"></p>
+            </div>
+          </details>
+
+          <!--
+            Decision 18, stated in public copy for the first time on 2026-08-09.
+            js/standing.js has always explained this — but only to someone who had
+            already pasted an address, and the prose above simply said the share
+            "is sent to you". Under daily epochs a share below the threshold is the
+            common case rather than the edge case (the comment at
+            scripts/lib/epoch-build.mjs:113-122 says so outright), so a reader who
+            never checks a wallet was being told the wrong thing about most of
+            their days. The threshold comes from the same constant the crank reads.
+          -->
+          <details class="tile">
+            <summary>Why a very small share is carried instead of sent</summary>
+            <div class="tile-body">
+              <p>
+                A day’s share can come out smaller than the network fee to send it, and paying it
+                would cost more than it is worth. Anything under
+                <span class="dust-inline mono"></span> is <strong>withheld, not forfeited</strong>:
+                it stays credited to the address and goes out with a later day, as soon as the
+                running total clears that threshold. Under daily settlement this is the ordinary
+                case, not an unusual one.
+              </p>
+              <p>
+                It is paid on the next day the address is eligible again — a callout, the minimum
+                held, no lockout — so an address that stops qualifying leaves its carry sitting.
+                Carry expires after 30 days and returns to the pool, and adding to it does not
+                restart that clock: it runs from when the first amount was credited.
+              </p>
+              <p>
+                Every carried amount is listed in that day’s <code>carry.json</code>, and each file
+                records the hash of the one before it, so the ledger is append-only and can be
+                checked end to end rather than a day at a time.
+              </p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ── 4. the basics ────────────────────────────────────────────── -->
+      <section id="how" class="band band-pad" aria-labelledby="how-heading">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">the basics</p>
+            <h2 id="how-heading" class="display">Three rules, that’s it</h2>
+            <p>Do all three on the same day and <strong>you are in that day’s split</strong>.</p>
+          </div>
+
+          <!--
+            Icons are decorative — every one is aria-hidden and the heading
+            beside it carries the meaning. Stroke is currentColor, so they
+            follow the theme like every other line on the page.
+
+            The copy here is deliberately short. Every qualification that used
+            to sit in these cards is still on the page, in the tiles below:
+            the scenario table, the worked example and the exact rule. A card
+            that has to be read twice is not a rule, it is a paragraph.
+          -->
+          <ol class="rules">
+            <li>
+              <div class="rule-top">
+                <span class="card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3 5 9l7 12 7-12-7-6Z"/>
+                    <path d="M5 9h14"/>
+                    <path d="M12 3 9.5 9 12 21l2.5-12L12 3Z"/>
+                  </svg>
+                </span>
+                <span class="n">01</span>
+              </div>
+              <h3>Hold <span id="floor-tokens" class="mono"></span></h3>
+              <p>All day. The day counts at your lowest balance.</p>
+            </li>
+            <li>
+              <div class="rule-top">
+                <span class="card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 10v4h4l6 4.5v-13L8 10H4Z"/>
+                    <path d="M17.5 9.5a4 4 0 0 1 0 5"/>
+                    <path d="M19.8 7.2a7.2 7.2 0 0 1 0 9.6"/>
+                  </svg>
+                </span>
+                <span class="n">02</span>
+              </div>
+              <h3>Call it out on pump.fun</h3>
+              <p>Once a day, before 00:00&nbsp;UTC. Ten calls count as one.</p>
+            </li>
+            <li>
+              <div class="rule-top">
+                <span class="card-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/>
+                    <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>
+                  </svg>
+                </span>
+                <span class="n">03</span>
+              </div>
+              <h3>Do not sell</h3>
+              <p>Go under the minimum and the next 7 days pay nothing.</p>
+            </li>
+          </ol>
+
+          <!--
+            The second bold sentence is the whole of L18's copy on this page. It used
+            to carry two more clauses — that a wallet earns nothing while its tokens
+            are in the pool, and that liquidity supplied anywhere else still locks
+            you out — which the owner removed on 2026-08-07. See the note under
+            "Where it lives" in docs/DECISIONS-LOCKED.md §L18 for what that means and
+            where the two facts are still stated.
+          -->
+          <p class="highlight">
+            <strong>Dropping below the minimum locks you out for 7 days.</strong> Trimming is not
+            a sale — stay at or above <span class="floor-inline mono"></span> and you keep
+            earning. <strong>Adding liquidity to this coin’s own pump.fun pool is the one
+            exception, and does not lock you out.</strong>
+          </p>
+
+          <!--
+            Out of a fold and onto the page on 2026-08-10. These are the three
+            ways people lose the lockout by accident, which makes them the last
+            thing that should need a click to find. Warn-coloured icons and no
+            numbering: unlike the rules above, this is a set rather than a
+            sequence.
+          -->
+          <h3 class="subhead">What counts as selling</h3>
+          <ul class="rules rules-warn">
+            <li>
+              <span class="card-icon is-warn" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7l7.5 7.5 4-4L21 17"/>
+                  <path d="M15 17h6v-6"/>
+                </svg>
+              </span>
+              <h3>Going under the minimum</h3>
+              <p>Selling or sending — only where your balance lands matters.</p>
+            </li>
+            <li>
+              <span class="card-icon is-warn" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="6.5" width="18" height="12.5" rx="2.5"/>
+                  <path d="M15.5 12.75h2.5"/>
+                </svg>
+              </span>
+              <h3>Tokens outside your main account</h3>
+              <p>Only your associated token account is counted. Nothing is summed.</p>
+            </li>
+            <li>
+              <span class="card-icon is-warn" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="8.5"/>
+                  <path d="M6.4 6.4 17.6 17.6"/>
+                </svg>
+              </span>
+              <h3>Selling before the payout lands</h3>
+              <p>It re-checks your balance on arrival. One day of exposure.</p>
+            </li>
+          </ul>
+
+          <!--
+            Every case, in one table. Added 2026-08-08 because the two penalties
+            are separate mechanisms and reading either one alone gives the wrong
+            answer: a sale collapses TODAY's share, and independently locks the
+            NEXT 7 days. Someone who reads only the first thinks selling costs a
+            day; someone who reads only the second thinks a same-day sale is free.
+
+            Deliberately static. It describes the rule rather than any wallet, so
+            it renders before launch and needs no chain read to be true.
+          -->
+          <details class="tile">
+            <summary>What happens in every case, today’s share and the 7-day lockout</summary>
+            <div class="tile-body">
+              <p>
+                Two things are decided separately each day: <strong>what today is worth</strong>, and
+                <strong>whether the next 7 days are locked</strong>. Only dropping below the minimum
+                does both. Trimming your position while staying above it costs you today’s weight and
+                nothing else.
+              </p>
+
+              <div class="table-scroll">
+                <table class="scenarios">
+                  <thead>
+                    <tr>
+                      <th scope="col">What you did today</th>
+                      <th scope="col">Today’s share</th>
+                      <th scope="col">Next 7 days</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="is-ok">
+                      <th scope="row">Held your position, no changes</th>
+                      <td>Counted in full</td>
+                      <td>Keep earning</td>
+                    </tr>
+                    <tr class="is-ok">
+                      <th scope="row">Bought this coin for the first time today</th>
+                      <td>Scaled to the part of the day you held — you are in from today</td>
+                      <td>Keep earning</td>
+                    </tr>
+                    <tr class="is-ok">
+                      <th scope="row">Topped up an existing position</th>
+                      <td>Larger, counted from the moment the top-up landed</td>
+                      <td>Keep earning</td>
+                    </tr>
+                    <tr class="is-ok">
+                      <th scope="row">Supplied liquidity to this coin’s own pump.fun pool</th>
+                      <td>Counted — this is not a sale</td>
+                      <td>Keep earning</td>
+                    </tr>
+                    <tr class="is-warn">
+                      <th scope="row">Did not call out today</th>
+                      <td><strong>Nothing</strong> — a call does not carry over</td>
+                      <td>Keep earning, as soon as you call out again</td>
+                    </tr>
+                    <tr class="is-warn">
+                      <th scope="row">Sold some, stayed at or above the minimum</th>
+                      <td>The <strong>whole day</strong> counts at your lowest balance</td>
+                      <td>Keep earning — this is not a sale</td>
+                    </tr>
+                    <tr class="is-warn">
+                      <th scope="row">Sold some, then topped back up the same day</th>
+                      <td>
+                        The hours before the sale still count at the lower balance; the top-up counts
+                        from the moment it lands
+                      </td>
+                      <td>Keep earning, if you never went under the minimum</td>
+                    </tr>
+                    <tr class="is-bad">
+                      <th scope="row">Dipped below the minimum, then bought back</th>
+                      <td>Counted, but the hours before the dip count at the low balance</td>
+                      <td><strong>Locked out</strong></td>
+                    </tr>
+                    <tr class="is-bad">
+                      <th scope="row">Sold everything</th>
+                      <td><strong>Nothing</strong></td>
+                      <td><strong>Locked out</strong></td>
+                    </tr>
+                    <tr class="is-bad">
+                      <th scope="row">Moved enough to another wallet to fall under the minimum</th>
+                      <td><strong>Nothing</strong> — judged on where this wallet lands</td>
+                      <td><strong>Locked out</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p class="note">
+                “Locked out” means the next 7 days earn nothing at all, whatever you hold and however
+                often you call out. <strong>Buying back does not shorten it.</strong> It is triggered by
+                one thing only: your balance ending up <em>below the minimum</em>. The lockout starts
+                the day after that happens — on the day itself you are already losing the share, so the
+                two penalties do not overlap.
+              </p>
+            </div>
+          </details>
+
+          <details class="tile">
+            <summary>A worked example, with real numbers</summary>
+            <div class="tile-body">
+              <p>
+                Eight wallets, each still holding at midnight, each having called out. The share
+                column is what the day’s split is divided by — so a wallet with twice the number
+                gets twice the money.
+              </p>
+              <div class="table-scroll">
+                <table class="scenarios">
+                  <thead>
+                    <tr>
+                      <th scope="col">The day</th>
+                      <th scope="col">Counted as</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">Held 1,000,000 all day</th>
+                      <td>1,000,000</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Held 500,000, topped up to 1,000,000 at 06:00&nbsp;UTC</th>
+                      <td>875,000 — the extra counts for the 18 hours it was there</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Held 500,000, sold down to 120,000 at 18:00&nbsp;UTC</th>
+                      <td>
+                        120,000 — the whole day at the lower balance. Still above the minimum, so
+                        <strong>not</strong> locked out
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">
+                        Held 500,000, sold to 120,000 at 18:00&nbsp;UTC, topped back up to 1,000,000
+                        at 20:00&nbsp;UTC
+                      </th>
+                      <td>
+                        266,667 — the first 20 hours count at 120,000, the last 4 at 1,000,000. Never
+                        went under the minimum, so still earning tomorrow
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Held 500,000, sold down to 50,000 at 18:00&nbsp;UTC</th>
+                      <td><strong>Nothing</strong> — under the minimum, so the next 7 days are locked</td>
+                    </tr>
+                    <!--
+                      The counter-intuitive row, and the reason it is spelled out: going
+                      under the minimum and buying back does NOT cost you the day. Today
+                      is still paid, at the low balance for the hours it was low. The
+                      lockout is a separate penalty and it still applies. Reading either
+                      half alone gives the wrong answer in opposite directions.
+                    -->
+                    <tr>
+                      <th scope="row">
+                        Held 500,000, sold to 50,000 at 18:00&nbsp;UTC, topped back up to 1,000,000
+                        at 20:00&nbsp;UTC
+                      </th>
+                      <td>
+                        208,333 — today is still paid: the first 20 hours count at 50,000, the last
+                        4 at 1,000,000. But it went under the minimum, so the next 7 days are
+                        <strong>locked</strong> anyway, and buying back does not shorten that
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Bought 500,000 at 20:00&nbsp;UTC</th>
+                      <td>83,333 — four hours of the day</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">
+                        Held 500,000, topped up to 5,000,000 one minute before midnight&nbsp;UTC
+                      </th>
+                      <td>503,125 — a minute is worth a minute</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>
+                The rule behind all of it is one sentence: <strong>at any moment you are credited
+                with the smallest balance you still hold for the rest of the day.</strong> That is
+                why adding counts from when it lands and never before, and why selling reaches
+                backwards across the whole day.
+              </p>
+            </div>
+          </details>
+
+          <details class="tile">
+            <summary>The exact rule, and what each part of it stops</summary>
+            <div class="tile-body">
+              <!--
+                Two different numbers, and the page was collapsing them into one
+                until 2026-08-09. `sustained` decides IF you are paid; `hold`
+                decides HOW MUCH. They are equal for a wallet that held all day,
+                which is why this read as correct for so long — but they differ
+                for anyone who bought partway through, and the block said the
+                floor was checked against `hold`. Under that rule the worked
+                example above ("bought 500,000 at 20:00 UTC → 83,333") would fail
+                a 100,000 floor and earn nothing; in scripts/lib/epoch-build.mjs
+                it is paid, because the floor sees the 500,000 it sustained. See
+                epoch-build.mjs:66-73 and timeline.mjs:213-258 — that comment says
+                in as many words that checking the floor against the prorated
+                number "would exclude exactly the holders this rule exists to
+                include". Do not re-merge them.
+              -->
+              <pre class="formula"><code>eligible(w, d)  =  called_out(w, d)
                    AND  sustained(w, d) >= <span id="floor-tokens-formula"></span>
                    AND  NOT locked(w, d)
 
@@ -619,586 +867,334 @@ divisible(d)    =  the pool's balance, less rent, less what
                    earlier days still owe, and less the carry
                    already promised</code></pre>
 
-            <table class="facts">
-              <tbody>
-                <tr>
-                  <th scope="row">The floor, as this page has it</th>
-                  <td>
-                    <span id="floor-percent"></span> of the total supply, fixed on chain and
-                    immutable. It is a token count — there is no dollar figure and no price
-                    anywhere in this system.
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">The floor, as the program enforces it</th>
-                  <td id="chain-floor"></td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="scroll-x">
-              <table class="attacks">
-                <thead>
-                  <tr>
-                    <th scope="col">Try this</th>
-                    <th scope="col">What happens</th>
-                  </tr>
-                </thead>
+              <table class="facts">
                 <tbody>
                   <tr>
-                    <td>Buy at 23:58&nbsp;UTC, call out, sell at 00:02&nbsp;UTC</td>
+                    <th scope="row">The floor, as this page has it</th>
                     <td>
-                      Buying at 23:58&nbsp;UTC earns two minutes of the day, because your share is
-                      scaled by how long you held. Selling at 00:02&nbsp;UTC takes you below the
-                      minimum, so the next 7 days earn nothing too.
+                      <span id="floor-percent"></span> of the total supply, fixed on chain and
+                      immutable. It is a token count — there is no dollar figure and no price
+                      anywhere in this system.
                     </td>
                   </tr>
                   <tr>
-                    <td>Call out once, then stop</td>
-                    <td>Calls do not carry over. Each day needs a callout or a callout update.</td>
+                    <th scope="row">The floor, as the program enforces it</th>
+                    <td id="chain-floor"></td>
                   </tr>
+                </tbody>
+              </table>
+
+              <div class="scroll-x">
+                <table class="attacks">
+                  <thead>
+                    <tr>
+                      <th scope="col">Try this</th>
+                      <th scope="col">What happens</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Buy at 23:58&nbsp;UTC, call out, sell at 00:02&nbsp;UTC</td>
+                      <td>
+                        Buying at 23:58&nbsp;UTC earns two minutes of the day, because your share is
+                        scaled by how long you held. Selling at 00:02&nbsp;UTC takes you below the
+                        minimum, so the next 7 days earn nothing too.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Call out once, then stop</td>
+                      <td>Calls do not carry over. Each day needs a callout or a callout update.</td>
+                    </tr>
+                    <tr>
+                      <td>Sell after being paid, then buy back</td>
+                      <td>
+                        If the sale took you below the minimum: 7 days of nothing, and buying back
+                        does not shorten it. If you stayed above it, you keep earning — that day is
+                        just counted at your lowest balance.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Move tokens to a second wallet you own</td>
+                      <td>
+                        Judged on where the sending wallet lands, exactly like a sale. There is no
+                        netting across wallets.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Split a bag across many wallets</td>
+                      <td>
+                        Changes nothing about what you earn — weight is linear. It does let you exit
+                        in increments, and that is a deliberate, known property, not an oversight.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>Push the price down at 23:59 to lower the floor</td>
+                      <td>
+                        The floor is a fixed token count, not a dollar value. There is no price
+                        oracle to move.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ── 5. the split ─────────────────────────────────────────────── -->
+      <section id="fees" class="band band-pad" aria-labelledby="fees-heading">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">the split</p>
+            <h2 id="fees-heading" class="display">Where the fees go</h2>
+            <p>Every trade pays a creator fee. <strong>90% goes to the callers.</strong></p>
+          </div>
+
+          <!--
+            No donut here, deliberately. A 90/10 ring would be the prettiest
+            object on this page and the only one with nothing behind it: the
+            split is set by pump.fun's instruction, not by our program, so the
+            browser cannot read it back from an account the way it reads the
+            floor. Until `feeShareTx` names the transaction that set it, the
+            honest rendering of this number is the sentences below and the
+            "unverified" row underneath — not a chart of a claim.
+          -->
+          <div class="split">
+            <div class="a">
+              <span class="pct">90%</span>
+              <h3>To the callers</h3>
+              <p>Split every day among everyone who called it out and held their position through it.</p>
+            </div>
+            <div class="b">
+              <span class="pct">10%</span>
+              <h3>To running it</h3>
+              <p>Gas, a node, a host, a domain.</p>
+            </div>
+          </div>
+
+          <p class="highlight">
+            <strong>Neither number can be changed — not even by us.</strong> pump.fun’s instruction
+            sets the split and revokes its own authority in the same transaction.
+          </p>
+
+          <details class="tile">
+            <summary>Why the 10% is not a founder’s fee, and what we still control</summary>
+            <div class="tile-body">
+              <p>
+                It only pays anything if the coin trades. At $1M of weekly volume after graduation
+                the whole creator fee is about $500 — roughly $450 to callers and $50 to
+                infrastructure. If this coin does nothing, that line earns nothing and the job gets
+                paid for out of pocket anyway, because the alternative is the settlement quietly
+                stopping and nobody getting paid at all.
+              </p>
+              <p>
+                In pump.fun’s own documentation, <em>“this instruction can only effectively be used
+                once.”</em>
+              </p>
+              <p>
+                <strong>What we do still control, and what we don’t.</strong> We post each day’s
+                results, and the limits on that are under <a href="#limits">risks</a>. We hold no
+                authority over this split. pump.fun retains the same platform-level powers over this
+                coin that they retain over every coin they host, including the ability to reassign a
+                coin’s fee recipient — that is real, we cannot prevent it, and we would rather you
+                read it here than discover it later.
+              </p>
+              <table class="facts">
+                <tbody>
                   <tr>
-                    <td>Sell after being paid, then buy back</td>
-                    <td>
-                      If the sale took you below the minimum: 7 days of nothing, and buying back
-                      does not shorten it. If you stayed above it, you keep earning — that day is
-                      just counted at your lowest balance.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Move tokens to a second wallet you own</td>
-                    <td>
-                      Judged on where the sending wallet lands, exactly like a sale. There is no
-                      netting across wallets.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Split a bag across many wallets</td>
-                    <td>
-                      Changes nothing about what you earn — weight is linear. It does let you exit
-                      in increments, and that is a deliberate, known property, not an oversight.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>Push the price down at 23:59 to lower the floor</td>
-                    <td>
-                      The floor is a fixed token count, not a dollar value. There is no price
-                      oracle to move.
-                    </td>
+                    <th scope="row">The transaction that set it</th>
+                    <td id="fee-share-tx"></td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          </div>
-        </details>
-      </section>
-
-      <!-- ── 2. the split ─────────────────────────────────────────────── -->
-      <section id="fees" class="wrap section" aria-labelledby="fees-heading">
-        <div class="section-head">
-          <div class="section-title">
-            <span class="section-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 3v6"/>
-                <path d="M12 9c0 4.5-6.5 4.5-6.5 12"/>
-                <path d="M12 9c0 4.5 6.5 4.5 6.5 12"/>
-              </svg>
-            </span>
-            <h2 id="fees-heading">Where the fees go</h2>
-          </div>
-          <p class="eyebrow">the split</p>
-          <p class="section-lede">
-            Every trade on pump.fun pays a creator fee. Ours splits two ways, and the split was
-            fixed before the coin ever traded.
-          </p>
+          </details>
         </div>
-
-        <!--
-          No donut here, deliberately. A 90/10 ring would be the prettiest
-          object on this page and the only one with nothing behind it: the
-          split is set by pump.fun's instruction, not by our program, so the
-          browser cannot read it back from an account the way it reads the
-          floor. Until `feeShareTx` names the transaction that set it, the
-          honest rendering of this number is the sentences below and the
-          "unverified" row underneath — not a chart of a claim.
-        -->
-        <div class="split-pair">
-          <div class="split">
-            <p class="split-share">90%</p>
-            <p class="split-what"><strong>To the callers.</strong> Split every day among everyone
-              who called it out and held their position through it.</p>
-          </div>
-          <div class="split">
-            <p class="split-share">10%</p>
-            <p class="split-what"><strong>To running it.</strong> The gas that sends every reward
-              out daily, a node that can take launch traffic, a host and a domain.</p>
-          </div>
-        </div>
-
-        <p class="highlight">
-          <strong>Neither number can be changed — not even by us.</strong> pump.fun’s fee-sharing
-          instruction sets the split and revokes its own authority in the same transaction. We
-          wrote 90/10 once, and that was the only chance anyone had to write anything.
-        </p>
-
-        <details class="tech">
-          <summary>Why the 10% is not a founder’s fee, and what we still control</summary>
-          <div class="detail-body">
-            <p>
-              It only pays anything if the coin trades. At $1M of weekly volume after graduation
-              the whole creator fee is about $500 — roughly $450 to callers and $50 to
-              infrastructure. If this coin does nothing, that line earns nothing and the job gets
-              paid for out of pocket anyway, because the alternative is the settlement quietly
-              stopping and nobody getting paid at all.
-            </p>
-            <p>
-              In pump.fun’s own documentation, <em>“this instruction can only effectively be used
-              once.”</em>
-            </p>
-            <p>
-              <strong>What we do still control, and what we don’t.</strong> We post each day’s
-              results, and the limits on that are under <a href="#limits">risks</a>. We hold no
-              authority over this split. pump.fun retains the same platform-level powers over this
-              coin that they retain over every coin they host, including the ability to reassign a
-              coin’s fee recipient — that is real, we cannot prevent it, and we would rather you
-              read it here than discover it later.
-            </p>
-            <table class="facts">
-              <tbody>
-                <tr>
-                  <th scope="row">The transaction that set it</th>
-                  <td id="fee-share-tx"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-      <!-- ── 3. your wallet ───────────────────────────────────────────── -->
-      <section id="position" class="wrap section" aria-labelledby="position-heading">
-        <div class="section-head">
-          <div class="section-title">
-            <span class="section-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="6.5"/>
-                <path d="m16 16 5 5"/>
-              </svg>
-            </span>
-            <h2 id="position-heading">Check your wallet</h2>
-          </div>
-          <p class="eyebrow">your wallet</p>
-          <p class="section-lede">
-            Paste any address to see where it stands today — a public address is all this needs,
-            and <strong>you do not connect anything</strong>. It is worked out in your browser and
-            never sent to us: only to a Solana node and to pump.fun, straight from your machine.
-          </p>
-        </div>
-
-        <form id="position-form" autocomplete="off">
-          <label for="position-input">Wallet address</label>
-          <div class="input-row">
-            <input
-              id="position-input"
-              name="address"
-              type="text"
-              inputmode="text"
-              spellcheck="false"
-              placeholder="Paste a Solana address"
-            />
-            <button type="submit">Check</button>
-          </div>
-        </form>
-
-        <div id="position-result" class="standing" hidden>
-          <p id="position-headline" class="standing-headline"></p>
-          <ul id="position-detail" class="standing-detail"></ul>
-
-          <!-- The three figures a holder came for. Rendered above the detail
-               because in the flat list they carried the same weight as "the
-               account being read", and money does not. Hidden entirely when
-               there is nothing settled to report — an empty tile row would
-               imply a zero rather than an absence. -->
-          <dl id="position-tiles" class="standing-tiles" hidden></dl>
-
-          <table class="facts"><tbody id="position-facts"></tbody></table>
-
-          <!-- Per-day history, in its own block. It used to be appended to the
-               table above, where "day 2" read as another property of the
-               wallet rather than as a list of days. -->
-          <div id="position-days" class="standing-days" hidden>
-            <h3 class="standing-days-heading">Your days</h3>
-            <table class="facts"><tbody id="position-day-rows"></tbody></table>
-          </div>
-        </div>
-      </section>
-
-      <!-- ── 4. timing ────────────────────────────────────────────────── -->
-      <section id="payouts" class="wrap section" aria-labelledby="payouts-heading">
-        <div class="section-head">
-          <div class="section-title">
-            <span class="section-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="8.5"/>
-                <path d="M12 7.5V12l3 2"/>
-              </svg>
-            </span>
-            <h2 id="payouts-heading">When you get paid</h2>
-          </div>
-          <p class="eyebrow">timing</p>
-          <p class="section-lede">
-            Once a day, at 00:00&nbsp;UTC. There is also an hourly estimate — it is useful, and it
-            is <strong>not</strong> your payout.
-          </p>
-        </div>
-
-        <div class="clocks">
-          <div class="clock clock-daily">
-            <h3>The payout — this is the real one</h3>
-            <p id="daily-clock" class="clock-label"></p>
-            <p class="note">
-              Every transfer of the day is replayed exactly, then the money goes out. Nothing is
-              sampled and nothing is estimated — this is the number you are paid.
-            </p>
-          </div>
-          <div class="clock clock-hourly">
-            <h3>The hourly estimate</h3>
-            <p id="hourly-clock" class="clock-label"></p>
-            <p class="badge badge-provisional">estimate</p>
-            <p class="note">
-              Today so far, worked out the same way as the payout. Not a payout.
-            </p>
-          </div>
-        </div>
-
-        <details class="tech">
-          <summary>Why the estimate and the payout can differ</summary>
-          <div class="detail-body">
-            <p id="provisional-explanation"></p>
-          </div>
-        </details>
-
-        <!--
-          Decision 18, stated in public copy for the first time on 2026-08-09.
-          js/standing.js has always explained this — but only to someone who had
-          already pasted an address, and the prose above simply said the share
-          "is sent to you". Under daily epochs a share below the threshold is the
-          common case rather than the edge case (the comment at
-          scripts/lib/epoch-build.mjs:113-122 says so outright), so a reader who
-          never checks a wallet was being told the wrong thing about most of
-          their days. The threshold comes from the same constant the crank reads.
-        -->
-        <details class="tech">
-          <summary>Why a very small share is carried instead of sent</summary>
-          <div class="detail-body">
-            <p>
-              A day’s share can come out smaller than the network fee to send it, and paying it
-              would cost more than it is worth. Anything under
-              <span class="dust-inline mono"></span> is <strong>withheld, not forfeited</strong>:
-              it stays credited to the address and goes out with a later day, as soon as the
-              running total clears that threshold. Under daily settlement this is the ordinary
-              case, not an unusual one.
-            </p>
-            <p>
-              It is paid on the next day the address is eligible again — a callout, the minimum
-              held, no lockout — so an address that stops qualifying leaves its carry sitting.
-              Carry expires after 30 days and returns to the pool, and adding to it does not
-              restart that clock: it runs from when the first amount was credited.
-            </p>
-            <p>
-              Every carried amount is listed in that day’s <code>carry.json</code>, and each file
-              records the hash of the one before it, so the ledger is append-only and can be
-              checked end to end rather than a day at a time.
-            </p>
-          </div>
-        </details>
-      </section>
-
-      <!-- ── 5. live data ─────────────────────────────────────────────── -->
-      <section id="pool" class="wrap section" aria-labelledby="pool-heading">
-        <div class="section-head">
-          <div class="section-title">
-            <span class="section-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 3.5s6.5 7 6.5 10.8a6.5 6.5 0 1 1-13 0C5.5 10.5 12 3.5 12 3.5Z"/>
-              </svg>
-            </span>
-            <h2 id="pool-heading">The pool right now</h2>
-          </div>
-          <p class="eyebrow">live</p>
-          <p class="section-lede">
-            Read from Solana by your browser, and re-read every minute. Each figure says where it
-            came from — hover a badge to see what that means.
-          </p>
-        </div>
-
-        <div id="floor-mismatch" class="banner banner-danger" hidden></div>
-        <div id="hero-status"></div>
-        <!--
-          Staleness, said out loud. A refresh that fails leaves the last figures
-          that were actually read on the page rather than blanking them — but a
-          number that has stopped updating and does not say so is the one kind of
-          wrong this page cannot allow, so this line names the time it was read.
-        -->
-        <p id="live-status" class="live-status" hidden></p>
-
-        <dl class="metrics">
-          <div class="metric">
-            <dt>Caller pool</dt>
-            <dd id="pool-balance" class="big"></dd>
-            <p class="note">What today’s split divides between the callers.</p>
-          </div>
-          <div class="metric">
-            <dt>Fees not yet swept in</dt>
-            <dd id="vault-balance" class="big"></dd>
-            <p class="note">
-              In pump.fun’s creator vault. On its way, not in today’s split.
-            </p>
-          </div>
-          <div class="metric">
-            <dt>Day number</dt>
-            <dd id="current-epoch" class="big"></dd>
-            <p class="note">Counted from launch. One day runs 00:00 to 00:00 UTC.</p>
-          </div>
-          <div class="metric">
-            <dt>Paid out so far</dt>
-            <dd id="total-distributed" class="big"></dd>
-            <p class="note">Added up from every past day, in your browser.</p>
-          </div>
-        </dl>
-
-        <!--
-          The card charts. Each one is a chart OF a number already on this page,
-          with the same badge that number carries, and each refuses to draw
-          rather than showing an empty axis — an empty axis is a claim that we
-          looked and found nothing. See js/graphs.js.
-        -->
-        <div class="graph-grid">
-          <article class="graph-card">
-            <div class="graph-head">
-              <div class="graph-title">Pool vs. fees waiting</div>
-              <span id="card-pool-value" class="graph-value"></span>
-            </div>
-            <div id="card-pool-chart"></div>
-            <p class="graph-copy">What can be split today, against what is still waiting to come in.</p>
-          </article>
-
-          <article class="graph-card">
-            <div class="graph-head">
-              <div class="graph-title">Paid out per day</div>
-              <span id="card-history-value" class="graph-value"></span>
-            </div>
-            <div id="card-history-chart"></div>
-            <p class="graph-copy">One point per day settled so far, oldest first.</p>
-          </article>
-
-          <article class="graph-card">
-            <div class="graph-head">
-              <div class="graph-title">Today</div>
-              <span id="card-clock-value" class="graph-value"></span>
-            </div>
-            <div id="card-clock-chart"></div>
-            <p class="graph-copy">How far through today’s round we are, and the checking window after it.</p>
-          </article>
-        </div>
-
-        <details class="tech">
-          <summary>Addresses</summary>
-          <div class="detail-body">
-            <table class="facts">
-              <caption class="visually-hidden">Addresses</caption>
-              <tbody>
-                <tr><th scope="row">Coin</th><td id="mint-address"></td></tr>
-                <tr><th scope="row">Pool</th><td id="pool-address"></td></tr>
-                <tr><th scope="row">Program</th><td id="program-address"></td></tr>
-                <tr><th scope="row">Snapshot key</th><td id="snapshot-key"></td></tr>
-              </tbody>
-            </table>
-            <p class="note">
-              Check the coin address against the pinned post before you buy anything. Address
-              confusion is how people lose money during a launch.
-            </p>
-          </div>
-        </details>
       </section>
 
       <!-- ── 6. the record ────────────────────────────────────────────── -->
-      <section id="history" class="wrap section" aria-labelledby="history-heading">
-        <div class="section-head">
-          <div class="section-title">
-            <span class="section-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8.5 6h12M8.5 12h12M8.5 18h12"/>
-                <circle cx="4" cy="6" r="0.9" fill="currentColor" stroke="none"/>
-                <circle cx="4" cy="12" r="0.9" fill="currentColor" stroke="none"/>
-                <circle cx="4" cy="18" r="0.9" fill="currentColor" stroke="none"/>
-              </svg>
-            </span>
-            <h2 id="history-heading">Every day, on the record</h2>
+      <section id="history" class="band band-pad" aria-labelledby="history-heading">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">the record</p>
+            <h2 id="history-heading" class="display">Every day, on the record</h2>
+            <p>One row per day, and <strong>anyone can re-derive every one of them</strong>.</p>
           </div>
-          <p class="eyebrow">the record</p>
-          <p class="section-lede">
-            One row per day, read from Solana. Every row links to the working behind it, so anyone
-            can redo the sums and catch us if they do not add up.
+          <div id="history-status"></div>
+
+          <div class="scroller">
+            <table class="receipts epochs">
+              <thead>
+                <tr>
+                  <th scope="col">Day</th>
+                  <th scope="col">Pool</th>
+                  <th scope="col">Callers</th>
+                  <th scope="col">Paid out</th>
+                  <th scope="col">Unclaimed</th>
+                  <th scope="col" title="The merkle root posted on chain for that day. Two people who rebuild the day from scratch get the same one, or somebody is wrong.">Fingerprint</th>
+                  <!-- One button per row. Everything this cell used to carry
+                       inline — the published directory, the account, the time
+                       it was posted — is behind it, along with the list of who
+                       was paid, which never fitted in a table cell at all. -->
+                  <th scope="col">Details</th>
+                </tr>
+              </thead>
+              <tbody id="epoch-rows"></tbody>
+            </table>
+          </div>
+
+          <!--
+            Ten days a page. Hidden entirely when there is only one page — two
+            disabled buttons and "1 of 1" is chrome answering a question nobody
+            asked. js/epochs.js fills this and owns the page number, because the
+            table re-reads every minute and a reader on page 3 must stay there.
+          -->
+          <nav id="epoch-pagination" class="pager" aria-label="Epoch history pages" hidden></nav>
+
+          <p class="note note-wide">
+            Unclaimed rewards go back into the pool after 30 days. A day marked <em>not posted</em>
+            was never settled — that stays visible on purpose.
           </p>
-        </div>
-        <div id="history-status"></div>
 
-        <div class="scroll-x">
-          <table class="epochs">
-            <thead>
-              <tr>
-                <th scope="col">Day</th>
-                <th scope="col">Pool</th>
-                <th scope="col">Callers</th>
-                <th scope="col">Paid out</th>
-                <th scope="col">Unclaimed</th>
-                <th scope="col" title="The merkle root posted on chain for that day. Two people who rebuild the day from scratch get the same one, or somebody is wrong.">Fingerprint</th>
-                <th scope="col">Working</th>
-              </tr>
-            </thead>
-            <tbody id="epoch-rows"></tbody>
-          </table>
-        </div>
+          <details class="tile">
+            <summary>Check any of it yourself — four commands, no permission needed</summary>
+            <div class="tile-body">
+              <p>
+                These are the commands that would catch us if any number on this page were wrong.
+                They need no key and no permission from us.
+              </p>
 
-        <!--
-          Ten days a page. Hidden entirely when there is only one page — two
-          disabled buttons and "1 of 1" is chrome answering a question nobody
-          asked. js/epochs.js fills this and owns the page number, because the
-          table re-reads every minute and a reader on page 3 must stay there.
-        -->
-        <nav id="epoch-pagination" class="pager" aria-label="Epoch history pages" hidden></nav>
+              <div class="verify-grid">
+                <article class="verification-card">
+                  <h3>The pool balance, straight from a node</h3>
+                  <pre><code>solana balance &lt;pool address&gt; --url mainnet-beta</code></pre>
+                  <p class="note">
+                    The same account “Caller pool” above is read from, asked of a node of your
+                    choosing rather than ours. No part of this command talks to us, and the
+                    address it takes is printed under <em>Addresses</em> in the section above.
+                  </p>
+                </article>
 
-        <p class="note">
-          Unclaimed rewards go back into the pool after 30 days. A day marked <em>not posted</em>
-          was never settled — that stays visible on purpose.
-        </p>
+                <article class="verification-card">
+                  <h3>Reproduce a day’s fingerprint from its published working</h3>
+                  <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --offline</code></pre>
+                  <p class="note">
+                    Reads only the files in <code>snapshots/epoch-&lt;n&gt;/</code> and rebuilds the
+                    merkle root. If it does not match the root posted on chain, we published a
+                    number we cannot justify.
+                  </p>
+                </article>
 
-        <details class="tech">
-          <summary>Check any of it yourself — four commands, no permission needed</summary>
-          <div class="detail-body">
-            <p>
-              These are the commands that would catch us if any number on this page were wrong.
-              They need no key and no permission from us.
-            </p>
+                <article class="verification-card">
+                  <h3>Re-derive it from chain instead of trusting the directory</h3>
+                  <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --recheck-chain</code></pre>
+                  <p class="note">
+                    Replays every caller’s transfer history from a node and recomputes every
+                    <code>hold</code>. This is the check that does not take our word for anything
+                    except the callout list. It is the slow one, it is the one that matters, and it
+                    needs a node that will serve full signature history.
+                  </p>
+                </article>
 
-            <div class="verify-grid">
-              <article class="verification-card">
-                <h3>The pool balance, straight from a node</h3>
-                <pre><code>solana balance &lt;pool address&gt; --url mainnet-beta</code></pre>
-                <p class="note">
-                  The same account “Caller pool” above is read from, asked of a node of your
-                  choosing rather than ours. No part of this command talks to us, and the
-                  address it takes is printed under <em>Addresses</em> in the section above.
-                </p>
-              </article>
-
-              <article class="verification-card">
-                <h3>Reproduce a day’s fingerprint from its published working</h3>
-                <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --offline</code></pre>
-                <p class="note">
-                  Reads only the files in <code>snapshots/epoch-&lt;n&gt;/</code> and rebuilds the
-                  merkle root. If it does not match the root posted on chain, we published a
-                  number we cannot justify.
-                </p>
-              </article>
-
-              <article class="verification-card">
-                <h3>Re-derive it from chain instead of trusting the directory</h3>
-                <pre><code>node scripts/verify-epoch.mjs --epoch &lt;n&gt; --recheck-chain</code></pre>
-                <p class="note">
-                  Replays every caller’s transfer history from a node and recomputes every
-                  <code>hold</code>. This is the check that does not take our word for anything
-                  except the callout list. It is the slow one, it is the one that matters, and it
-                  needs a node that will serve full signature history.
-                </p>
-              </article>
-
-              <article class="verification-card">
-                <h3>Confirm your own callout exists, without us</h3>
-                <pre><code>curl -H "x-api-key: &lt;pump.fun's public key&gt;" \
+                <article class="verification-card">
+                  <h3>Confirm your own callout exists, without us</h3>
+                  <pre><code>curl -H "x-api-key: &lt;pump.fun's public key&gt;" \
   https://api.coin-communities.xyz/api/v1/users/by-wallet/&lt;address&gt;/callouts</code></pre>
-                <p class="note">
-                  The same request this page makes from your browser — pump.fun’s record of who
-                  called out, not ours, and the one input not derivable from chain history.
-                </p>
-              </article>
+                  <p class="note">
+                    The same request this page makes from your browser — pump.fun’s record of who
+                    called out, not ours, and the one input not derivable from chain history.
+                  </p>
+                </article>
+              </div>
             </div>
-          </div>
-        </details>
+          </details>
+        </div>
       </section>
 
       <!-- ── 7. risks ─────────────────────────────────────────────────── -->
-      <section id="limits" class="wrap section" aria-labelledby="limits-heading">
-        <div class="section-head">
-          <div class="section-title">
-            <span class="section-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 4 2.8 19.5h18.4L12 4Z"/>
-                <path d="M12 10v4.5"/>
-                <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none"/>
-              </svg>
-            </span>
-            <h2 id="limits-heading">What this is not</h2>
+      <section id="limits" class="band band-pad" aria-labelledby="limits-heading">
+        <div class="wrap">
+          <div class="head">
+            <p class="eyebrow">risks</p>
+            <h2 id="limits-heading" class="display">What this is not</h2>
+            <p>The parts we would rather you <strong>read here than discover later</strong>.</p>
           </div>
-          <p class="eyebrow">risks</p>
-          <p class="section-lede">
-            The parts we would rather you read here than discover later. Open any of them.
-          </p>
+
+          <div class="risk-lead">
+            <!--
+              Shortened, not weakened. Every claim the longer version made is
+              still here: it can go to zero, this describes a fee split rather
+              than a return or a yield, no figure is a projection, and none of
+              it is advice. Do not drop one to save a line.
+            -->
+            <p>
+              <strong>This is a memecoin. It can go to zero, and most do.</strong> What is described
+              here is how creator fees are split — not a return, not a yield, not a projection of
+              what the coin will be worth. Nothing here is financial advice.
+            </p>
+          </div>
+
+          <details class="tile">
+            <summary>The caller list is attested, not trustless</summary>
+            <div class="tile-body">
+              <p>
+                Every number here except one can be re-derived from public chain history. The
+                exception is <strong>who called out</strong> — that exists only in pump.fun’s
+                database, not on chain. Anyone can clone the
+                <a href="https://github.com/AlphaArtrem/call-pool" target="_blank" rel="noopener noreferrer">GitHub repo</a>
+                and re-derive the same
+                list the same way we do. We say <em>attested</em> rather than <em>trustless</em>
+                because the input still comes from pump.fun’s API, not from immutable chain
+                history — the second word would be false.
+              </p>
+            </div>
+          </details>
+
+          <details class="tile">
+            <summary>Flags are pump.fun’s, and they are retroactive</summary>
+            <div class="tile-body">
+              <p>
+                Callouts marked spam or harmful, or deleted, do not count. Those flags belong to
+                pump.fun and can change after the fact. They are published in each day’s working so
+                the rule stays checkable.
+              </p>
+            </div>
+          </details>
+
+          <details class="tile">
+            <summary>If pump.fun removes callouts</summary>
+            <div class="tile-body">
+              <p>
+                <strong>Everything earned up to that point stays claimable.</strong> Results already
+                posted are unaffected — the program has no notion of callouts and cannot be switched
+                off. New days would simply stop being created.
+              </p>
+            </div>
+          </details>
         </div>
+      </section>
 
-        <p class="highlight">
-          <strong>This is a memecoin. It can go to zero, and most do.</strong> What is described
-          here decides how creator fees are split among holders who call it out. It is not a
-          return, it is not a yield, and nothing on this page is a projection of what the coin
-          will be worth. Nothing here is financial advice.
-        </p>
-
-        <details class="tech">
-          <summary>The caller list is attested, not trustless</summary>
-          <div class="detail-body">
-            <p>
-              Every number here except one can be re-derived from public chain history. The
-              exception is <strong>who called out</strong> — that exists only in pump.fun’s
-              database, not on chain. Anyone can clone the
-              <a href="https://github.com/AlphaArtrem/call-pool" target="_blank" rel="noopener noreferrer">GitHub repo</a>
-              and re-derive the same
-              list the same way we do. We say <em>attested</em> rather than <em>trustless</em>
-              because the input still comes from pump.fun’s API, not from immutable chain
-              history — the second word would be false.
-            </p>
+      <!-- ── the closer ───────────────────────────────────────────────── -->
+      <section class="band">
+        <div class="wrap closer">
+          <h2 class="display">Hold it. Call it out.<br />Get paid.</h2>
+          <p>Every night at 00:00&nbsp;UTC, whether or not anyone is watching.</p>
+          <div class="cta-row">
+            <a class="btn primary" href="#top">Trade on pump.fun</a>
+            <a class="btn" href="#position">Check your wallet</a>
           </div>
-        </details>
-
-        <details class="tech">
-          <summary>Flags are pump.fun’s, and they are retroactive</summary>
-          <div class="detail-body">
-            <p>
-              Callouts marked spam or harmful, or deleted, do not count. Those flags belong to
-              pump.fun and can change after the fact. They are published in each day’s working so
-              the rule stays checkable.
-            </p>
-          </div>
-        </details>
-
-        <details class="tech">
-          <summary>If pump.fun removes callouts</summary>
-          <div class="detail-body">
-            <p>
-              <strong>Everything earned up to that point stays claimable.</strong> Results already
-              posted are unaffected — the program has no notion of callouts and cannot be switched
-              off. New days would simply stop being created.
-            </p>
-          </div>
-        </details>
+        </div>
       </section>
     </main>
 
-    <footer class="wrap">
-      <p class="note">
-        Every number above is either read from a Solana account by your browser, taken from a
-        published record, or worked out here from those two. The badge beside each one says which.
-      </p>
+    <footer>
+      <div class="wrap">
+        <p class="note note-wide note-center">
+          Every number above is read from Solana by your browser, taken from a published record, or
+          worked out here from those two. The badge beside each one says which.
+        </p>
+      </div>
     </footer>
 
     <!--

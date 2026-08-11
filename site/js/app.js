@@ -31,10 +31,11 @@ import {
 } from './clocks.js';
 import { explorerUrl, FLOOR_PERCENT_LABEL, provisionalUrl, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
+import { totalClaimed } from './history.js';
 import { decodeConfig } from './program.js';
 import { loadProvisional, settledEpochIndices } from './payouts.js';
 import { loadPosition, looksLikeAddress, renderPosition, renderPositionFailure } from './position.js';
-import { countdown, formatSol, formatTokens } from './standing.js';
+import { countdown, exactTitle, formatSol, formatSolShort, formatTokens } from './standing.js';
 import { wireTopbar } from './topbar.js';
 import { addressNode, bars, chartState, el, failure, field, progressRail, sparkline, SOURCES } from './ui.js';
 
@@ -128,6 +129,20 @@ const UNAVAILABLE = {
 function resetLiveFields(reason = null) {
   state.unavailable = reason;
 
+  // Before launch there is nothing to read yet and never was — so rather than
+  // writing "not launched yet" into thirteen slots, the page shows the shape a
+  // launched page has: zeros in the real formatting, dimmed, each carrying the
+  // reason in its badge. A visitor gets to see what the thing looks like when
+  // it is running; nobody can mistake a dimmed zero for a reading.
+  //
+  // Only for `notLaunched`. `unreachable` and `notSetUp` keep saying so in
+  // words, because a zero there would mean "we looked and found nothing" when
+  // the truth is "we could not look" — a different claim, and a false one.
+  if (reason === UNAVAILABLE.notLaunched) {
+    renderPreLaunchZeros();
+    return;
+  }
+
   for (const id of [
     'pool-balance',
     'vault-balance',
@@ -159,12 +174,119 @@ function resetLiveFields(reason = null) {
     chartState(el(chartId), reason?.clock ?? 'reading…', { unavailable: reason != null });
   }
 
+  // The hero ledger repeats two of the figures above, so it has to repeat
+  // their states too — a slot that stays blank while the wall says "not
+  // launched yet" is the same silent gap §7.4 exists to close.
+  ledgerValue('ledger-pool', null, reason);
+  ledgerValue('ledger-distributed', null, reason);
+
   if (reason != null) {
     renderEpochs(el('epoch-rows'), [], state.config ?? {}, {
       pager: el('epoch-pagination'),
       emptyNote: firstRecordNote({ now: Math.floor(Date.now() / 1000), window: state.window }),
     });
   }
+}
+
+/** A dimmed zero for a slot that is plain text rather than a `field()`. */
+function placeholderNode(text) {
+  const span = document.createElement('span');
+  span.className = 'is-placeholder';
+  span.textContent = text;
+  return span;
+}
+
+/**
+ * The whole page at zero, before the coin exists.
+ *
+ * Every figure is the one a launched page would show with nothing in the pool
+ * yet — same formatting, same layout, same charts — rendered dim and badged so
+ * it reads as a preview of the shape rather than as data. See the note in
+ * `resetLiveFields` for why this is scoped to `notLaunched` alone.
+ */
+function renderPreLaunchZeros() {
+  const why = UNAVAILABLE.notLaunched.short;
+  // BigInt, like every other amount on this page — these go through the same
+  // formatters as a real reading, which is the entire point of the exercise.
+  const zeroSol = sol(0n);
+  // `countdown(0)` is "0m 00s" — a true zero, but it drops the hours segment
+  // and so previews a shape a daily clock almost never has. The zeroed full
+  // form is what a reader will actually see here once a round is running.
+  const zeroClock = '0h 00m 00s';
+
+  const zeros = {
+    'pool-balance': zeroSol,
+    'vault-balance': zeroSol,
+    'current-epoch': '0',
+    'total-distributed': zeroSol,
+    'chain-floor': `${formatTokens(0n, MINT_DECIMALS)} CALLPOOL`,
+  };
+  for (const [id, value] of Object.entries(zeros)) {
+    field(el(id), { value: null, placeholder: value, unavailable: why });
+  }
+
+  el('daily-clock').replaceChildren(placeholderNode(zeroClock));
+  el('hourly-clock').replaceChildren(placeholderNode(zeroClock));
+
+  field(el('card-pool-value'), { value: null, placeholder: zeroSol, unavailable: why });
+  bars(el('card-pool-chart'), {
+    series: [
+      { label: 'Pool', display: zeroSol },
+      { label: 'Accrued', display: zeroSol, secondary: true },
+    ],
+    empty: '',
+    placeholder: true,
+  });
+
+  field(el('card-history-value'), { value: null, placeholder: '0 days paid', unavailable: why });
+  sparkline(el('card-history-chart'), {
+    values: [],
+    label: 'No day has been paid out yet. The line is flat because there is nothing in it.',
+    empty: '',
+    placeholder: true,
+  });
+
+  field(el('card-clock-value'), {
+    value: null,
+    placeholder: `${zeroClock} left`,
+    unavailable: why,
+  });
+  progressRail(el('card-clock-chart'), { empty: '', placeholder: true });
+
+  ledgerValue('ledger-pool', zeroSol, null, { placeholder: true });
+  ledgerValue('ledger-distributed', zeroSol, null, { placeholder: true });
+
+  renderEpochs(el('epoch-rows'), [], state.config ?? {}, {
+    pager: el('epoch-pagination'),
+    emptyNote: firstRecordNote({ now: Math.floor(Date.now() / 1000), window: state.window }),
+  });
+}
+
+/**
+ * One slot of the hero ledger.
+ *
+ * Deliberately plain text rather than `field()`: these are a second display of
+ * numbers the pool section already owns, and the provenance badge belongs
+ * beside the canonical one, where there is room for it to be read and hovered.
+ * Repeating the badge in a card this narrow would shrink it to decoration —
+ * which is the one thing §7.3 says it must never become.
+ */
+function ledgerValue(id, value, reason = null, { placeholder = false, title = null } = {}) {
+  const node = el(id);
+  node.replaceChildren();
+  node.title = title ?? '';
+
+  if (value == null) {
+    node.append(pendingNode(reason?.short ?? 'reading…'));
+    return;
+  }
+
+  if (placeholder) {
+    node.append(placeholderNode(value));
+    return;
+  }
+
+  node.textContent = value;
 }
 
 /** The three card charts, as [value slot, chart slot]. */
@@ -174,36 +296,73 @@ const CARDS = [
   ['card-clock-value', 'card-clock-chart'],
 ];
 
-/** `formatSol` that survives a balance which never loaded. */
+/**
+ * SOL at four decimals, for a slot that is read at a glance.
+ *
+ * Nine decimals is the honest figure and it is unscannable — and at this
+ * display size it also wrapped onto a second line, which broke the number away
+ * from its unit. Every caller pairs this with `exactTitle` on the element, so
+ * the full-precision value is always one hover away; that pairing is the
+ * condition on using the short form at all (see standing.js).
+ */
 function sol(lamports) {
-  return lamports == null ? '—' : `${formatSol(lamports)} SOL`;
+  return lamports == null ? '—' : `${formatSolShort(lamports)} SOL`;
 }
 
 /**
- * The headline countdown, re-rendered once a second.
+ * The day number, as a reader should see it.
  *
- * Two states and no third: the round is running, or it has closed and the
- * payouts are being worked out. Both are things a reader wants to know without
- * learning what an epoch is.
+ * `epochAt` is arithmetic and can go negative: between `initialize` and the
+ * genesis boundary the page sits in the epoch *before* day zero, and the raw
+ * index there is −1. That is correct and it is not sayable — "Day number −1"
+ * reads as a broken page, and the one thing this section cannot afford is a
+ * figure that looks like a bug.
+ *
+ * So the pre-genesis run-up is named instead of numbered. Once genesis passes
+ * the raw index is shown unchanged, because the history table's "Day" column
+ * uses the same index and the two must not disagree.
+ */
+function dayNumber(epoch) {
+  return epoch < 0 ? 'not started' : String(epoch);
+}
+
+/** Seconds until the top of the next UTC hour. */
+function secondsToNextHour(now) {
+  return HOURLY_SECONDS - (now % HOURLY_SECONDS);
+}
+
+/** How often the callout standings are re-sampled. */
+const HOURLY_SECONDS = 3600;
+
+/**
+ * The hero countdown, re-rendered once a second.
+ *
+ * This is the HOURLY callout window, not the daily one. The day's close has its
+ * own countdown in "The pool right now", and a page carrying two clocks that
+ * disagree — one at six hours, one at forty minutes — teaches a reader to
+ * trust neither. So the hero counts the thing a caller acts on between now and
+ * midnight: when their callout is next picked up.
+ *
+ * The boundary is wall-clock UTC, so it is derivable without a chain read. It
+ * is still gated on the launch state: before there is a coin, nothing is being
+ * sampled on the hour, and a running clock would be claiming otherwise.
  */
 function renderHeroCountdown(now) {
   const label = el('hero-countdown-label');
   const value = el('hero-countdown');
+  label.textContent = 'Callout update in';
 
-  if (state.window == null) {
-    label.textContent = 'Today’s round';
-    value.replaceChildren(pendingNode(state.unavailable?.short ?? 'reading…'));
+  if (state.unavailable === UNAVAILABLE.notLaunched) {
+    value.replaceChildren(placeholderNode('00m 00s'));
     return;
   }
 
-  if (now < state.window.end) {
-    label.textContent = 'Today’s round ends in';
-    value.textContent = countdown(state.window.end - now);
+  if (state.unavailable != null) {
+    value.replaceChildren(pendingNode(state.unavailable.short));
     return;
   }
 
-  label.textContent = 'Right now';
-  value.textContent = 'working out today’s payouts…';
+  value.textContent = countdown(secondsToNextHour(now));
 }
 
 /**
@@ -230,7 +389,7 @@ function startTicking() {
 
       if (rolledOver) {
         state.window = windowFor(chainConfig.genesisTs, epoch, chainConfig.epochSeconds);
-        field(el('current-epoch'), { value: String(epoch), source: SOURCES.derived });
+        field(el('current-epoch'), { value: dayNumber(epoch), source: SOURCES.derived });
       }
 
       if (rolledOver || now - live.attemptedAt >= REFRESH_SECONDS) {
@@ -244,7 +403,43 @@ function startTicking() {
   };
 
   tick();
-  setInterval(tick, 1000);
+
+  // Coming back to the tab must never show a stale clock, however the
+  // heartbeat below is faring. This is cheap and it is the one path that is
+  // guaranteed to run, so it stays even with the worker in place.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) tick();
+  });
+
+  // The heartbeat, from a worker rather than from here — see tick-worker.js
+  // for why a hidden tab throttles this thread to one tick a minute. The
+  // fallback is the old main-thread timer: a page that ticks slowly while
+  // hidden is the bug being fixed, and a page that does not tick at all is a
+  // worse one, so anything that stops the worker starting falls back rather
+  // than leaving the clocks dead.
+  // The guard is on the timer, not on the attempt. `new Worker()` resolves a
+  // bad URL asynchronously — a 404 constructs cleanly and only then fires
+  // `onerror` — so a flag meaning "we tried the worker" would suppress the
+  // fallback in exactly the case that needs it.
+  let intervalStarted = false;
+  const fallBack = () => {
+    if (intervalStarted) return;
+    intervalStarted = true;
+    setInterval(tick, 1000);
+  };
+
+  try {
+    const heartbeat = new Worker('/site/js/tick-worker.js');
+    heartbeat.onmessage = tick;
+    // A 404, a parse error, or the worker dying later. Either way the clocks
+    // go back to the throttled-but-alive main-thread timer.
+    heartbeat.onerror = fallBack;
+    heartbeat.postMessage('start');
+  } catch {
+    // Construction itself can throw — a CSP that refuses the worker, or a
+    // browser without them.
+    fallBack();
+  }
 }
 
 /**
@@ -445,7 +640,9 @@ function renderTrade(config, unavailableWhy = null) {
     return;
   }
 
-  slot.replaceChildren(addressNode(mint, { href: explorerUrl(config, 'address', mint) }));
+  slot.replaceChildren(
+    addressNode(mint, { href: explorerUrl(config, 'address', mint), responsive: true }),
+  );
   button.href = `https://pump.fun/coin/${mint}`;
   button.rel = 'noopener noreferrer';
   button.target = '_blank';
@@ -515,7 +712,7 @@ async function loadChainConfig(config) {
     const epoch = epochAt(chainConfig.genesisTs, now, chainConfig.epochSeconds);
     state.window = windowFor(chainConfig.genesisTs, epoch, chainConfig.epochSeconds);
 
-    field(el('current-epoch'), { value: String(epoch), source: SOURCES.derived });
+    field(el('current-epoch'), { value: dayNumber(epoch), source: SOURCES.derived });
 
     const onChainFloor = document.createElement('span');
     field(onChainFloor, {
@@ -567,6 +764,7 @@ async function loadChainConfig(config) {
 function renderPoolCard(config, poolLamports, vaultLamports) {
   field(el('card-pool-value'), {
     value: poolLamports == null ? null : sol(poolLamports),
+    title: exactTitle(poolLamports),
     source: SOURCES.chain,
     unavailable: poolLamports == null ? UNAVAILABLE.unreachable.short : null,
   });
@@ -596,19 +794,23 @@ function renderPoolCard(config, poolLamports, vaultLamports) {
  * that was never posted has no distribution to plot, and quietly plotting it
  * as zero would hide the gap that section 4 goes out of its way to show.
  */
-function renderHistoryCard(epochs) {
+function renderHistoryCard(epochs, day0 = null) {
   const settled = epochs.filter((e) => e.posted).reverse();
+  // Day 0 sits before every epoch: paid from the creator-fee share and
+  // receipted at /snapshots/day0/, so it counts as a paid day and plots first.
+  const paidDays = settled.length + (day0 ? 1 : 0);
+  const values = day0 ? [day0.allocateLamports, ...settled.map((e) => e.claimedLamports)] : settled.map((e) => e.claimedLamports);
 
   field(el('card-history-value'), {
-    value: settled.length === 1 ? '1 day paid' : `${settled.length} days paid`,
+    value: paidDays === 1 ? '1 day paid' : `${paidDays} days paid`,
     source: SOURCES.chain,
   });
 
   sparkline(el('card-history-chart'), {
-    values: settled.map((e) => e.claimedLamports),
-    label: `Paid out on each of the ${settled.length} days settled so far, oldest first.`,
+    values,
+    label: `Paid out on each of the ${paidDays} days paid so far, oldest first${day0 ? ', day 0 included' : ''}.`,
     empty:
-      settled.length === 0
+      paidDays === 0
         ? 'No day has been paid out yet. The first is settled at the first 00:00 UTC after launch.'
         : 'One day so far. A single point is not a shape, so there is nothing to draw yet.',
   });
@@ -693,13 +895,22 @@ async function loadPool(config) {
   }
 
   field(el('pool-balance'), {
-    value: live.poolLamports == null ? null : `${formatSol(live.poolLamports)} SOL`,
+    value: live.poolLamports == null ? null : sol(live.poolLamports),
+    title: exactTitle(live.poolLamports),
     source: SOURCES.chain,
     unavailable: live.poolLamports == null ? UNAVAILABLE.unreachable.short : null,
   });
 
+  ledgerValue(
+    'ledger-pool',
+    live.poolLamports == null ? null : sol(live.poolLamports),
+    live.poolLamports == null ? UNAVAILABLE.unreachable : null,
+    { title: exactTitle(live.poolLamports) },
+  );
+
   field(el('vault-balance'), {
-    value: live.vaultLamports == null ? null : `${formatSol(live.vaultLamports)} SOL`,
+    value: live.vaultLamports == null ? null : sol(live.vaultLamports),
+    title: exactTitle(live.vaultLamports),
     source: SOURCES.chain,
     unavailable:
       config.creatorVault == null
@@ -766,6 +977,26 @@ function renderLiveStatus() {
   node.textContent = label ?? '';
 }
 
+/**
+ * Day 0 — the span between coin creation and genesis, which no epoch covers.
+ *
+ * Paid at 00:00 UTC from the creator-fee share and published as receipts at
+ * `<snapshotsBase>/day0/`. Absent (404) is a normal state for a deployment
+ * that has no day 0 to tell, so failure here is silence, not an error.
+ */
+async function loadDay0(config) {
+  if (config.snapshotsBase == null) return null;
+  try {
+    const answer = await fetch(`${config.snapshotsBase}/day0/day0.json`);
+    if (!answer.ok) return null;
+    const body = await answer.json();
+    if (typeof body?.allocateLamports !== 'string') return null;
+    return { allocateLamports: BigInt(body.allocateLamports) };
+  } catch {
+    return null;
+  }
+}
+
 async function loadHistory(config) {
   // No window means the program's config never loaded, and the epoch index is
   // derived from it. Say so in both places rather than leaving the table and
@@ -806,8 +1037,11 @@ async function loadHistory(config) {
     pager: el('epoch-pagination'),
     emptyNote: firstRecordNote({ now: Math.floor(Date.now() / 1000), window: state.window }),
   });
-  renderTotals(el('total-distributed'), live.epochs);
-  renderHistoryCard(live.epochs);
+  if (live.day0 === undefined) live.day0 = await loadDay0(config);
+  const day0Lamports = live.day0?.allocateLamports ?? 0n;
+  renderTotals(el('total-distributed'), live.epochs, day0Lamports);
+  ledgerValue('ledger-distributed', `${formatSol(totalClaimed(live.epochs) + day0Lamports)} SOL`);
+  renderHistoryCard(live.epochs, live.day0);
   return true;
 }
 

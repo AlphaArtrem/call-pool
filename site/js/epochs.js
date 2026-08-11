@@ -1,22 +1,22 @@
 // Epoch history — the audit trail (Phase 07 §7.2 item 4).
 //
-// One row per epoch: pool, callers, distributed, unclaimed, root, the
-// `post_epoch_root` signature, and a link to the directory that reproduces it.
-// §7.2 calls this one of the two sections a copycat cannot fake, and the
-// reason is that every row is an invitation to check it.
+// One row per epoch: pool, callers, distributed, unclaimed, root, and a button
+// that opens the whole day. §7.2 calls this one of the two sections a copycat
+// cannot fake, and the reason is that every row is an invitation to check it.
 //
 // The rows are built from the on-chain Epoch accounts, not from a file we
-// publish. The published directory is linked beside each row so the two can be
+// publish. Behind the Details button (epoch-details.js) sit the published
+// directory, the account, and that day's payee list, so the two can be
 // compared; if they ever disagree, the chain is right and the directory is
 // evidence of what we claimed.
 
 import { decodeEpoch, bitmapIsSized, isZeroRoot, rootHex } from './program.js';
 import { epochPda } from './addresses.js';
 import { multipleAccounts } from './chain.js';
-import { explorerUrl, snapshotUrl } from './config.js';
 import { epochIndices, totalClaimed } from './history.js';
+import { openEpochDetails } from './epoch-details.js';
 import { pageOf } from './paging.js';
-import { formatSol, utcTime } from './standing.js';
+import { exactTitle, formatSol, formatSolShort } from './standing.js';
 import { addressNode, field, SOURCES } from './ui.js';
 
 /**
@@ -172,41 +172,41 @@ function epochRow(epoch, config) {
   }
   cell(rootCell);
 
-  const links = document.createElement('span');
-  links.className = 'links';
+  // One button, not a row of links. The links, the posting time and the payee
+  // list all live behind it — a cell that carried them inline made the widest
+  // column of the table the one carrying the least information per pixel, and
+  // the list of who was paid had nowhere to go at all.
+  const details = document.createElement('button');
+  details.type = 'button';
+  details.className = 'button row-button';
+  details.textContent = 'Details';
+  details.setAttribute('aria-haspopup', 'dialog');
+  details.setAttribute('aria-label', `Details for day ${epoch.index}`);
+  // How the dialog hands focus back. Not the element reference itself: the
+  // minute refresh rebuilds this row, and returning focus to a detached button
+  // is the same as dropping it at the top of the document.
+  details.dataset.epochDetails = String(epoch.index);
+  details.addEventListener('click', () => openEpochDetails(epoch, config));
+  cell(details);
 
-  const dir = snapshotUrl(config, epoch.index);
-  if (dir) {
-    const a = document.createElement('a');
-    a.href = dir;
-    a.textContent = 'snapshot';
-    a.title = `Everything needed to reproduce epoch ${epoch.index}: callouts.json, balances.json, pool.json, tree.json, carry.json, payouts.csv`;
-    links.append(a);
-  }
-
-  const account = explorerUrl(config, 'address', epoch.address);
-  if (account) {
-    const a = document.createElement('a');
-    a.href = account;
-    a.rel = 'noopener noreferrer';
-    a.target = '_blank';
-    a.textContent = 'account';
-    links.append(' · ', a);
-  }
-
-  const posted = document.createElement('span');
-  posted.className = 'note';
-  posted.textContent = ` posted ${utcTime(epoch.postedTs)}`;
-  links.append(posted);
-
-  cell(links);
   return tr;
 }
 
-/** The hero's "total distributed to date". Derived, and labelled as derived. */
-export function renderTotals(node, epochs) {
+/**
+ * The hero's "total distributed to date". Derived, and labelled as derived.
+ *
+ * `extraLamports` is day 0 — paid from the creator-fee share before the first
+ * on-chain epoch existed, receipted at /snapshots/day0/. It is part of what
+ * holders have been paid, so the headline includes it.
+ */
+export function renderTotals(node, epochs, extraLamports = 0n) {
+  const total = totalClaimed(epochs) + extraLamports;
   field(node, {
-    value: `${formatSol(totalClaimed(epochs))} SOL`,
+    // Four decimals on screen, the exact figure on hover — the same pairing
+    // every other headline amount uses. The table rows below stay at full
+    // precision, because those are the numbers people reconcile against.
+    value: `${formatSolShort(total)} SOL`,
+    title: exactTitle(total),
     source: SOURCES.derived,
   });
 }
