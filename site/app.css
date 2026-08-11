@@ -1047,7 +1047,11 @@ svg {
 .wall .k {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  /* The chip stays on the label's line. Wrapping put it alone on a second row
+   * whenever the label was long enough — "paid out so far" was exactly long
+   * enough — which read as a badge belonging to the figure below it. The label
+   * text wraps inside its own box instead; the chip never does. */
+  flex-wrap: nowrap;
   /* Zero: the badge brings its own margin (see `.source`), so every card puts
    * the same distance between a label and its chip. */
   gap: 0;
@@ -1150,7 +1154,7 @@ svg {
 .clock .lbl {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   /* Zero: the badge brings its own margin (see `.source`), so every card puts
    * the same distance between a label and its chip. */
   gap: 0;
@@ -1227,7 +1231,7 @@ svg {
 .graph-title {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   /* Zero: the badge brings its own margin (see `.source`), so every card puts
    * the same distance between a label and its chip. */
   gap: 0;
@@ -2084,6 +2088,9 @@ details.tile > summary:hover {
    * further from its label than the next card's. Flex hosts set `gap: 0` for
    * the same reason — one rule owns this distance. */
   margin-left: 0.5rem;
+  /* Never squeezed and never broken across lines: the label beside it gives up
+   * the width instead. */
+  flex: none;
   font-family: var(--sans);
   font-size: 0.625rem;
   font-weight: 700;

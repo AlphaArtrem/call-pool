@@ -28,7 +28,7 @@ export const SOURCES = {
   chain: { key: 'chain', label: 'chain', title: 'Read live from a Solana account by your browser. Nothing here passed through our server.' },
   snapshot: { key: 'snapshot', label: 'snapshot', title: 'From the published working for that day. We wrote this file — it is reproducible from chain, and the commands to redo it are under “Every day, on the record”.' },
   pumpfun: { key: 'pumpfun', label: 'pump.fun', title: 'From pump.fun’s callout API, queried by your browser. This is the one input that cannot be re-derived from chain — it exists only in their database.' },
-  derived: { key: 'derived', label: 'computed here', title: 'Computed in your browser from the values beside it. Never fetched — our server cannot influence this number.' },
+  derived: { key: 'derived', label: 'computed', title: 'Computed in your browser from the values beside it. Never fetched — our server cannot influence this number.' },
 };
 
 export function el(id) {
