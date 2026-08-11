@@ -797,23 +797,38 @@ function renderPoolCard(config, poolLamports, vaultLamports) {
  */
 function renderHistoryCard(epochs, day0 = null) {
   const settled = epochs.filter((e) => e.posted).reverse();
-  // Day 0 sits before every epoch: paid from the creator-fee share and
-  // receipted at /snapshots/day0/, so it counts as a paid day and plots first.
-  const paidDays = settled.length + (day0 ? 1 : 0);
-  const values = day0 ? [day0.allocateLamports, ...settled.map((e) => e.claimedLamports)] : settled.map((e) => e.claimedLamports);
+  // Oldest first: the genesis honor (if paid) precedes every on-chain epoch.
+  const days = [
+    ...(day0 ? [{ label: 'Genesis', lamports: day0.allocateLamports }] : []),
+    ...settled.map((e) => ({ label: `Day ${e.index}`, lamports: e.claimedLamports })),
+  ];
+  const paidDays = days.length;
 
   field(el('card-history-value'), {
     value: paidDays === 1 ? '1 day paid' : `${paidDays} days paid`,
     source: SOURCES.chain,
   });
 
+  // A single paid day is a magnitude, not a trend, and a sparkline needs two
+  // points to be a line — so day one is drawn as one labelled bar rather than
+  // left as an apology for having nothing to draw. From two days on it becomes
+  // the sparkline, where the shape across days is the point.
+  if (paidDays === 1) {
+    bars(el('card-history-chart'), {
+      series: days.map((d) => ({
+        label: d.label,
+        value: Number(d.lamports),
+        display: `${formatSol(d.lamports)} SOL`,
+      })),
+      empty: 'No day has been paid out yet. The first is settled at the first 00:00 UTC after launch.',
+    });
+    return;
+  }
+
   sparkline(el('card-history-chart'), {
-    values,
-    label: `Paid out on each of the ${paidDays} days paid so far, oldest first${day0 ? ', day 0 included' : ''}.`,
-    empty:
-      paidDays === 0
-        ? 'No day has been paid out yet. The first is settled at the first 00:00 UTC after launch.'
-        : 'One day so far. A single point is not a shape, so there is nothing to draw yet.',
+    values: days.map((d) => d.lamports),
+    label: `Paid out on each of the ${paidDays} days paid so far, oldest first${day0 ? ', genesis included' : ''}.`,
+    empty: 'No day has been paid out yet. The first is settled at the first 00:00 UTC after launch.',
   });
 }
 
@@ -998,6 +1013,15 @@ async function loadDay0(config) {
       potLamports: BigInt(body.potLamports ?? body.allocateLamports),
       paidCount: standings.filter((s) => s.lamports).length,
       callerCount: standings.length,
+      // The record table's "Largest share" column. Null when nobody was paid,
+      // which is not the same as a largest share of zero.
+      largestLamports: standings.reduce(
+        (largest, s) =>
+          s.lamports == null || (largest != null && BigInt(s.lamports) <= largest)
+            ? largest
+            : BigInt(s.lamports),
+        null,
+      ),
     };
   } catch {
     return null;
