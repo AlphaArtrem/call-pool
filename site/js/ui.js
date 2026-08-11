@@ -374,22 +374,38 @@ export function progressRail(
   return true;
 }
 
-/** One row of a definition-style table. */
+/**
+ * One row of a definition-style table: a label and its value. Two columns.
+ *
+ * The hint is an ⓘ beside the label, holding the sentence in a tooltip. As a
+ * third column it was a sentence in whatever width was left over — on a tablet
+ * a six-word-per-line ribbon, and one row of it stood taller than the three
+ * rows around it put together.
+ *
+ * The marker is focusable and carries the text as its accessible name, so it
+ * is reachable by keyboard and read out rather than being a hover-only
+ * flourish that only a mouse can find.
+ */
 export function row(label, valueNode, note = null) {
   const tr = document.createElement('tr');
   const th = document.createElement('th');
   th.scope = 'row';
   th.textContent = label;
 
+  if (note) {
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = 'ⓘ';
+    hint.tabIndex = 0;
+    hint.title = note;
+    hint.setAttribute('role', 'note');
+    hint.setAttribute('aria-label', note);
+    th.append(' ', hint);
+  }
+
   const td = document.createElement('td');
   td.append(valueNode);
 
   tr.append(th, td);
-  if (note) {
-    const noteRow = document.createElement('td');
-    noteRow.className = 'note';
-    noteRow.textContent = note;
-    tr.append(noteRow);
-  }
   return tr;
 }

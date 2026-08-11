@@ -1413,15 +1413,34 @@ svg {
  * fixed count: three across on a desktop, one per row on a phone, and no
  * media query to keep in step with the content.
  */
+/*
+ * One line, or one per line — never two-and-a-widow. `auto-fit` gave whichever
+ * the arithmetic happened to allow, which on a tablet was two tiles and a
+ * third sitting alone under them. Flex with `flex: 1 1 0` puts however many
+ * tiles there are (one, two or three, depending on what the wallet has) on a
+ * single row at equal width, and the breakpoint below stacks all of them at
+ * once — the same all-or-nothing the rule cards in "the basics" use.
+ *
+ * `stretch` so tiles on a row share a height: one short caption beside a
+ * four-line one made the panel look like two unrelated blocks.
+ */
 .standing-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
   gap: 0.75rem;
   margin: 0.25rem 0 1rem;
-  /* Stretch, so tiles in a row share a height regardless of how long each
-   * note runs — one short caption beside a four-line one made the panel look
-   * like two unrelated blocks. */
-  align-items: stretch;
+}
+
+.standing-tiles .tile {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .standing-tiles {
+    flex-direction: column;
+  }
 }
 
 .standing-tiles .tile {
@@ -1516,18 +1535,58 @@ svg {
 }
 
 /* The panel's two tables, given the record table's manners: mono labels, room
- * to breathe, one hairline between rows. */
+ * to breathe, one hairline between rows. Two columns — the hint sits under the
+ * value (see `row()` in js/ui.js), because as a third column it was a ribbon
+ * of six-word lines that made one row taller than the three around it. */
 .standing .facts th {
   font: 600 11px/1.4 var(--mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--faint);
+  vertical-align: top;
   width: 34%;
-  padding-right: 1rem;
+  padding: 1.1rem 1rem 1.1rem 0;
 }
 
 .standing .facts td {
   font-size: 0.9375rem;
+  padding: 1.1rem 0;
+}
+
+/* The hint marker: an ⓘ beside the label, the sentence in its tooltip. Dim
+ * until asked for, because it explains the row rather than reporting it. */
+.facts .hint {
+  display: inline-block;
+  color: var(--faint);
+  cursor: help;
+  font-size: 0.8125rem;
+  line-height: 1;
+  vertical-align: baseline;
+}
+
+.facts .hint:hover,
+.facts .hint:focus-visible {
+  color: var(--fg);
+}
+
+@media (max-width: 620px) {
+  /* A label column that is a third of a phone is two words per line. Stacked,
+   * each row reads as label-then-value, which is what it is. */
+  .standing .facts th,
+  .standing .facts td {
+    display: block;
+    width: auto;
+    padding: 0;
+  }
+
+  .standing .facts th {
+    padding-top: 1rem;
+  }
+
+  .standing .facts td {
+    padding-bottom: 1rem;
+    border-top: 0;
+  }
 }
 
 .standing-days .facts td {
