@@ -60,6 +60,11 @@ epochs/devnet/
 # machine's traffic, not about the mechanic, and it belongs to the box that
 # produced it rather than to the repository.
 epochs/visitors.jsonl
+# The watchdog's cursor: where it had got to last time it ran. Working state on
+# one machine, and the only file under epochs/ that was not already ignored —
+# which made `epochs/` show up as untracked and put the ignored keys beside it
+# in every `git status`.
+epochs/watchdog-state.json
 
 # ─────────────────────────────────────────────────────────────
 # Build output and dependencies
