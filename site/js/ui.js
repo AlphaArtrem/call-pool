@@ -100,7 +100,7 @@ export function field(
       badge.className = 'source source-placeholder';
       badge.textContent = unavailable;
       badge.title = 'Not a reading. The coin has not launched, so this is what the slot will look like once there is something in it.';
-      host.append(' ', badge);
+      host.append(badge);
     }
     return;
   }
@@ -127,7 +127,7 @@ export function field(
     badge.className = `source source-${source.key}`;
     badge.textContent = source.label;
     badge.title = source.title;
-    host.append(' ', badge);
+    host.append(badge);
   }
 }
 
