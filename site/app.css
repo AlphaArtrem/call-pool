@@ -1538,14 +1538,17 @@ svg {
  * to breathe, one hairline between rows. Two columns — the hint sits under the
  * value (see `row()` in js/ui.js), because as a third column it was a ribbon
  * of six-word lines that made one row taller than the three around it. */
+/* Label and value stay side by side at every width — a stacked pair read as
+ * two rows of one thing each. The gap between them is padding rather than a
+ * rule: the only line in this table is the one between rows. */
 .standing .facts th {
-  font: 600 11px/1.4 var(--mono);
-  letter-spacing: 0.1em;
+  font: 600 12.5px/1.5 var(--mono);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
   vertical-align: top;
   width: 34%;
-  padding: 1.1rem 1rem 1.1rem 0;
+  padding: 1.1rem 1.75rem 1.1rem 0;
 }
 
 .standing .facts td {
@@ -1553,41 +1556,95 @@ svg {
   padding: 1.1rem 0;
 }
 
-/* The hint marker: an ⓘ beside the label, the sentence in its tooltip. Dim
- * until asked for, because it explains the row rather than reporting it. */
-.facts .hint {
+@media (max-width: 620px) {
+  /* Narrower label column and a smaller gap, so the value still gets most of
+   * the width — but the two stay on one row. */
+  .standing .facts th {
+    width: 38%;
+    padding-right: 1rem;
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+  }
+}
+
+/* ── the hint, and its tooltip ────────────────────────────────────────────
+ *
+ * A button, not a `title`: a title tooltip cannot be opened by touch, so on a
+ * phone the explanation simply did not exist. Hover and focus open it too, so
+ * a mouse and a keyboard get the same thing without a second mechanism.
+ */
+/* Static, so the bubble below positions against the CELL rather than against
+ * the icon. Anchored to the icon it ran off the side of a phone: the icon sits
+ * a third of the way across, and a 20rem bubble has nowhere to go from there. */
+.hint-wrap {
   display: inline-block;
+  vertical-align: text-bottom;
+}
+
+.facts th {
+  position: relative;
+}
+
+.facts .hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* A real tap target. The icon is 13px; the button around it is not. */
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: -0.5rem -0.4rem -0.5rem 0.1rem;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--faint);
-  cursor: help;
-  font-size: 0.8125rem;
-  line-height: 1;
-  vertical-align: baseline;
+  cursor: pointer;
+}
+
+.hint-icon {
+  width: 13px;
+  height: 13px;
+  display: block;
 }
 
 .facts .hint:hover,
 .facts .hint:focus-visible {
+  color: var(--accent);
+}
+
+.hint-bubble {
+  position: absolute;
+  left: 0;
+  top: calc(100% - 0.35rem);
+  z-index: 20;
+  width: max-content;
+  /* From the label's left edge, which is the table's left edge, so it can only
+   * run rightward into space the table already occupies. */
+  max-width: min(24rem, calc(100vw - 3.5rem));
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line-loud);
+  border-radius: var(--radius);
+  background: var(--raised);
+  box-shadow: var(--shadow);
   color: var(--fg);
+  font: 400 0.8125rem/1.5 var(--sans);
+  letter-spacing: normal;
+  text-transform: none;
+  /* Hidden from the pointer as well as from sight, so it cannot swallow a tap
+   * meant for the row underneath it. */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
-@media (max-width: 620px) {
-  /* A label column that is a third of a phone is two words per line. Stacked,
-   * each row reads as label-then-value, which is what it is. */
-  .standing .facts th,
-  .standing .facts td {
-    display: block;
-    width: auto;
-    padding: 0;
-  }
-
-  .standing .facts th {
-    padding-top: 1rem;
-  }
-
-  .standing .facts td {
-    padding-bottom: 1rem;
-    border-top: 0;
-  }
+.hint-wrap.is-open .hint-bubble,
+.hint-wrap:hover .hint-bubble,
+.hint-wrap:focus-within .hint-bubble {
+  opacity: 1;
+  visibility: visible;
 }
+
+
 
 .standing-days .facts td {
   font-family: var(--mono);

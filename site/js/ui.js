@@ -375,33 +375,120 @@ export function progressRail(
 }
 
 /**
+ * The hint marker: an info icon that opens a tooltip on tap, hover or focus.
+ *
+ * A `title` attribute would have been free, and it is why this exists instead:
+ * a title tooltip cannot be opened by touch at all. On a phone — where the
+ * hint matters most, because there is no room to print it — it was invisible.
+ *
+ * A button rather than a decorated span, so it is one tap on a phone, one tab
+ * stop and one Enter on a keyboard, and announced as something you can operate
+ * rather than as loose text beside a label.
+ */
+let openHint = null;
+
+function closeHint() {
+  if (!openHint) return;
+  openHint.button.setAttribute('aria-expanded', 'false');
+  openHint.wrap.classList.remove('is-open');
+  openHint = null;
+}
+
+// One listener for the page, not one per hint: tapping anywhere else closes
+// whatever is open, and Escape does the same from the keyboard.
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (event) => {
+    if (openHint && !openHint.wrap.contains(event.target)) closeHint();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeHint();
+  });
+}
+
+let hintSeq = 0;
+
+function infoIcon() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.setAttribute('class', 'hint-icon');
+
+  const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  ring.setAttribute('cx', '8');
+  ring.setAttribute('cy', '8');
+  ring.setAttribute('r', '6.75');
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', 'currentColor');
+  ring.setAttribute('stroke-width', '1.4');
+
+  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  dot.setAttribute('cx', '8');
+  dot.setAttribute('cy', '4.9');
+  dot.setAttribute('r', '0.95');
+  dot.setAttribute('fill', 'currentColor');
+
+  const stem = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  stem.setAttribute('x', '7.2');
+  stem.setAttribute('y', '6.9');
+  stem.setAttribute('width', '1.6');
+  stem.setAttribute('height', '5');
+  stem.setAttribute('rx', '0.8');
+  stem.setAttribute('fill', 'currentColor');
+
+  svg.append(ring, dot, stem);
+  return svg;
+}
+
+function hint(label, note) {
+  const wrap = document.createElement('span');
+  wrap.className = 'hint-wrap';
+
+  const bubble = document.createElement('span');
+  bubble.className = 'hint-bubble';
+  bubble.id = `hint-${++hintSeq}`;
+  bubble.setAttribute('role', 'tooltip');
+  bubble.textContent = note;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'hint';
+  button.setAttribute('aria-label', `What “${label}” means`);
+  button.setAttribute('aria-expanded', 'false');
+  // The text is the button's description rather than its name, so a screen
+  // reader announces the control and then the sentence, not a sentence where
+  // a button name belongs.
+  button.setAttribute('aria-describedby', bubble.id);
+  button.append(infoIcon());
+
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const wasOpen = openHint?.button === button;
+    closeHint();
+    if (wasOpen) return;
+    button.setAttribute('aria-expanded', 'true');
+    wrap.classList.add('is-open');
+    openHint = { button, wrap };
+  });
+
+  wrap.append(button, bubble);
+  return wrap;
+}
+
+/**
  * One row of a definition-style table: a label and its value. Two columns.
  *
- * The hint is an ⓘ beside the label, holding the sentence in a tooltip. As a
- * third column it was a sentence in whatever width was left over — on a tablet
+ * The hint is an info button beside the label rather than a column of its own.
+ * As a column it was a sentence in whatever width was left over — on a tablet
  * a six-word-per-line ribbon, and one row of it stood taller than the three
  * rows around it put together.
- *
- * The marker is focusable and carries the text as its accessible name, so it
- * is reachable by keyboard and read out rather than being a hover-only
- * flourish that only a mouse can find.
  */
 export function row(label, valueNode, note = null) {
   const tr = document.createElement('tr');
   const th = document.createElement('th');
   th.scope = 'row';
   th.textContent = label;
-
-  if (note) {
-    const hint = document.createElement('span');
-    hint.className = 'hint';
-    hint.textContent = 'ⓘ';
-    hint.tabIndex = 0;
-    hint.title = note;
-    hint.setAttribute('role', 'note');
-    hint.setAttribute('aria-label', note);
-    th.append(' ', hint);
-  }
+  if (note) th.append(' ', hint(label, note));
 
   const td = document.createElement('td');
   td.append(valueNode);
