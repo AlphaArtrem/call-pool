@@ -55,6 +55,38 @@ export class CalloutError extends Error {
   }
 }
 
+/**
+ * Statuses worth retrying, and how hard.
+ *
+ * Measured on the mainnet coin's launch night (2026-08-10/11): pump's callout
+ * API returns **429 on roughly half of polls, at any minute** — the same key
+ * from the same IP succeeds seconds later, so it is a short sliding-window
+ * limit, not a per-IP ban. A single-attempt poll therefore missed whole hours
+ * and the crank host's store went stale, twice. These are the transient
+ * upstream statuses; 401/403 are NOT here because those mean the key rotated
+ * and are handled separately (re-derive, do not just retry the same key).
+ */
+export const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_ATTEMPTS = 4;
+const BASE_BACKOFF_MS = 1500;
+
+const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * How long to wait before retry `attempt` (1-based).
+ *
+ * `Retry-After` is honoured when the API sends it (seconds), because guessing
+ * under an explicit instruction is how a backoff turns into a hammer. Otherwise
+ * exponential from `BASE_BACKOFF_MS` with a little jitter so many hosts that hit
+ * the limit in the same minute do not all retry on the same tick.
+ */
+export function retryDelayMs(response, attempt) {
+  const header = Number(response.headers?.get?.('retry-after'));
+  if (Number.isFinite(header) && header > 0) return header * 1000;
+  const backoff = BASE_BACKOFF_MS * 2 ** (attempt - 1);
+  return backoff + Math.floor(Math.random() * 400);
+}
+
 // The public client key pump.fun ships to every visitor lives in
 // `callout-key.mjs`, not here. It is not a secret — it is in pump.fun's own JS
 // bundle — but it is *theirs*, it rotates without notice, and there is no API
@@ -66,7 +98,7 @@ export class CalloutError extends Error {
 
 async function get(
   path,
-  { apiKey, keySource, baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch, notFound } = {},
+  { apiKey, keySource, baseUrl = DEFAULT_BASE_URL, fetchImpl = fetch, notFound, sleep = defaultSleep } = {},
 ) {
   const send = (key) =>
     fetchImpl(`${baseUrl}${path}`, {
@@ -85,6 +117,16 @@ async function get(
     // it cannot produce a working key, so a genuine outage still fails loudly
     // instead of retrying forever.
     key = await keySource.refresh();
+    response = await send(key);
+  }
+
+  // Transient upstream throttling: retry the SAME key with backoff before
+  // giving up. pump 429s about half our polls at random and clears in seconds,
+  // so one attempt per hour left the store stale; a bounded retry turns that
+  // into a few seconds' wait. Exhausting the attempts falls through to the
+  // `!response.ok` throw below, so a genuine outage still fails loudly.
+  for (let attempt = 1; attempt < MAX_ATTEMPTS && RETRYABLE_STATUS.has(response.status); attempt++) {
+    await sleep(retryDelayMs(response, attempt));
     response = await send(key);
   }
 
