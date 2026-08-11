@@ -9,7 +9,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  DELIVERY, deliveryFor, payoutHistory, describeDelivery, projectedShare, settledEpochIndices,
+  DELIVERY, deliveryFor, epochPayouts, payoutHistory, payoutTotals, describeDelivery, projectedShare,
+  settledEpochIndices,
 } from '../../site/js/payouts.js';
 
 const W = 'EXbcXYZJTRFLjix9CPLFa4p79WhxtxFnBZz7kyQiYgXZ';
@@ -180,6 +181,73 @@ test('an airdrop.json with no runs[] still works — older files, and first runs
   const airdrop = { sent: [{ signature: 's', leaves: [0] }], failed: [] };
   const tree = { leaves: [{ index: 0, owner: 'A', amount: '100' }] };
   assert.equal(deliveryFor(tree, airdrop, 'A').state, DELIVERY.paid);
+});
+
+// ── the whole day's list, as the record table shows it ─────────────────────
+
+test('the day\'s payee list is every leaf, largest share first', () => {
+  const tree = {
+    leaves: [
+      { index: 0, owner: 'A', amount: '100' },
+      { index: 1, owner: 'B', amount: '900' },
+      { index: 2, owner: 'C', amount: '500' },
+    ],
+  };
+  const airdrop = { sent: [{ signature: 's', leaves: [0, 1, 2] }], failed: [] };
+
+  const rows = epochPayouts(tree, airdrop);
+  assert.deepEqual(rows.map((r) => r.owner), ['B', 'C', 'A']);
+  assert.deepEqual(rows.map((r) => r.amount), [900n, 500n, 100n]);
+  assert.ok(rows.every((r) => r.state === DELIVERY.paid));
+});
+
+test('a leaf that was allocated and not paid is listed, and says which', () => {
+  // The list would otherwise read as "these wallets were paid", which is a
+  // claim about money that is false for two of these three rows.
+  const tree = {
+    leaves: [
+      { index: 0, owner: 'A', amount: '300' },
+      { index: 1, owner: 'B', amount: '200' },
+      { index: 2, owner: 'C', amount: '100' },
+    ],
+  };
+  const airdrop = {
+    sent: [{ signature: 's', leaves: [0] }],
+    failed: [
+      { leaves: [1], policy: true, error: 'BelowMinHold' },
+      { leaves: [2], error: 'blockhash not found' },
+    ],
+  };
+
+  assert.deepEqual(
+    epochPayouts(tree, airdrop).map((r) => [r.owner, r.state]),
+    [['A', DELIVERY.paid], ['B', DELIVERY.refused], ['C', DELIVERY.failed]],
+  );
+});
+
+test('the day\'s totals keep allocated and delivered apart', () => {
+  // The dialog states both. Summing them into one figure would report a day
+  // that paid 300 of 600 as having paid either all of it or none.
+  const rows = [
+    { amount: 300n, state: DELIVERY.paid },
+    { amount: 200n, state: DELIVERY.refused },
+    { amount: 100n, state: DELIVERY.failed },
+    { amount: 50n, state: DELIVERY.pending },
+  ];
+  assert.deepEqual(payoutTotals(rows), {
+    wallets: 4, allocated: 650n, paid: 300n, refused: 200n, undelivered: 150n,
+  });
+  assert.deepEqual(payoutTotals([]), {
+    wallets: 0, allocated: 0n, paid: 0n, refused: 0n, undelivered: 0n,
+  });
+});
+
+test('a settled day whose airdrop has not run is pending, and an empty day is empty', () => {
+  const tree = { leaves: [{ index: 0, owner: 'A', amount: '300' }] };
+  assert.deepEqual(epochPayouts(tree, null).map((r) => r.state), [DELIVERY.pending]);
+  // Nobody called out: a real state, and it must not throw on the way to it.
+  assert.deepEqual(epochPayouts({ leaves: [] }, null), []);
+  assert.deepEqual(epochPayouts(null, null), []);
 });
 
 // ── today: a projection, and it must refuse to guess ───────────────────────

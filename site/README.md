@@ -83,6 +83,9 @@ js/
   history.js     which epochs are read, and what they add up to — pure and tested
   position.js    the address calculator
   epochs.js      the audit-trail table
+  epoch-details.js  one day in full: the row's figures, the links, and who
+                    was paid — the dialog behind each row's Details button
+  payouts.js     what happened to a share: per wallet, per day, and summed
   ui.js          render primitives: the source badge, and the charts
   topbar.js      theme toggle, cluster indicator, social links
 

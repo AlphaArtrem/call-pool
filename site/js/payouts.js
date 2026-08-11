@@ -110,6 +110,49 @@ export function deliveryFor(tree, airdrop, wallet) {
 }
 
 /**
+ * Everyone in one epoch's tree, largest share first.
+ *
+ * The whole-day view of the same question `deliveryFor` answers for one wallet
+ * — and it answers it by calling that function per leaf rather than reading
+ * the batches a second way, because two readers of `airdrop.json` would
+ * eventually disagree and the one on this table would be the one nobody
+ * tested.
+ *
+ * The state travels with each row for the same reason it does there: a leaf
+ * that was allocated and refused is not a payment, and a list that prints it
+ * beside the paid ones without saying so is a claim we cannot support.
+ *
+ * @param {{leaves?: {index:number, owner:string, amount:string}[]}} tree
+ * @param {{sent?: object[], failed?: object[]}|null} airdrop
+ */
+export function epochPayouts(tree, airdrop) {
+  return (tree?.leaves ?? [])
+    .map((leaf) => ({ owner: leaf.owner, ...deliveryFor(tree, airdrop, leaf.owner) }))
+    .sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0));
+}
+
+/**
+ * One day's list summed into the four figures worth stating above it.
+ *
+ * Deliberately four rather than one. "Allocated" and "paid" are different
+ * numbers whenever a wallet sold below the floor before the airdrop ran or a
+ * send broke, and a single total would quietly pick one of them and be wrong
+ * about the other — the same conflation `payoutHistory` refuses for a wallet.
+ *
+ * @param {{amount: bigint, state: string}[]} rows  as `epochPayouts` returns them
+ */
+export function payoutTotals(rows) {
+  const totals = { wallets: rows.length, allocated: 0n, paid: 0n, refused: 0n, undelivered: 0n };
+  for (const row of rows) {
+    totals.allocated += row.amount;
+    if (row.state === DELIVERY.paid) totals.paid += row.amount;
+    else if (row.state === DELIVERY.refused) totals.refused += row.amount;
+    else totals.undelivered += row.amount; // failed and pending are both still owed
+  }
+  return totals;
+}
+
+/**
  * Roll several epochs into the one line a holder actually wants.
  *
  * Deliberately does **not** sum `refused` into anything owed. A holder who sold
