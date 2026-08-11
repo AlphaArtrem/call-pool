@@ -301,24 +301,26 @@
           <dl class="wall">
             <div class="wall-cell">
               <dt class="k">Caller pool</dt>
-              <dd id="pool-balance" class="v num accent"></dd>
+              <!-- The badge renders into the label above (js/ui.js `badgeHost`), so the
+                   figure gets the whole width of the cell. -->
+              <dd id="pool-balance" class="v num accent" data-badge-into=".k"></dd>
               <p class="note">What today’s split divides between the callers.</p>
             </div>
             <div class="wall-cell">
               <dt class="k">Fees not yet swept in</dt>
-              <dd id="vault-balance" class="v num"></dd>
+              <dd id="vault-balance" class="v num" data-badge-into=".k"></dd>
               <p class="note">
                 In pump.fun’s creator vault. On its way, not in today’s split.
               </p>
             </div>
             <div class="wall-cell">
               <dt class="k">Day number</dt>
-              <dd id="current-epoch" class="v num"></dd>
+              <dd id="current-epoch" class="v num" data-badge-into=".k"></dd>
               <p class="note">Counted from launch. One day runs 00:00 to 00:00 UTC.</p>
             </div>
             <div class="wall-cell">
               <dt class="k">Paid out so far</dt>
-              <dd id="total-distributed" class="v num"></dd>
+              <dd id="total-distributed" class="v num" data-badge-into=".k"></dd>
               <p class="note">Added up from every past day, in your browser.</p>
             </div>
           </dl>
@@ -330,7 +332,7 @@
           <div class="clock">
             <div class="clock-face">
               <span class="lbl">Closes in</span>
-              <div id="card-clock-value" class="t num"></div>
+              <div id="card-clock-value" class="t num" data-badge-into=".lbl"></div>
             </div>
             <p>Locked at 00:00&nbsp;UTC, sent the same night. Selling before then costs you the day.</p>
             <div class="clock-rail" id="card-clock-chart"></div>
@@ -346,7 +348,7 @@
             <article class="graph-card">
               <div class="graph-head">
                 <div class="graph-title">Pool vs. fees waiting</div>
-                <span id="card-pool-value" class="graph-value"></span>
+                <span id="card-pool-value" class="graph-value" data-badge-into=".graph-title"></span>
               </div>
               <div id="card-pool-chart"></div>
               <p class="graph-copy">What can be split today, against what is still waiting to come in.</p>
@@ -355,7 +357,7 @@
             <article class="graph-card">
               <div class="graph-head">
                 <div class="graph-title">Paid out per day</div>
-                <span id="card-history-value" class="graph-value"></span>
+                <span id="card-history-value" class="graph-value" data-badge-into=".graph-title"></span>
               </div>
               <div id="card-history-chart"></div>
               <p class="graph-copy">One point per day paid so far, oldest first.

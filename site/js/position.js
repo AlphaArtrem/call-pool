@@ -565,8 +565,18 @@ function renderDays(section, tbody, payouts) {
     // Only a mechanical failure is a warning. A refusal is the mechanic
     // working and a pending day is simply early.
     if (entry.state === DELIVERY.failed) dayCell.className = 'warn';
-    dayCell.textContent = describeDelivery(entry, solText);
-    dayCell.title = exactTitle(entry.amount);
+
+    // The amount is the thing being read, so it is set apart from the sentence
+    // around it. `describeDelivery` still writes that sentence — asked for the
+    // amount as a marker, it says where the figure goes, and the two halves are
+    // rejoined around a styled node. One source of copy, one place to change it.
+    const [before, after = ''] = describeDelivery(entry, () => '\u0000').split('\u0000');
+    const amount = document.createElement('strong');
+    amount.className = 'day-amount';
+    amount.textContent = solText(entry.amount);
+    amount.title = exactTitle(entry.amount);
+    dayCell.append(before, amount, after);
+
     // `label` is the genesis payout, which has no epoch number to print.
     tbody.append(row(entry.label ?? `day ${entry.epoch}`, dayCell));
   }

@@ -60,11 +60,34 @@ export function escapeHtml(value) {
  * which is why it is never styled as one. Do not reach for this for a failed
  * RPC: a zero that means "we could not look" is the exact lie §7.3 forbids.
  */
+/**
+ * Where this slot's provenance badge goes.
+ *
+ * A card can send its badge to its LABEL instead of keeping it beside the
+ * figure, by naming a selector in `data-badge-into` — resolved against the
+ * slot's own parent, so the markup says "my badge belongs up there" and every
+ * one of the fourteen `field()` call sites stays as it was. The point is room:
+ * beside a figure the badge is competing with it for the width, and the figure
+ * is what the card is for.
+ *
+ * The badge is cleared out of the host on every render, because `field()` only
+ * empties the slot it was handed.
+ */
+function badgeHost(node) {
+  const selector = node.dataset?.badgeInto;
+  if (!selector) return node;
+  const host = node.parentElement?.querySelector(selector);
+  if (!host) return node;
+  for (const stale of host.querySelectorAll('.source')) stale.remove();
+  return host;
+}
+
 export function field(
   node,
   { value, source, pending = 'reading…', unavailable = null, placeholder = null, title = null },
 ) {
   node.replaceChildren();
+  const host = badgeHost(node);
 
   if (value == null && placeholder != null) {
     const zero = document.createElement('span');
@@ -77,7 +100,7 @@ export function field(
       badge.className = 'source source-placeholder';
       badge.textContent = unavailable;
       badge.title = 'Not a reading. The coin has not launched, so this is what the slot will look like once there is something in it.';
-      node.append(' ', badge);
+      host.append(' ', badge);
     }
     return;
   }
@@ -104,7 +127,7 @@ export function field(
     badge.className = `source source-${source.key}`;
     badge.textContent = source.label;
     badge.title = source.title;
-    node.append(' ', badge);
+    host.append(' ', badge);
   }
 }
 
@@ -487,8 +510,18 @@ export function row(label, valueNode, note = null) {
   const tr = document.createElement('tr');
   const th = document.createElement('th');
   th.scope = 'row';
-  th.textContent = label;
-  if (note) th.append(' ', hint(label, note));
+
+  // The text and the hint go in a flex wrapper rather than straight into the
+  // cell: as inline content the icon was a word, and a word wraps — leaving it
+  // stranded on a line of its own under a three-word label. The wrapper also
+  // centres it against the text rather than against the last line of it.
+  const inner = document.createElement('span');
+  inner.className = 'th-inner';
+  const text = document.createElement('span');
+  text.textContent = label;
+  inner.append(text);
+  if (note) inner.append(hint(label, note));
+  th.append(inner);
 
   const td = document.createElement('td');
   td.append(valueNode);
