@@ -43,6 +43,178 @@ export function openEpochDetails(epoch, config) {
   loadPayees(epoch, config);
 }
 
+/**
+ * Day 0 in full — the span from coin creation to genesis that no on-chain
+ * epoch covers. It reuses this dialog so a holder reads day 0 the same way
+ * they read every other day, but its figures and payee list come from the
+ * published day-0 files (`day0.json`, `receipts.json`) rather than from a
+ * chain account and a `tree.json`, because there is no epoch account to read.
+ */
+export async function openDay0Details(config) {
+  showing = 'day0';
+  const node = ensureDialog();
+  node.replaceChildren(day0Header(), state('reading the day-0 receipts…', 'pending'));
+  node.showModal();
+
+  const base = config.snapshotsBase;
+  let day0 = null;
+  let receipts = [];
+  try {
+    const [d, r] = await Promise.all([
+      fetch(`${base}/day0/day0.json`).then((res) => (res.ok ? res.json() : null)),
+      fetch(`${base}/day0/receipts.json`).then((res) => (res.ok ? res.json() : [])),
+    ]);
+    day0 = d;
+    receipts = Array.isArray(r) ? r : [];
+  } catch {
+    day0 = null;
+  }
+
+  // Closed, or another day opened, while the fetch was in flight.
+  if (showing !== 'day0') return;
+
+  if (!day0) {
+    node.replaceChildren(
+      day0Header(),
+      state('The day-0 receipts could not be read just now. They are also published at /snapshots/day0/.', 'note'),
+    );
+    return;
+  }
+  node.replaceChildren(day0Header(), day0Facts(day0), day0Payees(day0, receipts, config));
+}
+
+function day0Header() {
+  const head = document.createElement('div');
+  head.className = 'epoch-dialog-head';
+
+  const title = document.createElement('h2');
+  title.id = 'epoch-dialog-title';
+  title.className = 'epoch-dialog-title display';
+  title.textContent = 'Genesis';
+
+  const when = document.createElement('p');
+  when.className = 'note';
+  when.textContent =
+    'The coin launched at 16:52 UTC; the first full epoch opened at midnight. ' +
+    'Genesis callers were paid at 00:00 UTC from the creator-fee share — same rules, same math as every day.';
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'epoch-dialog-close';
+  close.textContent = '✕';
+  close.setAttribute('aria-label', 'Close');
+  close.addEventListener('click', () => dialog.close());
+
+  const text = document.createElement('div');
+  text.append(title, when);
+  head.append(text, close);
+  return head;
+}
+
+/** Day 0's figures, badged as snapshot because they come from files we wrote. */
+function day0Facts(day0) {
+  const table = document.createElement('table');
+  table.className = 'facts';
+  const body = document.createElement('tbody');
+  table.append(body);
+
+  const snap = (value, title = null) => {
+    const span = document.createElement('span');
+    field(span, { value, title, source: SOURCES.snapshot });
+    return span;
+  };
+  const pot = BigInt(day0.potLamports ?? day0.allocateLamports);
+  const allocated = BigInt(day0.allocateLamports);
+  const paid = day0.standings.filter((s) => s.lamports).length;
+
+  body.append(
+    row('Window', text(`${isoMinute(day0.window.start)} → ${isoMinute(day0.window.end)} UTC`)),
+    row('Pot', snap(`${formatSol(pot)} SOL`, exactTitle(pot))),
+    row('Callers', snap(String(day0.standings.length))),
+    row('Paid', snap(`${paid} wallet${paid === 1 ? '' : 's'}, ${formatSol(allocated)} SOL`, exactTitle(allocated))),
+  );
+  return table;
+}
+
+function isoMinute(seconds) {
+  return new Date(seconds * 1000).toISOString().slice(0, 16).replace('T', ' ');
+}
+
+/** Why a caller earned nothing — the same three reasons the settlement uses. */
+function day0Reason(entry) {
+  if (entry.eligible) return null;
+  if (!entry.meetsFloor) return 'held less than the 100,000 floor';
+  if (entry.locked) return 'locked — sold recently';
+  return 'hold did not qualify for the window';
+}
+
+function day0Payees(day0, receipts, config) {
+  const section = document.createElement('section');
+  section.className = 'epoch-dialog-payees';
+  const heading = document.createElement('h3');
+  heading.textContent = 'Who was paid';
+  section.append(heading);
+
+  // receipts.json carries the tx signature per wallet; fall back to the
+  // standings (no receipts) if it was not published.
+  const source = receipts.length ? receipts : day0.standings;
+  const rows = [...source].sort((a, b) => {
+    const av = a.lamports ? BigInt(a.lamports) : -1n;
+    const bv = b.lamports ? BigInt(b.lamports) : -1n;
+    return bv > av ? 1 : bv < av ? -1 : 0;
+  });
+
+  const table = document.createElement('table');
+  table.className = 'payees';
+  const thead = document.createElement('thead');
+  const hr = document.createElement('tr');
+  for (const label of ['Wallet', 'Amount', '']) {
+    const th = document.createElement('th');
+    th.scope = 'col';
+    th.textContent = label;
+    hr.append(th);
+  }
+  thead.append(hr);
+
+  const body = document.createElement('tbody');
+  for (const entry of rows) {
+    const line = document.createElement('tr');
+
+    const who = document.createElement('td');
+    who.append(addressNode(entry.wallet, { href: explorerUrl(config, 'address', entry.wallet), responsive: true }));
+
+    const amount = document.createElement('td');
+    amount.className = 'mono num';
+    amount.textContent = entry.lamports ? `${formatSol(BigInt(entry.lamports))} SOL` : '—';
+    if (entry.lamports) amount.title = exactTitle(BigInt(entry.lamports));
+
+    const last = document.createElement('td');
+    const reason = day0Reason(entry);
+    if (reason) {
+      last.className = 'note';
+      last.textContent = reason;
+      line.classList.add('is-unpaid');
+    } else if (entry.txSig) {
+      const a = document.createElement('a');
+      a.href = explorerUrl(config, 'tx', entry.txSig);
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      a.textContent = 'receipt ↗';
+      last.append(a);
+    }
+
+    line.append(who, amount, last);
+    body.append(line);
+  }
+  table.append(thead, body);
+
+  const scroll = document.createElement('div');
+  scroll.className = 'payees-scroll';
+  scroll.append(table);
+  section.append(scroll);
+  return section;
+}
+
 function ensureDialog() {
   if (dialog) return dialog;
 

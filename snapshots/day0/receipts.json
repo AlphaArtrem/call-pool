@@ -1,0 +1,342 @@
+[
+ {
+  "wallet": "3DrQ9FsSXuUr1yAY9VCYfHYeq21j3UJW6ZpvyVSpJRZa",
+  "hold": "53622987418",
+  "sustained": "53622987418",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "3hjXCba2Rc5tDuK2jdKe1KocCNp33syQCpx6H3azW7jp",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "3tZjjqhpobQdLjv2LFCE5GsFaAc68CTrJAseT3HDcTu8",
+  "hold": "386864881610",
+  "sustained": "386864881610",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "4684961",
+  "txSig": "27nbzHDXTnDF6jtvs3R8NBMKhpHv8nCF4ZWpoE6DMBaWk2v2cSeKxh48YrtzqBhGT9zMbQhouZvt7CRJXvUdWbry"
+ },
+ {
+  "wallet": "4BnSjhDsYp7v1f5jS4MagpuUX9m7ZCgyJVdjtB8rZ566",
+  "hold": "4432314978034",
+  "sustained": "4432314978034",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "53675655",
+  "txSig": "3MQdsnG2qgRzzRHvMw8mEX2di24N34P62qxMUnxrwBP2caTXWZN637Qv16oCbKTduFUcPLF5hsAh2aUgY7MUJEV8"
+ },
+ {
+  "wallet": "59ranMtENQe3EcvyrqmsH5nXnNRHrw9bFMXmWrdEhoJy",
+  "hold": "1055618095711",
+  "sustained": "1055618095711",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "12783611",
+  "txSig": "4MiTuG2yNeR6bD2wuS8qX3k9Ng2vu8UNhYcAknqJdef8fsT2eeAQ4xkNRJ2379suMd48TuSa5z8x8H7kEcGWq4p9"
+ },
+ {
+  "wallet": "5biuCsKjbQgBG6RJThFioPTjjvhBKSWkgwYRmpkhNTf",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "5mdGvKruy3FQhy5kBuzExAaeWsEkPLNvL7NQX9eZjHkM",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "6YmUEwLGo2RtkumfC71JMNJWANb9NRnd6FcAZihoEFX1",
+  "hold": "17979073659685",
+  "sustained": "17979073659685",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "217727885",
+  "txSig": "49nPoKWfh8j9njNZPF71HNV6eCmUvEwn4TvZThogE9R2orN1CzLSk3etkZrBv5Vp5RDwNVCT76Y9vTLHgWFxsT3q"
+ },
+ {
+  "wallet": "6ZXuayKTFWJtvsEnZEK1xzhW5AfVKL7hrqoP1u5j9Ntp",
+  "hold": "1637612939411",
+  "sustained": "1637612939411",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "19831611",
+  "txSig": "3C3NFmRS98AYP8hP9rnTSrrwsF9t5GhyJYBzt2eYKN4eV33xFP9rBep4WHydr4tQzuTg14yqMzoCcnrQiMFW23eY"
+ },
+ {
+  "wallet": "6avSGEd3TJGiwvqVA63BTm3YAq2yvjQjuj5CLvWB4jbK",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "7dLfqaCszZKE71FMcn7wUmPyc7ZJttPmaCqJRCxVmSmd",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "7nB56jAXaU6qdQcDCH4MvPbztoemeZvAGpworbEHnPKW",
+  "hold": "636420190752",
+  "sustained": "636420190752",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "7707094",
+  "txSig": "4Lw9YkXxbKQis2SNQA36XtDLXMByy9RcWwFqHDuubaTp1TxnembKZaeCGHsKst5rhhH87NXDhSL8YiYw6hAXytPb"
+ },
+ {
+  "wallet": "7wkZ3MxvtivteLRA6Xdv9SB6XRezMR8eo82f7DDBGqwd",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "8w5F6RukkTVuEvrS8LKaxcXszG5DGAgzHW9t9BHcN6YX",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "9JZsusf63tiLWcF6qyYdAr4AbVNs2M7AxU4c2cg1Lfvv",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "AD1dPqV5AUPjERM7ebxJy17U8Q62kTNjHjtqc4H6KxVv",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "B4r8Uc52GPNKrj2C8M6JbCWfhbWihiWxa5o12wcK8srQ",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "Bodw4j129VUf5MwqCXjjtBQzpQro5nDx7WYAvoLvRieB",
+  "hold": "90592731215",
+  "sustained": "90592731215",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "BsNtgQiSd18B19DDHjKP9if9Ab2X1BnuLww7xsN62sfH",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "Buvd6hrd1WZ7zxrqGLrJj1qymwDQEfYadH5WY5EtuGb4",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "C9ZxdZYWBU3MMHyg8xDRKUYMH1cFSod4dy811R51Nw4B",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "CQWhotHc9uuYw2yEiQUdXNp7MJpXcQsmdw47tBkiJHP",
+  "hold": "10435945954253",
+  "sustained": "10435945954253",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "126380062",
+  "txSig": "3UhSHxYfX2D9LAKdfaeZLPrrrpJtZtuvFykFrYFfUzV7o49SwUba7uTTpHw6ykvj7CfJhB4GzTMtKfL9KYKCSTkG"
+ },
+ {
+  "wallet": "Ce1sJF4jw83sAwqpmZJRLXPSnEfdSWQSi6xNiJxxUtnh",
+  "hold": "336620161656",
+  "sustained": "336620161656",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "4076494",
+  "txSig": "3BdvG4ywunftjTJMDKP52YHPYYcNyqs5mUrpD5jnD7kMNFgozXUkREgAu8vfHnoCcXrLs7Z1RctYHM1HeBWib9kp"
+ },
+ {
+  "wallet": "CpNx2wtmh8VXpWtPxY9eNk2hhMxV2D1GqP4iep9ovuoz",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "DEfZDM6svqM3hEvvKWAp2ShKm1CkMYg6uj8KGChMadsd",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "EgDfgw7GVMaPRGLnTuNkNyrUDsPGjfjPrXvE7KpN6Avk",
+  "hold": "225704016547",
+  "sustained": "225704016547",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "2733292",
+  "txSig": "ZZ9n4StTL8YqoeYtLxhdLwUgM3ofZ1x2f5u4HfSKTpUUJAWkMKjtP6Tvpd2D7qMvkpxx6UuHRhKDDeeWkDfw6kC"
+ },
+ {
+  "wallet": "FNbdWS1t6GcYBbbgKsp3xj5F3WhUbSPbh7qoYhVYGDZP",
+  "hold": "13486266356659",
+  "sustained": "13486266356659",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "163319663",
+  "txSig": "4iGj87BA8E4C5QqLfh4WHcLsWucvgs8pt6zWAP3jVJ1jChtU2GtmZUoerbS2UEqMXAhp6UVA7BxkY7yYSrtJpKsk"
+ },
+ {
+  "wallet": "Gn4HYtzEhdQGKS6wCLEsekXasJ1wKXraVr8bqaxb5bAg",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "HBa4PEPBzM2skbutMDJcwjZsHYCutfasnNJHM3pp4rax",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "HmUt3Jn46j7c7ANdURmEyjSRj8i3Em6MhjQUi37PZ219",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ },
+ {
+  "wallet": "HvwYgXU8gUM3oQkV5TsiXgekpsb549TZgTjTJaRCCjm7",
+  "hold": "273021043134",
+  "sustained": "273021043134",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "3306304",
+  "txSig": "2GuJvu64TNSdWkTmfeWCR11mg3gbHqSE5N4ScZdgHWuutqv3aE4HNwWwVrDGuyZCtXEiEuuxn7PxazCh4rxxmWVh"
+ },
+ {
+  "wallet": "M9tnpvN3ZepP9NwpbG5QPGhBETtkY5Ld14efLNY5JnS",
+  "hold": "19191044982703",
+  "sustained": "19191044982703",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "232404946",
+  "txSig": "5Wk4ZG27ACnL7xKMKKUGojrwxbKwbf77CCCCQLnCCmU7s9aZNCggV9pezkTZ68x9RyQ1WwZj2YnTHDYbDwJomF6K"
+ },
+ {
+  "wallet": "WzkifGBqEXbb53M4pLg9cnfEdPtBqtS5ZeJ1Pk2gxtX",
+  "hold": "463808100413",
+  "sustained": "463808100413",
+  "eligible": true,
+  "meetsFloor": true,
+  "locked": false,
+  "lamports": "5616749",
+  "txSig": "3Z9cHkmPwxx15DaFBWNptQEp6vNYpgae2fLZkDAtn9SRd7RrMsybmS5NFHLQwPqCfZW6hHs24sdDURwH74nziWzq"
+ },
+ {
+  "wallet": "kssAWbNrbHSkHbkn2nAjf2x6484v6wfAsp5mdWQgtCx",
+  "hold": "0",
+  "sustained": "0",
+  "eligible": false,
+  "meetsFloor": false,
+  "locked": false,
+  "lamports": null,
+  "txSig": null
+ }
+]

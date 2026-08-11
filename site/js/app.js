@@ -31,6 +31,7 @@ import {
 } from './clocks.js';
 import { explorerUrl, FLOOR_PERCENT_LABEL, provisionalUrl, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
+import { openDay0Details } from './epoch-details.js';
 import { totalClaimed } from './history.js';
 import { decodeConfig } from './program.js';
 import { loadProvisional, settledEpochIndices } from './payouts.js';
@@ -991,10 +992,34 @@ async function loadDay0(config) {
     if (!answer.ok) return null;
     const body = await answer.json();
     if (typeof body?.allocateLamports !== 'string') return null;
-    return { allocateLamports: BigInt(body.allocateLamports) };
+    const standings = Array.isArray(body.standings) ? body.standings : [];
+    return {
+      allocateLamports: BigInt(body.allocateLamports),
+      potLamports: BigInt(body.potLamports ?? body.allocateLamports),
+      paidCount: standings.filter((s) => s.lamports).length,
+      callerCount: standings.length,
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * The "Day 0 receipts" link under the record chart opens the same dialog the
+ * record table's Details buttons use, rather than navigating to the static
+ * page. The anchor keeps its href as a no-JS fallback; JS intercepts the click
+ * only once day0 is known to exist. Wired once, guarded by a data flag.
+ */
+function wireDay0Receipts(config) {
+  const link = el('day0-receipts');
+  if (!link) return;
+  link.hidden = live.day0 == null;
+  if (link.dataset.wired || live.day0 == null) return;
+  link.dataset.wired = '1';
+  link.addEventListener('click', (event) => {
+    event.preventDefault();
+    openDay0Details(config);
+  });
 }
 
 async function loadHistory(config) {
@@ -1033,11 +1058,21 @@ async function loadHistory(config) {
 
   el('history-status').replaceChildren();
   el('history-status').classList.remove('failed');
-  renderEpochs(el('epoch-rows'), live.epochs, config, {
+  if (live.day0 === undefined) live.day0 = await loadDay0(config);
+  // The record is days that have happened. The currently-running epoch has not
+  // reached its 00:00 settlement, so it is left out until it does — showing it
+  // as "not posted" reads as a skipped day, which it is not. A genuinely
+  // skipped PAST epoch still shows, because that gap is real (Phase 05 §5.5).
+  const runningEpoch =
+    state.window != null && Math.floor(Date.now() / 1000) < state.window.end ? state.window.epoch : null;
+  const recordEpochs =
+    runningEpoch == null ? live.epochs : live.epochs.filter((e) => e.index !== runningEpoch);
+  renderEpochs(el('epoch-rows'), recordEpochs, config, {
     pager: el('epoch-pagination'),
     emptyNote: firstRecordNote({ now: Math.floor(Date.now() / 1000), window: state.window }),
+    day0: live.day0,
   });
-  if (live.day0 === undefined) live.day0 = await loadDay0(config);
+  wireDay0Receipts(config);
   const day0Lamports = live.day0?.allocateLamports ?? 0n;
   renderTotals(el('total-distributed'), live.epochs, day0Lamports);
   ledgerValue('ledger-distributed', `${formatSol(totalClaimed(live.epochs) + day0Lamports)} SOL`);

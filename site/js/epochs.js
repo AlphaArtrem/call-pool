@@ -14,7 +14,7 @@ import { decodeEpoch, bitmapIsSized, isZeroRoot, rootHex } from './program.js';
 import { epochPda } from './addresses.js';
 import { multipleAccounts } from './chain.js';
 import { epochIndices, totalClaimed } from './history.js';
-import { openEpochDetails } from './epoch-details.js';
+import { openDay0Details, openEpochDetails } from './epoch-details.js';
 import { pageOf } from './paging.js';
 import { exactTitle, formatSol, formatSolShort } from './standing.js';
 import { addressNode, field, SOURCES } from './ui.js';
@@ -55,10 +55,23 @@ export async function loadEpochs(connection, config, currentEpoch) {
  */
 let currentPage = 0;
 
-export function renderEpochs(tbody, epochs, config, { pager = null, emptyNote = null } = {}) {
+// Day 0 held in module state, like `currentPage`, so a pager step keeps it
+// without every call site threading it back through.
+let day0State = null;
+
+export function renderEpochs(tbody, epochs, config, { pager = null, emptyNote = null, day0 = null } = {}) {
+  day0State = day0;
   tbody.replaceChildren();
 
   if (epochs.length === 0) {
+    // Day 0 predates the first on-chain epoch, so before any epoch settles it
+    // is the only row the record has — and it IS a paid day, so it shows here
+    // rather than under the "nothing yet" note.
+    if (day0) {
+      tbody.append(day0Row(day0, config));
+      if (pager) renderPager(pager, pageOf([], 0), tbody, config);
+      return;
+    }
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 7;
@@ -81,7 +94,59 @@ export function renderEpochs(tbody, epochs, config, { pager = null, emptyNote = 
     tbody.append(epochRow(epoch, config));
   }
 
+  // Day 0 is older than every epoch, so it sits at the bottom of the last page.
+  if (day0 && view.page >= view.totalPages - 1) {
+    tbody.append(day0Row(day0, config));
+  }
+
   if (pager) renderPager(pager, view, tbody, config, epochs);
+}
+
+/**
+ * The record row for the genesis honor — the span between coin creation and
+ * genesis that no on-chain epoch covers (paid from the creator-fee share,
+ * receipts in the dialog). Its Day cell reads "Genesis", NOT "0": on this site
+ * "Day 0" is on-chain epoch 0 (the first full UTC day), and dayNumber() in
+ * app.js requires the Day column to match the epoch index. The genesis span is
+ * a different, earlier day, so it is named rather than given a colliding
+ * number. It has no merkle root because it was never an on-chain epoch, and
+ * the fingerprint cell says exactly that rather than faking one.
+ */
+function day0Row(day0, config) {
+  const tr = document.createElement('tr');
+  tr.classList.add('day0-row');
+
+  const cell = (child, className) => {
+    const td = document.createElement('td');
+    if (className) td.className = className;
+    if (typeof child === 'string') td.textContent = child;
+    else td.append(child);
+    tr.append(td);
+    return td;
+  };
+
+  cell('Genesis', 'mono');
+  cell(`${formatSol(day0.potLamports)} SOL`, 'mono num');
+  cell(String(day0.paidCount), 'mono num');
+  cell(`${formatSol(day0.allocateLamports)} SOL`, 'mono num');
+  cell(`${formatSol(day0.potLamports - day0.allocateLamports)} SOL`, 'mono num');
+
+  const fp = document.createElement('span');
+  fp.className = 'pending';
+  fp.textContent = 'paid from the creator-fee share';
+  cell(fp);
+
+  const details = document.createElement('button');
+  details.type = 'button';
+  details.className = 'button row-button';
+  details.textContent = 'Details';
+  details.setAttribute('aria-haspopup', 'dialog');
+  details.setAttribute('aria-label', 'Details for the genesis payout');
+  details.dataset.epochDetails = 'day0';
+  details.addEventListener('click', () => openDay0Details(config));
+  cell(details);
+
+  return tr;
 }
 
 /**
@@ -97,7 +162,7 @@ function renderPager(node, view, tbody, config, epochs = []) {
 
   const step = (delta) => {
     currentPage = view.page + delta;
-    renderEpochs(tbody, epochs, config, { pager: node });
+    renderEpochs(tbody, epochs, config, { pager: node, day0: day0State });
     // Keep the reader at the table rather than wherever the page happened to
     // be scrolled after the rows changed height.
     tbody.closest('table')?.scrollIntoView({ block: 'nearest' });
