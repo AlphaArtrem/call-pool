@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { failoverFetch, pacedFetch, retryingFetch, verifyHealth } from '../lib/rpc.mjs';
+import { failoverFetch, pacedFetch, retryingFetch, timeoutFetch, verifyHealth } from '../lib/rpc.mjs';
 
 /** A fetch that replays a script of outcomes and counts how often it was called. */
 function scripted(outcomes) {
@@ -348,4 +348,96 @@ test('a refused key fails over too — 401 is not a blip either', async () => {
 
   assert.equal((await failover('https://primary.example')).status, 200);
   assert.deepEqual(seen, ['https://primary.example', 'https://fallback.example']);
+});
+
+// A primary that stops answering is the 2026-08-12 black-hole: the retry beneath
+// has already given up (it saw only timeouts), so what reaches the failover is a
+// throw, not a status. A silent endpoint is refusing to serve us just as surely
+// as a 403, so it must move the run onto the fallback rather than end it.
+test('a primary that stops answering fails over on the throw, not only on a status', async () => {
+  const seen = [];
+  const failover = failoverFetch(
+    async (url) => {
+      seen.push(url);
+      if (url === 'https://fallback.example') return res(200);
+      throw new TypeError('fetch failed'); // the shape retryingFetch rethrows after its attempts
+    },
+    { fallbackUrl: 'https://fallback.example', verify: okHealth, log: silent },
+  );
+
+  assert.equal((await failover('https://primary.example')).status, 200);
+  assert.deepEqual(seen, ['https://primary.example', 'https://fallback.example']);
+});
+
+test('a primary throw with an unhealthy fallback rethrows the primary’s own failure', async () => {
+  const logged = [];
+  const failover = failoverFetch(
+    async () => {
+      throw new TypeError('fetch failed');
+    },
+    {
+      fallbackUrl: 'https://ankr.example',
+      verify: async () => ({ ok: false, reason: 'behind' }),
+      log: (line) => logged.push(line),
+    },
+  );
+
+  await assert.rejects(() => failover('https://primary.example'), /fetch failed/);
+  assert.match(logged.join(' '), /stopped answering .fetch failed./);
+});
+
+// --- the per-request timeout -----------------------------------------------
+//
+// Added 2026-08-12, after Ankr accepted a large getProgramAccounts and sent
+// nothing back, hanging the first settlement's holder snapshot for 34 minutes.
+// A timeout turns that silence into a throw the retry and failover can act on.
+
+// The black-hole shape: answers only if its signal aborts. The ref'd keep-alive
+// timer stands in for the real network I/O that, in production, holds the event
+// loop open long enough for `AbortSignal.timeout`'s own (unref'd) timer to fire;
+// it is cleared on abort, so it never actually resolves.
+const hangsUntilAborted = (input, init) =>
+  new Promise((resolve, reject) => {
+    const keepAlive = setTimeout(resolve, 60_000);
+    init.signal.addEventListener('abort', () => {
+      clearTimeout(keepAlive);
+      reject(init.signal.reason);
+    });
+  });
+
+test('a request that never answers is aborted once the deadline passes, and the abort is thrown', async () => {
+  const timed = timeoutFetch(hangsUntilAborted, { timeoutMs: 10 });
+
+  await assert.rejects(
+    () => timed('https://rpc.example', {}),
+    (error) => error?.name === 'TimeoutError' || /timed out|abort/i.test(String(error?.message)),
+  );
+});
+
+test('a request that answers within the deadline is returned, untouched', async () => {
+  const timed = timeoutFetch(async () => res(200), { timeoutMs: 1000 });
+  assert.equal((await timed('https://rpc.example', {})).status, 200);
+});
+
+test('the timeout throw is transient, so the retry gives a slow endpoint another try', async () => {
+  // First attempt hangs to the deadline; the second answers. Real time, but the
+  // deadline is 10ms and the backoff 1ms, so the whole test is a blink.
+  let attempt = 0;
+  const underlying = (input, init) => {
+    attempt += 1;
+    if (attempt === 1) return hangsUntilAborted(input, init);
+    return Promise.resolve(res(200));
+  };
+
+  const timed = timeoutFetch(underlying, { timeoutMs: 10 });
+  const response = await retryingFetch(timed, fast)('https://rpc.example', {});
+
+  assert.equal(response.status, 200);
+  assert.equal(attempt, 2, 'the timed-out attempt was retried');
+});
+
+test('timeout off returns the underlying fetch untouched', () => {
+  const { fn } = scripted([res(200)]);
+  assert.equal(timeoutFetch(fn, { timeoutMs: 0 }), fn);
+  assert.equal(timeoutFetch(fn, { timeoutMs: -1 }), fn);
 });

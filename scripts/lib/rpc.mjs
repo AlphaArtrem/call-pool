@@ -37,6 +37,17 @@
 // asking the same question faster. The fix is to not exceed the cap in the
 // first place — see `pacedFetch`.
 
+// A third failure, 2026-08-12, needed a third answer here. Ankr's mainnet
+// endpoint — keyed, allowlisted, answering `getSlot` in 80ms — accepted the
+// connection for a large `getProgramAccounts` and then sent nothing back: no
+// status to retry, no throw to catch, just a socket held open. The first
+// settlement's holder snapshot hung on it for thirty-four minutes because
+// nothing beneath had a clock. So every request now runs under a timeout
+// (`timeoutFetch`), which turns a black-hole into the kind of throw the retry
+// can see; and `failoverFetch` now treats a primary that stops answering as a
+// reason to switch, not only one that answers "no". A hang on the primary is
+// now a few seconds and a move to the fallback, not a stalled night.
+
 import { Connection } from '@solana/web3.js';
 
 /** Attempts per request, including the first. */
@@ -44,6 +55,17 @@ const ATTEMPTS = 5;
 
 /** First backoff step; doubles each attempt — 0.4s, 0.8s, 1.6s, 3.2s. */
 const BASE_DELAY_MS = 400;
+
+/**
+ * How long one request may take before it is aborted.
+ *
+ * A whole request's patience, not a blip's. Every healthy call this system
+ * makes answers well under a second — a large `getProgramAccounts` is ~160ms on
+ * dRPC — so the number is high enough that a slow-but-working endpoint is never
+ * cut off, and finite so that one that has stopped answering cannot hold a job
+ * open forever. Override with `CALLPOOL_RPC_TIMEOUT_MS`; `0` disables it.
+ */
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 /**
  * Is this worth trying again?
@@ -134,6 +156,38 @@ export function pacedFetch(underlying = fetch, { maxRps = 0, now = () => Date.no
 }
 
 /**
+ * `fetch`, with a clock on every request.
+ *
+ * `AbortSignal.timeout` makes a request that has not answered within
+ * `timeoutMs` reject rather than wait, which is the only thing that reaches an
+ * endpoint that accepts the socket and then sends nothing: no status arrives to
+ * retry and no error is thrown, so without this the call waits forever. The
+ * rejection it produces is transient by the reckoning of `retryable`, so the
+ * retry above still gives the endpoint a few more tries; a primary that keeps
+ * timing out then falls through to the fallback, which is where a black-hole
+ * belongs.
+ *
+ * A caller's own `signal` is kept alongside the deadline where the runtime can
+ * combine them, so nothing that could already cancel a request loses that.
+ * `timeoutMs <= 0` returns the underlying fetch untouched, exactly as the pacer
+ * does when unconfigured.
+ *
+ * Exported for tests. Takes the underlying fetch so a test can drive it.
+ */
+export function timeoutFetch(underlying = fetch, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  if (!(timeoutMs > 0)) return underlying;
+
+  return function timeoutFetchImpl(input, init) {
+    const deadline = AbortSignal.timeout(timeoutMs);
+    const signal =
+      init?.signal && typeof AbortSignal.any === 'function'
+        ? AbortSignal.any([init.signal, deadline])
+        : deadline;
+    return underlying(input, { ...init, signal });
+  };
+}
+
+/**
  * Is this response the endpoint saying it is finished with us for now?
  *
  * The distinction that matters here is *busy* versus *done*. A 429 that clears
@@ -184,21 +238,39 @@ export function failoverFetch(underlying, { fallbackUrl, verify = verifyHealth, 
   return async function failoverFetchImpl(input, init) {
     if (active) return underlying(active, init);
 
-    const response = await underlying(input, init);
-    if (!exhausted(response) || refused) return response;
+    // The primary is "done with us" two ways: it answered a terminal status
+    // (quota spent, key refused, IP not allowed), or it never answered at all —
+    // a throw that survived every retry, which since 2026-08-12 we know includes
+    // an endpoint that holds a socket open and sends nothing back. A blip is
+    // already gone by here; the retry beneath saw to that.
+    let response;
+    let thrown;
+    try {
+      response = await underlying(input, init);
+    } catch (error) {
+      thrown = error;
+    }
 
+    const done = thrown != null || exhausted(response);
+    if (!done || refused) {
+      if (thrown != null) throw thrown;
+      return response;
+    }
+
+    const gave = thrown != null ? `stopped answering (${thrown.message})` : `answered ${response.status}`;
     const health = await verify(fallbackUrl);
     if (!health.ok) {
       refused = true;
       log(
-        `rpc: the primary endpoint answered ${response.status} and the fallback is not healthy ` +
+        `rpc: the primary endpoint ${gave} and the fallback is not healthy ` +
           `(${health.reason}). Staying on the primary and handing its answer back.`,
       );
+      if (thrown != null) throw thrown;
       return response;
     }
 
     active = fallbackUrl;
-    log(`rpc: the primary endpoint answered ${response.status}; switched to the fallback for the rest of this process.`);
+    log(`rpc: the primary endpoint ${gave}; switched to the fallback for the rest of this process.`);
     return underlying(active, init);
   };
 }
@@ -245,6 +317,23 @@ function configuredMaxRps(env = process.env) {
 }
 
 /**
+ * The per-request timeout, from the environment.
+ *
+ * Unset means `DEFAULT_TIMEOUT_MS`; `0` disables the clock, for a caller that
+ * really does want the old wait-forever behaviour. Anything else is treated as
+ * milliseconds.
+ */
+function configuredTimeoutMs(env = process.env) {
+  const raw = env.CALLPOOL_RPC_TIMEOUT_MS;
+  if (raw == null || raw === '') return DEFAULT_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`CALLPOOL_RPC_TIMEOUT_MS must be a non-negative number, got ${JSON.stringify(raw)}`);
+  }
+  return parsed;
+}
+
+/**
  * A Connection that survives a blip.
  *
  * Use this everywhere a script talks to a cluster. The only deliberate
@@ -254,17 +343,21 @@ function configuredMaxRps(env = process.env) {
  * a stale number look live. Different job, different answer.
  */
 export function connect(rpc, commitment = 'confirmed') {
-  // Three layers, and the order is the argument:
+  // Four layers, and the order is the argument:
   //
   //   failover   outermost — asked only about what the retry could not fix
   //   retry      a blip, five attempts with backoff
-  //   pacing     innermost — every attempt, including retries, waits its turn
+  //   pacing     every attempt, including retries, waits its turn
+  //   timeout    innermost — each attempt is given a clock, so a request that
+  //              never answers becomes a throw the layers above can act on
   //
   // Pacing under the retry stops a burst of retries walking through the cap
-  // that caused them. Failover over the retry stops a busy moment from moving
-  // a run onto the smaller key.
-  const fetchImpl = failoverFetch(retryingFetch(pacedFetch(fetch, { maxRps: configuredMaxRps() })), {
-    fallbackUrl: process.env.CALLPOOL_RPC_URL_FALLBACK || null,
-  });
+  // that caused them. Failover over the retry stops a busy moment from moving a
+  // run onto the smaller key. The timeout under the pacer bounds the request
+  // itself, not the wait for its slot.
+  const fetchImpl = failoverFetch(
+    retryingFetch(pacedFetch(timeoutFetch(fetch, { timeoutMs: configuredTimeoutMs() }), { maxRps: configuredMaxRps() })),
+    { fallbackUrl: process.env.CALLPOOL_RPC_URL_FALLBACK || null },
+  );
   return new Connection(rpc, { commitment, fetch: fetchImpl });
 }
