@@ -51,7 +51,7 @@ import {
 import { describeEstimate, loadProvisional, sampledShare } from '../../site/js/payouts.js';
 import { barSeries, epochProgress, sparkPath } from '../../site/js/graphs.js';
 import { pageOf, PAGE_SIZE } from '../../site/js/paging.js';
-import { epochIndices, totalClaimed } from '../../site/js/history.js';
+import { dayLabel, dayNumber, epochIndices, totalClaimed } from '../../site/js/history.js';
 
 // ── fixtures ───────────────────────────────────────────────────────────────
 
@@ -1066,6 +1066,21 @@ test('the history covers every day, not the last thirty', () => {
   assert.equal(all.length, 131, 'every epoch since genesis');
   assert.equal(all[0], 130);
   assert.equal(all.at(-1), 0, 'including the first day');
+});
+
+test('the first settled epoch is Day 1, because the genesis honor is day zero', () => {
+  // The genesis honor — coin creation to the first 00:00 UTC — was paid and
+  // published as day 0. If the first on-chain epoch were shown as "Day 0" too,
+  // two different days, paid on two different days, would wear one number.
+  assert.equal(dayNumber(0), 1, 'the first settled epoch is Day 1');
+  assert.equal(dayLabel(0), 'Day 1');
+  assert.equal(dayLabel(1), 'Day 2');
+  assert.equal(dayLabel(129), 'Day 130');
+
+  // No day ever numbered zero, so nothing collides with the genesis row.
+  const settled = epochIndices(130).map(dayNumber);
+  assert.equal(Math.min(...settled), 1);
+  assert.equal(new Set(settled).size, settled.length, 'one number per day');
 });
 
 test('"paid out so far" adds up every day, not just the ones on screen', () => {

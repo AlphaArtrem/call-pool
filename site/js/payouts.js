@@ -214,8 +214,8 @@ export function payoutHistory(epochs, wallet) {
  *
  * It is always `paid`: the transfers are published as receipts, so there is no
  * allocated-but-undelivered state to represent. It carries `label` rather than
- * an epoch number because on this site "day 0" means on-chain epoch 0, which
- * is a different, later day — see the note on `day0Row` in epochs.js.
+ * an epoch number because it was never an epoch — settled days are numbered
+ * from Day 1 for exactly this reason, see `dayNumber` in history.js.
  *
  * @param {{rows: object[], paid: bigint}} history  as `payoutHistory` returns it
  * @param {bigint|null} genesisLamports  what the genesis payout sent this wallet

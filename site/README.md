@@ -46,6 +46,13 @@ The domain is **callpool.fun** (registered 2026-08-05), so on the live host:
 | `https://callpool.fun/site/app.css`, `/site/js/…`, `/scripts/lib/…` | the page and the modules it imports |
 | `https://callpool.fun/snapshots/epoch-N/` | one settled day's working, linked from the epoch table |
 
+**Days are numbered from 1, epochs from 0.** The genesis honor — coin creation
+to the first 00:00 UTC, paid off-protocol and published at `/snapshots/day0/` —
+is this coin's day 0, so on-chain epoch 0 is shown as **Day 1**, epoch 1 as Day
+2, and so on. The offset is display only and lives in `dayNumber()` in
+`history.js`; every address — the Epoch PDA, `epoch-N/` above, the `--epoch`
+argument the scripts take — keeps the raw index. See L24 in the decisions file.
+
 Nothing in the config names the domain — `snapshotsBase` is the relative
 `/snapshots`, so the same files work on localhost and in production. The RPC key
 is not in the page at all; it sits behind the same-origin `/rpc` proxy. See

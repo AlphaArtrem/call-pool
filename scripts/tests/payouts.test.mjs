@@ -235,7 +235,8 @@ test('the genesis payout counts as paid, and is labelled rather than numbered', 
   const genesis = withIt.rows.at(-1);
   assert.equal(genesis.state, DELIVERY.paid);
   assert.equal(genesis.amount, 500n);
-  // "Day 0" on this site means on-chain epoch 0, a different and later day.
+  // Named, not numbered: it is this coin's day zero, but it is not an epoch,
+  // and the settled days above it start at Day 1 (dayNumber in history.js).
   assert.equal(genesis.label, 'Genesis');
   assert.equal(genesis.epoch, null);
 });

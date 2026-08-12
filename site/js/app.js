@@ -30,7 +30,7 @@ import {
 import { explorerUrl, FLOOR_PERCENT_LABEL, provisionalUrl, siteConfig } from './config.js';
 import { loadEpochs, renderEpochs, renderTotals } from './epochs.js';
 import { openDay0Details } from './epoch-details.js';
-import { totalClaimed } from './history.js';
+import { dayLabel, dayNumber, totalClaimed } from './history.js';
 import { decodeConfig } from './program.js';
 import { loadProvisional, settledEpochIndices } from './payouts.js';
 import { loadPosition, looksLikeAddress, renderPosition, renderPositionFailure } from './position.js';
@@ -203,7 +203,9 @@ function renderPreLaunchZeros() {
   const zeros = {
     'pool-balance': zeroSol,
     'vault-balance': zeroSol,
-    'current-epoch': '0',
+    // Not '0'. Days are counted from one (history.js), so a dimmed 0 here would
+    // preview a number this page can never show once it is running.
+    'current-epoch': String(dayNumber(0)),
     'total-distributed': zeroSol,
     'chain-floor': `${formatTokens(0n, MINT_DECIMALS)} CALLPOOL`,
   };
@@ -296,17 +298,17 @@ function sol(lamports) {
  * The day number, as a reader should see it.
  *
  * `epochAt` is arithmetic and can go negative: between `initialize` and the
- * genesis boundary the page sits in the epoch *before* day zero, and the raw
- * index there is −1. That is correct and it is not sayable — "Day number −1"
- * reads as a broken page, and the one thing this section cannot afford is a
- * figure that looks like a bug.
+ * genesis boundary the page sits in the epoch *before* the first one, and the
+ * raw index there is −1. That is correct and it is not sayable — "Day number 0"
+ * reads as a page that has lost count, and 0 is the genesis honor's number
+ * besides.
  *
- * So the pre-genesis run-up is named instead of numbered. Once genesis passes
- * the raw index is shown unchanged, because the history table's "Day" column
- * uses the same index and the two must not disagree.
+ * So the pre-genesis run-up is named instead of numbered, and every other value
+ * goes through `dayNumber` — the same offset the history table's "Day" column
+ * uses, because the two must not disagree.
  */
-function dayNumber(epoch) {
-  return epoch < 0 ? 'not started' : String(epoch);
+function currentDayText(epoch) {
+  return epoch < 0 ? 'not started' : String(dayNumber(epoch));
 }
 
 /** Seconds until the top of the next UTC hour. */
@@ -372,7 +374,7 @@ function startTicking() {
 
       if (rolledOver) {
         state.window = windowFor(chainConfig.genesisTs, epoch, chainConfig.epochSeconds);
-        field(el('current-epoch'), { value: dayNumber(epoch), source: SOURCES.derived });
+        field(el('current-epoch'), { value: currentDayText(epoch), source: SOURCES.derived });
       }
 
       if (rolledOver || now - live.attemptedAt >= REFRESH_SECONDS) {
@@ -695,7 +697,7 @@ async function loadChainConfig(config) {
     const epoch = epochAt(chainConfig.genesisTs, now, chainConfig.epochSeconds);
     state.window = windowFor(chainConfig.genesisTs, epoch, chainConfig.epochSeconds);
 
-    field(el('current-epoch'), { value: dayNumber(epoch), source: SOURCES.derived });
+    field(el('current-epoch'), { value: currentDayText(epoch), source: SOURCES.derived });
 
     const onChainFloor = document.createElement('span');
     field(onChainFloor, {
@@ -782,7 +784,7 @@ function renderHistoryCard(epochs, day0 = null) {
   // Oldest first: the genesis honor (if paid) precedes every on-chain epoch.
   const days = [
     ...(day0 ? [{ label: 'Genesis', lamports: day0.allocateLamports }] : []),
-    ...settled.map((e) => ({ label: `Day ${e.index}`, lamports: e.claimedLamports })),
+    ...settled.map((e) => ({ label: dayLabel(e.index), lamports: e.claimedLamports })),
   ];
   const paidDays = days.length;
 

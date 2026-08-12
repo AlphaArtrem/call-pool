@@ -28,6 +28,33 @@ export function epochIndices(currentEpoch) {
 }
 
 /**
+ * The day number a reader sees for an on-chain epoch index.
+ *
+ * On chain, epochs are counted from zero, and they stay that way everywhere
+ * they are addressed: the Epoch PDA, the published `epoch-<index>/` directory,
+ * `data-epoch-details`. Those are the audit trail, and renumbering them would
+ * break every link ever posted.
+ *
+ * Readers count from one, and here they have to. The genesis honor — the span
+ * from coin creation to the first 00:00 UTC — is this coin's day zero: it was
+ * paid, and its receipts are published at `/snapshots/day0/`. Showing the first
+ * on-chain epoch as "Day 0" as well would put two different days, paid on two
+ * different days, under one number.
+ *
+ * So the offset lives in this one function and every reader-facing day number
+ * on the page goes through it. Anything that *addresses* an epoch uses the raw
+ * index and must not.
+ */
+export function dayNumber(epochIndex) {
+  return epochIndex + 1;
+}
+
+/** "Day 3" — the label form, so no call site spells the word itself. */
+export function dayLabel(epochIndex) {
+  return `Day ${dayNumber(epochIndex)}`;
+}
+
+/**
  * Total distributed across every epoch given. Derived here, never fetched.
  *
  * An unposted epoch contributes nothing rather than being skipped or treated as

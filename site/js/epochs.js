@@ -13,7 +13,7 @@
 import { decodeEpoch, bitmapIsSized, isZeroRoot, rootHex } from './program.js';
 import { epochPda } from './addresses.js';
 import { multipleAccounts } from './chain.js';
-import { epochIndices, totalClaimed } from './history.js';
+import { dayLabel, dayNumber, epochIndices, totalClaimed } from './history.js';
 import { openDay0Details, openEpochDetails } from './epoch-details.js';
 import { pageOf } from './paging.js';
 import { largestShare } from './payouts.js';
@@ -107,12 +107,12 @@ export function renderEpochs(tbody, epochs, config, { pager = null, emptyNote = 
 /**
  * The record row for the genesis honor — the span between coin creation and
  * genesis that no on-chain epoch covers (paid from the creator-fee share,
- * receipts in the dialog). Its Day cell reads "Genesis", NOT "0": on this site
- * "Day 0" is on-chain epoch 0 (the first full UTC day), and dayNumber() in
- * app.js requires the Day column to match the epoch index. The genesis span is
- * a different, earlier day, so it is named rather than given a colliding
- * number. It has no merkle root because it was never an on-chain epoch, and
- * the fingerprint cell says exactly that rather than faking one.
+ * receipts in the dialog). Its Day cell reads "Genesis" rather than "Day 0":
+ * it IS this coin's day zero — which is why the settled days above it start at
+ * Day 1, see dayNumber() in history.js — but it is not an epoch, and a bare
+ * number in this column would invite a reader to look for an Epoch account and
+ * a directory that do not exist for it. It has no merkle root either, and the
+ * fingerprint cell says exactly that rather than faking one.
  */
 function day0Row(day0, config) {
   const tr = document.createElement('tr');
@@ -210,7 +210,10 @@ function epochRow(epoch, config) {
     return td;
   };
 
-  cell(`Day ${epoch.index}`, 'mono day-cell');
+  // The day number, not the epoch index — see dayNumber() in history.js. The
+  // index is still what this row's Details button carries, because that is how
+  // the account and the published directory are addressed.
+  cell(dayLabel(epoch.index), 'mono day-cell');
 
   if (!epoch.posted) {
     const td = document.createElement('td');
@@ -245,7 +248,7 @@ function epochRow(epoch, config) {
   details.className = 'button row-button';
   details.textContent = 'Details';
   details.setAttribute('aria-haspopup', 'dialog');
-  details.setAttribute('aria-label', `Details for day ${epoch.index}`);
+  details.setAttribute('aria-label', `Details for day ${dayNumber(epoch.index)}`);
   // How the dialog hands focus back. Not the element reference itself: the
   // minute refresh rebuilds this row, and returning focus to a detached button
   // is the same as dropping it at the top of the document.

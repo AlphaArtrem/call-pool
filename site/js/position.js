@@ -25,6 +25,7 @@ import {
 } from './chain.js';
 import { associatedTokenAddress, lpMint } from './addresses.js';
 import { explorerUrl, snapshotUrl } from './config.js';
+import { dayLabel, dayNumber } from './history.js';
 import {
   DELIVERY,
   describeDelivery,
@@ -478,7 +479,7 @@ function renderTiles(container, loaded, standing = null) {
       // who bought partway through the basis day is understated by it, through
       // no fault of their own.
       note:
-        `Not owed and not promised — your share of day ${loaded.projected.basisEpoch}, ` +
+        `Not owed and not promised — your share of day ${dayNumber(loaded.projected.basisEpoch)}, ` +
         `applied to the pool now. Today has not been sampled yet, so this reads low ` +
         `if you held for only part of that day.`,
     });
@@ -577,8 +578,9 @@ function renderDays(section, tbody, payouts) {
     amount.title = exactTitle(entry.amount);
     dayCell.append(before, amount, after);
 
-    // `label` is the genesis payout, which has no epoch number to print.
-    tbody.append(row(entry.label ?? `day ${entry.epoch}`, dayCell));
+    // `label` is the genesis payout, which is no epoch and so has no day number
+    // of its own to print. Every other row is the day, not the epoch index.
+    tbody.append(row(entry.label ?? dayLabel(entry.epoch), dayCell));
   }
 }
 

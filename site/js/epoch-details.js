@@ -17,6 +17,7 @@
 // whether they were paid.
 
 import { explorerUrl, snapshotUrl } from './config.js';
+import { dayLabel, dayNumber } from './history.js';
 import { bitmapIsSized, isZeroRoot, rootHex } from './program.js';
 import { DELIVERY, epochPayouts, loadPayoutTrail, payoutTotals } from './payouts.js';
 import { exactTitle, formatSol, utcTime } from './standing.js';
@@ -246,7 +247,7 @@ function header(epoch) {
   const title = document.createElement('h2');
   title.id = 'epoch-dialog-title';
   title.className = 'epoch-dialog-title display';
-  title.textContent = `Day ${epoch.index}`;
+  title.textContent = dayLabel(epoch.index);
 
   const when = document.createElement('p');
   when.className = 'note';
@@ -297,10 +298,18 @@ function facts(epoch, config) {
       ),
     ),
     row('Fingerprint', fingerprint(epoch)),
-    row('Epoch account', addressNode(epoch.address, {
-      href: explorerUrl(config, 'address', epoch.address),
-      responsive: true,
-    })),
+    row(
+      'Epoch account',
+      addressNode(epoch.address, {
+        href: explorerUrl(config, 'address', epoch.address),
+        responsive: true,
+      }),
+      // Days are numbered from one and epochs from zero (history.js), so the
+      // reader who goes to check this account finds it filed under a number
+      // one below the heading above. Better said here than discovered there.
+      `Day ${dayNumber(epoch.index)} is on-chain epoch ${epoch.index}: epochs are counted from zero, ` +
+        `days from one. This account and the published working are both addressed as ${epoch.index}.`,
+    ),
   );
 
   return table;
@@ -342,7 +351,10 @@ function links(epoch, config) {
     a.className = 'button';
     a.href = dir;
     a.textContent = 'Published working';
-    a.title = `Everything needed to reproduce day ${epoch.index}: callouts.json, balances.json, pool.json, tree.json, carry.json, payouts.csv`;
+    // The directory is named for the epoch index, which is one below the day
+    // number (history.js). Saying both here is what stops "Day 3" opening
+    // `epoch-2/` from reading as the wrong day's working.
+    a.title = `Everything needed to reproduce day ${dayNumber(epoch.index)}, published as epoch-${epoch.index}: callouts.json, balances.json, pool.json, tree.json, carry.json, payouts.csv`;
     wrap.append(a);
   }
 
