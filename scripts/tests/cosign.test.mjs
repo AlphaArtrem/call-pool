@@ -320,3 +320,83 @@ test('skipping the reproduction is announced, not silent', async () => {
   assert.match(source, /NOT reproduced before signing/);
   assert.match(source, /second key, not a second opinion/);
 });
+
+// ── a confirmation that expires is not a transaction that failed ───────────
+//
+// The 2026-08-15 settlement: `confirmTransaction` gave up after 30s, cosign
+// exited 1, and the transaction it had given up on was already finalized. The
+// tolerance below exists only because every caller then proves the effect on
+// chain — so these tests check both that the timeout is absorbed AND that it is
+// reported as unproven, never as success.
+
+const expiredConfirmation = () => {
+  const error = new Error(
+    'Transaction was not confirmed in 30.00 seconds. It is unknown if it succeeded or failed.',
+  );
+  error.name = 'TransactionExpiredTimeoutError';
+  return error;
+};
+
+test('a confirmation that lands is simply confirmed', async () => {
+  const { confirmOrReadBack } = await import('../cosign.mjs');
+  const lines = [];
+  const connection = { confirmTransaction: async () => ({ value: { err: null } }) };
+
+  assert.equal(await confirmOrReadBack(connection, 'sig', 'the thing', { log: (l) => lines.push(l) }), true);
+  assert.deepEqual(lines, [], 'nothing to say when nothing went wrong');
+});
+
+test('an expired confirmation reports unknown, not failure, and names the signature', async () => {
+  const { confirmOrReadBack } = await import('../cosign.mjs');
+  const lines = [];
+  const connection = {
+    confirmTransaction: async () => {
+      throw expiredConfirmation();
+    },
+  };
+
+  // `false` is the contract: the caller must now read the chain. It is not an
+  // error, and it is emphatically not `true`.
+  assert.equal(
+    await confirmOrReadBack(connection, '24a549e', "this member's approval", { log: (l) => lines.push(l) }),
+    false,
+  );
+  const said = lines.join('\n');
+  assert.match(said, /24a549e/, 'an operator can go and check it');
+  assert.match(said, /asking the chain/);
+});
+
+test('a confirmation that failed for a reason of its own is re-thrown', async () => {
+  const { confirmOrReadBack } = await import('../cosign.mjs');
+  const fatal = new Error('custom program error: 0x1');
+  const connection = {
+    confirmTransaction: async () => {
+      throw fatal;
+    },
+  };
+
+  await assert.rejects(() => confirmOrReadBack(connection, 'sig', 'the thing', { log: () => {} }), fatal);
+});
+
+test('a read-back gives up rather than looping, and hands back why', async () => {
+  const { pollFor } = await import('../cosign.mjs');
+
+  let reads = 0;
+  const late = await pollFor(
+    async () => {
+      reads += 1;
+      return reads < 3 ? null : 'the account';
+    },
+    { attempts: 5, delayMs: 0 },
+  );
+  assert.equal(late.found, 'the account', 'it waits for an endpoint that is merely behind');
+
+  const never = await pollFor(
+    async () => {
+      throw new Error('Unable to find Proposal account');
+    },
+    { attempts: 3, delayMs: 0 },
+  );
+  assert.equal(never.found, null, 'and a thing that is not there stays not there');
+  assert.match(never.last.message, /Unable to find Proposal/, 'the caller can quote the last read');
+});

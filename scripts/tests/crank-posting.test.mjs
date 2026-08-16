@@ -205,3 +205,39 @@ test('crank.mjs refuses to run with no way to sign', () => {
   assert.notEqual(status, 0);
   assert.match(output, /--keypair <PATH> is required/);
 });
+
+// ── the posting step's exit code is not the chain's answer ─────────────────
+//
+// On 2026-08-15 cosign.mjs exited 1 on a confirmation that timed out over a
+// transaction that finalized, and the crank threw on that exit code before it
+// ever asked the chain. Both of these say the same thing from opposite sides:
+// the exit code changes what a failure is *reported* as, and nothing else.
+
+test('a root that is on chain settles the epoch even when the posting step exited 1', async () => {
+  const account = { root: Buffer.alloc(32, 5), postedTs: 3_000 };
+  const found = await confirmPosted(async () => account, {
+    epoch: 3,
+    awaitSeconds: 600,
+    multisig: MULTISIG,
+    postFailure: 'cosign.mjs exited 1',
+  });
+  assert.equal(found, account, 'the chain outranks the child process');
+});
+
+test('and when no root ever lands, the failure names the step that failed', async () => {
+  await assert.rejects(
+    () =>
+      confirmPosted(async () => null, {
+        epoch: 3,
+        awaitSeconds: 0,
+        multisig: MULTISIG,
+        postFailure: 'cosign.mjs exited 1',
+      }),
+    (error) =>
+      /NO ROOT ON CHAIN/.test(error.message) &&
+      /cosign\.mjs exited 1/.test(error.message) &&
+      // The old wording would be a lie here, and an operator chasing "reported
+      // success" would start in the wrong place entirely.
+      !/reported success/.test(error.message),
+  );
+});

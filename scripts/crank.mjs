@@ -61,6 +61,7 @@ import { iso, windowForDay } from './lib/epoch.mjs';
 import { epochIndexFor, fetchConfig, fetchEpoch, windowForEpoch } from './lib/program.mjs';
 import { REPO_ROOT } from './lib/store.mjs';
 import { redactSecrets } from './lib/alert.mjs';
+import { chainTimeAtLeast } from './lib/transient.mjs';
 
 /** Seconds between polls while waiting for a root to show up on chain. */
 const ROOT_POLL_SECONDS = 5;
@@ -199,7 +200,7 @@ export function postStep({ epoch, rpc, keypair, multisig }) {
  */
 export async function confirmPosted(
   readEpoch,
-  { epoch, awaitSeconds = 0, multisig, sleepFn = sleep, nowFn = () => Date.now() },
+  { epoch, awaitSeconds = 0, multisig, postFailure = null, sleepFn = sleep, nowFn = () => Date.now() },
 ) {
   const deadline = nowFn() + awaitSeconds * 1000;
   let announced = false;
@@ -217,7 +218,10 @@ export async function confirmPosted(
 
   throw new Error(
     `epoch ${epoch} has NO ROOT ON CHAIN${awaitSeconds ? ` after ${awaitSeconds}s` : ''}, ` +
-      'even though the posting step reported success. This run settled nothing.\n' +
+      (postFailure
+        ? `and the posting step failed (${postFailure}). This run settled nothing.\n`
+        : 'even though the posting step reported success. This run settled nothing.\n') +
+      (postFailure ? '  Read the posting step\'s own output above for why it failed.\n' : '') +
       (multisig
         ? '  The proposal may be sitting below the approval threshold: check the other ' +
           "signer's timer, that both hosts name the same --multisig, and the vault's SOL balance."
@@ -297,7 +301,24 @@ async function main() {
     multisig: args.multisig,
   });
   const posted = run(script, postArgs, args);
-  if (posted.status !== 0) throw new Error(`${script} failed — no root was posted`);
+  // A non-zero exit is a report about the child, and the child is not the chain.
+  //
+  // Measured 2026-08-15: `cosign.mjs` sent the execute leg, its confirmation
+  // timed out after 30s, and it exited 1 — on a transaction that finalized. This
+  // line then threw before the chain read three lines below could contradict it,
+  // and the crank failed a settlement that had succeeded. The same shape covers
+  // the ordinary lost race, where the *other* signer posts the root moments
+  // after this host's attempt fails.
+  //
+  // So the failure is remembered, not acted on: `confirmPosted` below waits out
+  // `--await-root` (10 minutes on the multisig path — the budget that exists for
+  // exactly this) and the run only fails if no root ever appears.
+  if (posted.status !== 0 && !args.dryRun) {
+    console.log(
+      `\n⚠️  ${script} exited ${posted.status}. That describes the child process, not the\n` +
+        '    chain — asking the chain whether the root landed anyway.\n',
+    );
+  }
 
   // And now the only statement that means anything: ask the chain.
   const onChain = args.dryRun
@@ -306,6 +327,7 @@ async function main() {
         epoch,
         awaitSeconds: args.awaitRoot,
         multisig: args.multisig,
+        postFailure: posted.status !== 0 ? `${script} exited ${posted.status}` : null,
       });
   if (onChain) console.log(`\nroot on chain: ${onChain.root.toString('hex')}`);
 
@@ -383,21 +405,21 @@ async function pay(connection, config, epoch, onChain, args) {
   // ended early and the airdrop came back `ChallengeWindowOpen` — the root
   // posted, the money unpaid, and the crank reporting failure for a settlement
   // that was fine. Polling the chain cannot be early by construction.
+  //
+  // A failure to *read* that clock is not a reason to abandon the settlement.
+  // On 2026-08-14 it was: `getBlockTime` was answered by an upstream one slot
+  // behind the one that had just answered `getSlot`, threw, and killed the crank
+  // between a posted root and its unpaid airdrop — inside a loop that was about
+  // to sleep two seconds and ask again. `chainTimeAtLeast` polls through that,
+  // and still throws when the endpoint stays silent for minutes.
   const opensAt = onChain.postedTs + config.challengeSeconds;
-  let announced = false;
-  for (;;) {
-    const slot = await connection.getSlot('confirmed');
-    const chainNow = await connection.getBlockTime(slot);
-    if (chainNow == null) throw new Error(`the RPC returned no block time for slot ${slot}`);
-    if (chainNow >= opensAt) break;
-    if (!announced) {
+  await chainTimeAtLeast(connection, opensAt, {
+    sleepFn: sleep,
+    onWait: (chainNow) =>
       console.log(
         `\n⏳ the challenge window closes at ${iso(opensAt)} — waiting ${opensAt - chainNow}s\n`,
-      );
-      announced = true;
-    }
-    await sleep(2);
-  }
+      ),
+  });
 
   const paid = run('airdrop.mjs', ['--epoch', String(epoch), '--rpc', args.rpc, '--keypair', args.payer], args);
   if (paid.status !== 0) throw new Error(`the root for epoch ${epoch} is posted, but the airdrop failed`);

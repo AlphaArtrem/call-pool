@@ -58,6 +58,7 @@ import { DEFAULT_RPC_URL, MAINNET_GENESIS_HASH } from './lib/config.mjs';
 import { corroborateCallouts } from './lib/corroborate.mjs';
 import { fetchConfig, fetchEpoch, poolAvailable, postEpochRootIx } from './lib/program.mjs';
 import { readJson, REPO_ROOT, snapshotDir } from './lib/store.mjs';
+import { isTransientRpcError } from './lib/transient.mjs';
 
 function parseArgs(argv) {
   const args = { rpc: DEFAULT_RPC_URL, execute: false, dryRun: false, yes: false };
@@ -297,19 +298,92 @@ async function waitForIndex(connection, multisigPda, index, attempts = 30) {
  * it applied to an account.
  */
 async function waitForAccount(read, what, attempts = 20, delayMs = 500) {
-  let last;
-  for (let i = 0; i < attempts; i++) {
-    const found = await read().catch((error) => {
-      last = error;
-      return null;
-    });
-    if (found) return found;
-    await new Promise((r) => setTimeout(r, delayMs));
-  }
+  const { found, last } = await pollFor(read, { attempts, delayMs });
+  if (found) return found;
   throw new Error(
     `${what} was created and confirmed, but this endpoint still does not serve it after ` +
       `${((attempts * delayMs) / 1000).toFixed(0)}s. Check the RPC's slot lag before anything else` +
       `${last ? ` — the last read said: ${last.message}` : ''}.`,
+  );
+}
+
+/**
+ * Ask the chain the same question until it answers, or give up quietly.
+ *
+ * The shared body of every read-back in this file. It never throws: a read that
+ * fails is a read to repeat, and deciding what a run of failures *means* is the
+ * caller's job — the wording of that failure is the whole value of these paths.
+ *
+ * @returns {Promise<{found: unknown|null, last: Error|null}>}
+ */
+export async function pollFor(read, { attempts = 20, delayMs = 500 } = {}) {
+  let last = null;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, delayMs));
+    const found = await read().catch((error) => {
+      last = error;
+      return null;
+    });
+    if (found) return { found, last };
+  }
+  return { found: null, last };
+}
+
+/**
+ * Confirm a signature, or report that the *confirmation* is what failed.
+ *
+ * `confirmTransaction` polls for 30 seconds and then throws
+ * `TransactionExpiredTimeoutError` — whose own message concedes the point: "It
+ * is unknown if it succeeded or failed. Check signature … using the Solana
+ * Explorer". On 2026-08-15 the answer to that check was that it had finalized,
+ * and the root was posted; the crank had already exited 1.
+ *
+ * Unknown is not failed. This returns `false` for unknown, and **every caller
+ * must then prove the transaction's effect by reading the chain** — the
+ * `waitForIndex` / `waitForAccount` / `waitForApproval` call that follows. A
+ * caller that ignored the `false` would be converting a false failure into a
+ * false success, which is far worse than what it replaced.
+ *
+ * @returns {Promise<boolean>} true if confirmed; false if the confirmation
+ *   itself timed out and the truth is now the chain's to give.
+ */
+export async function confirmOrReadBack(connection, signature, what, { log = console.log } = {}) {
+  try {
+    await connection.confirmTransaction(signature, 'confirmed');
+    return true;
+  } catch (error) {
+    if (!isTransientRpcError(error)) throw error;
+    log(`confirm      ${what}: the confirmation timed out, which is not the same as the`);
+    log(`             transaction failing — ${signature}`);
+    log(`             ${error.message.split('\n')[0]}`);
+    log('             asking the chain what actually happened.');
+    return false;
+  }
+}
+
+/**
+ * Block until this member's approval is visible on the proposal.
+ *
+ * The count read further down is normally proof enough, but it cannot tell "the
+ * approval has not landed" from "this endpoint has not caught up" — and both
+ * read as `1/2`, which the run reports as *waiting for the other signer* and
+ * exits 0 on. That is the silent 1-of-2 deadlock the file already documents,
+ * arrived at from a third direction. So when the approval's confirmation timed
+ * out, prove it landed, and say so loudly when it did not.
+ */
+async function waitForApproval(connection, proposalPda, memberKey, index) {
+  const key = memberKey.toBase58();
+  const { found, last } = await pollFor(async () => {
+    const proposal = await multisig.accounts.Proposal.fromAccountAddress(connection, proposalPda);
+    return proposal.approved.some((k) => k.toBase58() === key) ? proposal : null;
+  });
+  if (found) return found;
+  throw new Error(
+    `this member (${key}) approved index ${index}, but the approval never appeared on chain ` +
+      'after 10s — so the transaction did not land, or this endpoint is far behind.\n' +
+      '  Nothing is broken and nothing is signed twice: re-running adopts the same proposal ' +
+      'and approves it again.' +
+      `${last ? `\n  The last read said: ${last.message}` : ''}`,
   );
 }
 
@@ -667,7 +741,14 @@ async function main() {
       const raced = /ConstraintSeeds|already in use|InvalidTransactionIndex|AlreadyInitialized|already initialized/i.test(
         `${error.message}${error.logs?.join(' ') ?? ''}`,
       );
-      if (!raced) throw error;
+      // The SDK's `rpc.*` helpers send *and confirm*, so this catch also
+      // receives a confirmation that timed out on a transaction that landed —
+      // and the recovery for that is the recovery already written here: re-scan,
+      // and adopt only bytes this host derived. A create whose confirmation
+      // expired is indistinguishable from a create that lost the race, and it
+      // wants the same answer.
+      const transient = isTransientRpcError(error);
+      if (!raced && !transient) throw error;
 
       // Say what the chain actually said. The recovery below reads the same
       // for a lost race, an orphaned index and a malformed create, and on
@@ -678,13 +759,26 @@ async function main() {
       // The message alone is rarely enough — "Account is already initialized"
       // does not say *which* account. The program logs name it.
       for (const line of error.logs ?? []) console.log(`             | ${line}`);
-      const fresh = await multisig.accounts.Multisig.fromAccountAddress(connection, multisigPda);
-      const now = await findProposal(connection, multisigPda, fresh, expectedIx, vault);
+      // A lost race is already on chain, so one scan settles it. A timed-out
+      // confirmation may still be landing as we look, so give it a few — the
+      // whole point is not to conclude "nothing carries our bytes" from an
+      // endpoint that simply has not caught up.
+      const { found: now } = await pollFor(
+        async () => {
+          const fresh = await multisig.accounts.Multisig.fromAccountAddress(connection, multisigPda);
+          return findProposal(connection, multisigPda, fresh, expectedIx, vault);
+        },
+        { attempts: transient ? 10 : 1, delayMs: 1000 },
+      );
       if (!now) {
         throw new Error(
           `creating index ${index} failed and no proposal on this multisig carries the bytes ` +
             `derived here for epoch ${epoch} — NOT signing.\n` +
             `  The create failed with: ${error.message}\n` +
+            (transient
+              ? '  That was the RPC, not the chain — so this run looked for the transaction for ' +
+                '10s afterwards and it never appeared. It did not land.\n'
+              : '') +
             '  If that names a taken index, another member proposed something this host did not ' +
             'derive — that is the case the byte comparison exists for, and approving it by hand ' +
             'to clear the queue is the one thing not to do.',
@@ -699,7 +793,9 @@ async function main() {
       // the SDK's send does not wait for the account to reflect it. Without this
       // the propose leg fails with `InvalidTransactionIndex` on a fast local
       // validator and, intermittently, on a real one.
-      await connection.confirmTransaction(createSig, 'confirmed');
+      // The confirmation is a convenience; `waitForIndex` is the proof, and it
+      // runs either way.
+      await confirmOrReadBack(connection, createSig, `the vault transaction for index ${index}`);
       await waitForIndex(connection, multisigPda, index);
     }
   }
@@ -715,14 +811,25 @@ async function main() {
 
   if (!proposal) {
     console.log(`proposal     account missing for index ${index} — creating it`);
-    const proposalSig = await multisig.rpc.proposalCreate({
-      connection,
-      feePayer: member,
-      multisigPda,
-      transactionIndex: BigInt(index),
-      creator: member,
-    });
-    await connection.confirmTransaction(proposalSig, 'confirmed');
+    let proposalSig = null;
+    try {
+      proposalSig = await multisig.rpc.proposalCreate({
+        connection,
+        feePayer: member,
+        multisigPda,
+        transactionIndex: BigInt(index),
+        creator: member,
+      });
+    } catch (error) {
+      // Same reasoning as the create above: the SDK confirms internally, so a
+      // throw here can be a confirmation that expired over a proposal account
+      // that now exists. `waitForAccount` below is what decides.
+      if (!isTransientRpcError(error)) throw error;
+      console.log(`proposal     create did not confirm — asking the chain: ${error.message.split('\n')[0]}`);
+    }
+    if (proposalSig) {
+      await confirmOrReadBack(connection, proposalSig, `the proposal for index ${index}`);
+    }
     proposal = await waitForAccount(
       () => multisig.accounts.Proposal.fromAccountAddress(connection, proposalPda),
       `the proposal for index ${index}`,
@@ -734,17 +841,29 @@ async function main() {
   if (already.includes(member.publicKey.toBase58())) {
     console.log(`approved     already, by this member (${already.length}/${threshold})`);
   } else {
-    const approveSig = await multisig.rpc.proposalApprove({
-      connection,
-      feePayer: member,
-      multisigPda,
-      transactionIndex: BigInt(index),
-      member,
-    });
+    let approveSig = null;
+    try {
+      approveSig = await multisig.rpc.proposalApprove({
+        connection,
+        feePayer: member,
+        multisigPda,
+        transactionIndex: BigInt(index),
+        member,
+      });
+    } catch (error) {
+      if (!isTransientRpcError(error)) throw error;
+      console.log(`approve      did not confirm — asking the chain: ${error.message.split('\n')[0]}`);
+    }
     // Confirm before re-reading, or the count below is the count from before
     // this approval — which reads as "waiting for more" on the run that just
     // met the threshold, and would strand the root unposted.
-    await connection.confirmTransaction(approveSig, 'confirmed');
+    const confirmed =
+      approveSig !== null &&
+      (await confirmOrReadBack(connection, approveSig, `this member's approval of index ${index}`));
+    // Unconfirmed, for either reason: the count below is not sufficient proof,
+    // because a missing approval and a lagging endpoint both read as "waiting
+    // for the other signer". Settle it against the chain first.
+    if (!confirmed) await waitForApproval(connection, proposalPda, member.publicKey, index);
   }
 
   const after = await multisig.accounts.Proposal.fromAccountAddress(connection, proposalPda);
@@ -761,14 +880,40 @@ async function main() {
     return;
   }
 
-  const signature = await multisig.rpc.vaultTransactionExecute({
-    connection,
-    feePayer: member,
-    multisigPda,
-    transactionIndex: BigInt(index),
-    member: member.publicKey,
-    signers: [member],
-  });
+  // The leg that posts the root, and the one that failed on 2026-08-15.
+  //
+  // Its effect is an Epoch account, which is the only evidence that matters and
+  // is readable by anyone. So a transient throw from here is answered by reading
+  // that account rather than by exiting 1 — an exit the crank used to take at
+  // face value, failing a settlement whose root was on chain.
+  let signature = null;
+  try {
+    signature = await multisig.rpc.vaultTransactionExecute({
+      connection,
+      feePayer: member,
+      multisigPda,
+      transactionIndex: BigInt(index),
+      member: member.publicKey,
+      signers: [member],
+    });
+  } catch (error) {
+    if (!isTransientRpcError(error)) throw error;
+    console.log(`\nexecute      did not confirm: ${error.message.split('\n')[0]}`);
+    console.log(`             reading the chain back for epoch ${epoch}'s root instead.\n`);
+    const { found, last } = await pollFor(() => fetchEpoch(connection, mint, epoch));
+    if (!found) {
+      throw new Error(
+        `executing index ${index} did not confirm, and epoch ${epoch} still has no root on chain ` +
+          '10s later — so it did not land.\n' +
+          `  The transaction failed with: ${error.message}\n` +
+          '  Nothing here is half-done: the proposal keeps its approvals, and re-running this ' +
+          'command executes the same one again.' +
+          `${last ? `\n  The last read said: ${last.message}` : ''}`,
+      );
+    }
+    console.log(`posted: the root is on chain (${found.root.toString('hex')}) — the confirmation timed out, not the transaction.\n`);
+    return;
+  }
   console.log(`\nposted: ${signature}\n`);
 }
 
